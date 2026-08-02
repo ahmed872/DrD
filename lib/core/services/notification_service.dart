@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
+import '../../core/utils/app_logger.dart';
 
 /// فئة مساعدة لإدارة البيانات والإشعارات
 class NotificationService {
@@ -29,9 +29,9 @@ class NotificationService {
         'read': false,
         'createdAt': FieldValue.serverTimestamp(),
       });
-      print('✅ تم إرسال إشعار للطبيب');
+      AppLogger.success('✅ تم إرسال إشعار للطبيب');
     } catch (e) {
-      print('❌ خطأ في إرسال الإشعار: $e');
+      AppLogger.error('❌ خطأ في إرسال الإشعار: $e');
     }
   }
 
@@ -53,9 +53,9 @@ class NotificationService {
         'read': false,
         'createdAt': FieldValue.serverTimestamp(),
       });
-      print('✅ تم إرسال إشعار للمريض');
+      AppLogger.success('✅ تم إرسال إشعار للمريض');
     } catch (e) {
-      print('❌ خطأ في إرسال الإشعار: $e');
+      AppLogger.error('❌ خطأ في إرسال الإشعار: $e');
     }
   }
 
@@ -77,9 +77,9 @@ class NotificationService {
         'read': false,
         'createdAt': FieldValue.serverTimestamp(),
       });
-      print('✅ تم إرسال إشعار للطبيب');
+      AppLogger.success('✅ تم إرسال إشعار للطبيب');
     } catch (e) {
-      print('❌ خطأ في إرسال الإشعار: $e');
+      AppLogger.error('❌ خطأ في إرسال الإشعار: $e');
     }
   }
 
@@ -101,7 +101,7 @@ class NotificationService {
           .doc(notificationId)
           .update({'read': true});
     } catch (e) {
-      print('❌ خطأ في تحديث الإشعار: $e');
+      AppLogger.error('❌ خطأ في تحديث الإشعار: $e');
     }
   }
 
@@ -110,7 +110,7 @@ class NotificationService {
     try {
       await _firestore.collection('notifications').doc(notificationId).delete();
     } catch (e) {
-      print('❌ خطأ في حذف الإشعار: $e');
+      AppLogger.error('❌ خطأ في حذف الإشعار: $e');
     }
   }
 
@@ -125,7 +125,7 @@ class NotificationService {
           .get();
       return snapshot.count ?? 0;
     } catch (e) {
-      print('❌ خطأ في عد الإشعارات: $e');
+      AppLogger.error('❌ خطأ في عد الإشعارات: $e');
       return 0;
     }
   }
@@ -193,21 +193,21 @@ class DataValidationService {
 /// فئة مساعدة لمعالجة الأخطاء والسجلات
 class LoggerService {
   static void logSuccess(String message) {
-    print('✅ $message');
+    AppLogger.success('✅ $message');
   }
 
   static void logError(String message,
       {dynamic error, StackTrace? stackTrace}) {
-    print('❌ $message');
-    if (error != null) print('   Error: $error');
-    if (stackTrace != null) print('   StackTrace: $stackTrace');
+    AppLogger.error('❌ $message');
+    if (error != null) AppLogger.info('   Error: $error');
+    if (stackTrace != null) AppLogger.info('   StackTrace: $stackTrace');
   }
 
   static void logWarning(String message) {
-    print('⚠️  $message');
+    AppLogger.warning('⚠️  $message');
   }
 
   static void logInfo(String message) {
-    print('ℹ️  $message');
+    AppLogger.info('ℹ️  $message');
   }
 }

@@ -1,38 +1,511 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
   <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
+    يُستبدل بقيمة `--base-href` وقت البناء. للنشر على النطاق الجذر اتركه كما هو.
   -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+  <meta name="description"
+        content="DrD — احجز موعدك عند الطبيب في وقت محدد وتجنّب الانتظار الطويل في العيادة.">
 
-  <!-- iOS meta tags & icons -->
+  <title>DrD — حجز مواعيد الأطباء</title>
+
+  <!-- لون شريط المتصفح، بنسختين حتى لا يبدو التطبيق غريباً في الوضع الليلي -->
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0097A7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#00363D">
+
+  <!-- تثبيت التطبيق على iOS: سفاري يتجاهل manifest.json ويعتمد على هذه الوسوم -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="medical_appointment_app">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="DrD">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>medical_appointment_app</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- تفضيل الفتح في التطبيق المثبَّت بدل المتصفح عند وجوده -->
+  <meta name="format-detection" content="telephone=no">
+
+  <!-- مشاركة الرابط على واتساب وفيسبوك -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="DrD — حجز مواعيد الأطباء">
+  <meta property="og:description"
+        content="احجز موعدك عند الطبيب في وقت محدد وتجنّب الانتظار الطويل.">
+  <meta property="og:image" content="icons/Icon-512.png">
+  <meta property="og:locale" content="ar_EG">
+
+  <style>
+    /*
+      شاشة إقلاع مؤقتة.
+
+      بدونها يرى المستخدم صفحة بيضاء فارغة لثوانٍ بينما يُحمَّل محرّك Flutter —
+      وهي أسوأ انطباع أول ممكن، وسبب شائع لرفض المراجعين للتطبيقات المغلَّفة.
+      تُحذف هذه الشاشة من الـ DOM بمجرد أن يرسم Flutter أول إطار.
+    */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #F5F7FA;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Tahoma",
+                   "Cairo", "Noto Naskh Arabic", sans-serif;
+      overscroll-behavior: none;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      html, body { background-color: #0E1416; }
+    }
+
+    #boot-screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 9999;
+      transition: opacity 280ms ease-out;
+    }
+
+    #boot-screen.hidden { opacity: 0; pointer-events: none; }
+
+    #boot-logo {
+      width: 88px;
+      height: 88px;
+      border-radius: 22px;
+      box-shadow: 0 8px 28px rgba(0, 151, 167, 0.28);
+    }
+
+    #boot-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: #0097A7;
+      letter-spacing: 0.2px;
+    }
+
+    #boot-hint {
+      font-size: 13px;
+      color: #7A8A93;
+      margin-top: -12px;
+    }
+
+    #boot-spinner {
+      width: 30px;
+      height: 30px;
+      border: 3px solid rgba(0, 151, 167, 0.2);
+      border-top-color: #0097A7;
+      border-radius: 50%;
+      animation: spin 800ms linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* احترام تفضيل تقليل الحركة بدل فرض دوران دائم */
+    @media (prefers-reduced-motion: reduce) {
+      #boot-spinner { animation-duration: 2.4s; }
+      #boot-screen { transition: none; }
+    }
+
+    /* شريط الإشعارات: تحديث جديد أو انقطاع الاتصال */
+    #app-banner {
+      position: fixed;
+      bottom: 0;
+      inset-inline: 0;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      background: #0097A7;
+      color: #fff;
+      font-size: 14px;
+      z-index: 10000;
+      box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.18);
+    }
+
+    #app-banner.visible { display: flex; }
+    #app-banner.offline { background: #B3261E; }
+
+    #app-banner button {
+      background: #fff;
+      color: #0097A7;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* ===== بطاقة "ثبّت التطبيق" ===== */
+    #install-card {
+      position: fixed;
+      inset-inline: 12px;
+      bottom: calc(12px + env(safe-area-inset-bottom));
+      display: none;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border-radius: 16px;
+      background: #fff;
+      color: #1B2A30;
+      box-shadow: 0 6px 28px rgba(0, 0, 0, 0.22);
+      z-index: 10001;
+      max-width: 520px;
+      margin-inline: auto;
+      animation: rise 260ms ease-out;
+    }
+
+    #install-card.visible { display: flex; }
+
+    @keyframes rise {
+      from { transform: translateY(20px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #install-card { animation: none; }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #install-card { background: #1A2226; color: #E1E7E9; }
+      #install-text small { color: #A5B3B8 !important; }
+      #ios-sheet-inner { background: #1A2226 !important; color: #E1E7E9 !important; }
+    }
+
+    #install-card img {
+      width: 44px; height: 44px; border-radius: 11px; flex: 0 0 auto;
+    }
+
+    #install-text { flex: 1; min-width: 0; }
+    #install-text strong { display: block; font-size: 15px; margin-bottom: 3px; }
+    #install-text small { font-size: 12.5px; line-height: 1.5; color: #5C6D75; }
+
+    #install-yes {
+      background: #0097A7; color: #fff; border: 0; border-radius: 10px;
+      padding: 11px 18px; font-size: 14px; font-weight: 700;
+      font-family: inherit; cursor: pointer; flex: 0 0 auto;
+    }
+
+    #install-no {
+      background: transparent; border: 0; color: #93A1A8;
+      font-size: 22px; line-height: 1; padding: 4px 6px;
+      cursor: pointer; flex: 0 0 auto; font-family: inherit;
+    }
+
+    /* شرح التثبيت على iOS — سفاري لا يوفّر زر تثبيت برمجياً */
+    #ios-sheet {
+      position: fixed; inset: 0; display: none;
+      align-items: flex-end; justify-content: center;
+      background: rgba(0, 0, 0, 0.55); z-index: 10002; padding: 16px;
+    }
+
+    #ios-sheet.visible { display: flex; }
+
+    #ios-sheet-inner {
+      background: #fff; color: #1B2A30; border-radius: 18px; padding: 22px;
+      max-width: 420px; width: 100%;
+      margin-bottom: calc(8px + env(safe-area-inset-bottom));
+    }
+
+    #ios-sheet h2 {
+      font-size: 17px; margin: 0 0 16px; color: #0097A7; text-align: center;
+    }
+
+    .ios-step {
+      display: flex; align-items: center; gap: 11px;
+      font-size: 14.5px; line-height: 1.6; margin-bottom: 13px;
+    }
+
+    .ios-num {
+      flex: 0 0 auto; width: 25px; height: 25px; border-radius: 50%;
+      background: #0097A7; color: #fff; font-size: 13px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    #ios-sheet button {
+      margin-top: 6px; width: 100%; background: #0097A7; color: #fff;
+      border: 0; border-radius: 11px; padding: 13px; font-size: 15px;
+      font-weight: 700; font-family: inherit; cursor: pointer;
+    }
+  </style>
 </head>
 <body>
+  <div id="boot-screen">
+    <img id="boot-logo" src="icons/Icon-192.png" alt="DrD">
+    <div id="boot-title">DrD — حجز مواعيد الأطباء</div>
+    <div id="boot-hint">جارٍ التحميل…</div>
+    <div id="boot-spinner"></div>
+  </div>
+
+  <div id="app-banner" role="status" aria-live="polite">
+    <span id="app-banner-text"></span>
+    <button id="app-banner-action" type="button"></button>
+  </div>
+
+  <div id="install-card" role="dialog" aria-label="تثبيت التطبيق">
+    <img src="icons/Icon-192.png" alt="">
+    <div id="install-text">
+      <strong>ثبّت تطبيق DrD</strong>
+      <small>احجز أسرع، وافتحه من شاشتك الرئيسية زي أي تطبيق</small>
+    </div>
+    <button id="install-yes" type="button">تثبيت</button>
+    <button id="install-no" type="button" aria-label="إغلاق">&times;</button>
+  </div>
+
+  <div id="ios-sheet" role="dialog" aria-label="طريقة التثبيت على الآيفون">
+    <div id="ios-sheet-inner">
+      <h2>ثبّت DrD على الآيفون</h2>
+      <div class="ios-step">
+        <span class="ios-num">١</span>
+        <span>اضغط زر المشاركة <strong>􀈂</strong> في شريط سفاري بالأسفل</span>
+      </div>
+      <div class="ios-step">
+        <span class="ios-num">٢</span>
+        <span>انزل لتحت واختر <strong>«إضافة إلى الشاشة الرئيسية»</strong></span>
+      </div>
+      <div class="ios-step">
+        <span class="ios-num">٣</span>
+        <span>اضغط <strong>«إضافة»</strong> — وهيظهر التطبيق على شاشتك</span>
+      </div>
+      <button id="ios-close" type="button">تمام</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var banner = document.getElementById('app-banner');
+      var bannerText = document.getElementById('app-banner-text');
+      var bannerAction = document.getElementById('app-banner-action');
+      var bannerHandler = null;
+
+      function showBanner(message, actionLabel, onAction, isOffline) {
+        bannerText.textContent = message;
+        bannerAction.textContent = actionLabel;
+        banner.classList.toggle('offline', !!isOffline);
+        banner.classList.add('visible');
+
+        // إزالة المستمع السابق تفادياً لتراكم المستمعين عند تكرار العرض.
+        if (bannerHandler) {
+          bannerAction.removeEventListener('click', bannerHandler);
+        }
+        bannerHandler = onAction;
+        bannerAction.addEventListener('click', bannerHandler);
+      }
+
+      function hideBanner() { banner.classList.remove('visible'); }
+
+      // ===== إخفاء شاشة الإقلاع بعد أول إطار من Flutter =====
+      var bootDone = false;
+
+      window.addEventListener('flutter-first-frame', function () {
+        bootDone = true;
+        var boot = document.getElementById('boot-screen');
+        if (!boot) return;
+        boot.classList.add('hidden');
+        // الانتظار حتى ينتهي التلاشي قبل الإزالة من الـ DOM.
+        setTimeout(function () { boot.remove(); }, 300);
+      });
+
+      // شبكة أمان: لو فشل تحميل محرّك Flutter (شبكة ضعيفة، أو حجب لأحد
+      // الملفات) يبقى المستخدم أمام مؤشر دوّار إلى الأبد بلا أي تفسير.
+      // بعد 20 ثانية نستبدل المؤشر برسالة عربية وزر إعادة محاولة.
+      setTimeout(function () {
+        if (bootDone) return;
+        var hint = document.getElementById('boot-hint');
+        var spinner = document.getElementById('boot-spinner');
+        if (hint) {
+          hint.textContent = 'يبدو أن التحميل يستغرق وقتاً أطول من المعتاد.';
+        }
+        if (spinner) spinner.style.display = 'none';
+        showBanner('تعذّر تحميل التطبيق', 'إعادة المحاولة', function () {
+          window.location.reload();
+        }, true);
+      }, 20000);
+
+      // ===== حالة الاتصال =====
+      // التطبيق يعتمد على Firestore، والحجز بلا اتصال يفشل بصمت. إخبار
+      // المستخدم بالعربية أوضح بكثير من رسالة خطأ عامة بعد الضغط على "تأكيد".
+      window.addEventListener('offline', function () {
+        showBanner('لا يوجد اتصال بالإنترنت', 'حسناً', hideBanner, true);
+      });
+      window.addEventListener('online', hideBanner);
+
+      // ===== تسجيل عامل الخدمة وإدارة التحديثات =====
+      //
+      // التسجيل يدوي عمداً: Flutter لم يعد يولّد عامل خدمة يخزّن شيئاً (الملف
+      // المولَّد صار بذرة تُلغي تسجيل نفسها)، لذلك يُبنى المشروع بـ
+      // `--service-worker-strategy=none` ويُستخدم `sw.js` المكتوب في المستودع.
+      //
+      // منطق التحديث ضروري: بدونه يبقى المستخدم على نسخة قديمة مخزَّنة إلى أن
+      // يمسح ذاكرة المتصفح بنفسه — وهو ما لن يفعله.
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('sw.js').then(function (registration) {
+            function watch(worker) {
+              if (!worker) return;
+              worker.addEventListener('statechange', function () {
+                // وجود `controller` يعني أن هذه ترقية وليست أول تثبيت،
+                // فلا نزعج المستخدم بشريط تحديث في زيارته الأولى.
+                if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                  showBanner('يتوفّر إصدار جديد من التطبيق', 'تحديث', function () {
+                    worker.postMessage({ type: 'SKIP_WAITING' });
+                    hideBanner();
+                  }, false);
+                }
+              });
+            }
+
+            watch(registration.waiting);
+            registration.addEventListener('updatefound', function () {
+              watch(registration.installing);
+            });
+
+            // فحص دوري لمن يُبقي التطبيق مفتوحاً أياماً دون إغلاقه.
+            setInterval(function () {
+              registration.update().catch(function () { /* بلا اتصال — تُتجاهل */ });
+            }, 60 * 60 * 1000);
+          }).catch(function (error) {
+            // فشل التسجيل ليس خطأً قاتلاً — التطبيق يعمل بدون دعم بلا اتصال.
+            console.warn('تعذّر تسجيل عامل الخدمة:', error);
+          });
+        });
+
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          // النسخة الجديدة تولّت السيطرة؛ نعيد التحميل مرة واحدة فقط.
+          if (window.__drdReloading) return;
+          window.__drdReloading = true;
+          window.location.reload();
+        });
+      }
+
+      // ===================================================================
+      // تثبيت التطبيق
+      // ===================================================================
+      //
+      // الهدف: تبعت اللينك لأي حد، يفتحه، ويطلعله زر يثبّت بيه التطبيق.
+      //
+      // الفرق بين المنصّتين ليس في إمكانية التثبيت — التطبيق يُثبَّت على
+      // الاثنين ويفتح بلا شريط متصفح — بل في طريقة الزر:
+      //
+      //   • أندرويد/كروم: يطلق `beforeinstallprompt`، فنمسكه ونعرض زراً
+      //     حقيقياً يفتح نافذة التثبيت بضغطة واحدة.
+      //
+      //   • آيفون/سفاري: لا يدعم `beforeinstallprompt` ولا يوجد أي واجهة
+      //     برمجية للتثبيت. المتاح الوحيد أن نعرض شرحاً مصوّراً لخطوات
+      //     «مشاركة ← إضافة إلى الشاشة الرئيسية». الزر هنا يفتح الشرح، لا
+      //     يثبّت بنفسه — وهذا حدّ فرضه سفاري، ليس نقصاً في التطبيق.
+
+      var installCard = document.getElementById('install-card');
+      var iosSheet = document.getElementById('ios-sheet');
+      var deferredPrompt = null;
+
+      var DISMISS_KEY = 'drd_install_dismissed_at';
+      var DISMISS_DAYS = 14;
+
+      function isStandalone() {
+        // `navigator.standalone` خاص بسفاري على iOS.
+        return window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true;
+      }
+
+      function isIos() {
+        return /iphone|ipad|ipod/i.test(window.navigator.userAgent)
+            // آيباد الحديث يعرّف نفسه كـ Macintosh، ويُميَّز بوجود لمس.
+            || (/macintosh/i.test(window.navigator.userAgent)
+                && navigator.maxTouchPoints > 1);
+      }
+
+      function isIosSafari() {
+        var ua = window.navigator.userAgent;
+        // كروم وفَيَرفُكس على iOS لا يستطيعان الإضافة للشاشة الرئيسية،
+        // فعرض الشرح لهما يوجّه المستخدم لخطوات لن يجدها.
+        return isIos() && !/crios|fxios|edgios|opt\//i.test(ua);
+      }
+
+      function recentlyDismissed() {
+        try {
+          var at = parseInt(localStorage.getItem(DISMISS_KEY) || '0', 10);
+          if (!at) return false;
+          return (Date.now() - at) < DISMISS_DAYS * 86400000;
+        } catch (e) {
+          // الوضع الخاص في سفاري قد يمنع localStorage — لا نمنع العرض بسببه.
+          return false;
+        }
+      }
+
+      function showInstallCard() {
+        if (isStandalone() || recentlyDismissed()) return;
+        installCard.classList.add('visible');
+      }
+
+      function hideInstallCard(remember) {
+        installCard.classList.remove('visible');
+        if (remember) {
+          try { localStorage.setItem(DISMISS_KEY, String(Date.now())); }
+          catch (e) { /* لا يضر */ }
+        }
+      }
+
+      // --- أندرويد وسطح المكتب ---
+      window.addEventListener('beforeinstallprompt', function (e) {
+        // المنع يوقف شريط كروم التلقائي ليظهر زرّنا العربي بدلاً منه.
+        e.preventDefault();
+        deferredPrompt = e;
+        showInstallCard();
+      });
+
+      document.getElementById('install-yes').addEventListener('click', function () {
+        if (deferredPrompt) {
+          hideInstallCard(false);
+          deferredPrompt.prompt();
+          deferredPrompt.userChoice.then(function () {
+            // لا يُعاد استخدام نفس الحدث مرتين.
+            deferredPrompt = null;
+          });
+          return;
+        }
+        // آيفون: لا يوجد ما نستدعيه، فنعرض الخطوات.
+        iosSheet.classList.add('visible');
+      });
+
+      document.getElementById('install-no').addEventListener('click', function () {
+        hideInstallCard(true);
+      });
+
+      document.getElementById('ios-close').addEventListener('click', function () {
+        iosSheet.classList.remove('visible');
+        hideInstallCard(true);
+      });
+
+      iosSheet.addEventListener('click', function (e) {
+        if (e.target === iosSheet) iosSheet.classList.remove('visible');
+      });
+
+      window.addEventListener('appinstalled', function () {
+        hideInstallCard(false);
+        deferredPrompt = null;
+      });
+
+      // --- آيفون ---
+      // لا يوجد حدث ننتظره، فنعرض البطاقة بعد أن يستقر التطبيق قليلاً حتى
+      // لا تظهر فوق شاشة الإقلاع.
+      if (isIosSafari() && !isStandalone()) {
+        setTimeout(showInstallCard, 4000);
+      }
+    })();
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

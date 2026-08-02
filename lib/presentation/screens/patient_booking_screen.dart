@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import '../../core/utils/app_logger.dart';
+import '../../core/utils/slot_id.dart';
+import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
 
 class PatientBookingScreen extends StatefulWidget {
@@ -14,6 +17,8 @@ class PatientBookingScreen extends StatefulWidget {
 }
 
 class _PatientBookingScreenState extends State<PatientBookingScreen> {
+  final BookingService _bookingService = BookingService();
+
   List<Map<String, dynamic>> _allDoctors = [];
   bool _isLoadingDoctors = true;
 
@@ -46,7 +51,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
         };
       }).toList();
     } catch (e) {
-      print('Error fetching doctors: $e');
+      AppLogger.error('تعذّر جلب قائمة الأطباء', e);
     }
     if (mounted) setState(() => _isLoadingDoctors = false);
     if (_selectedDoctorId != null) {
@@ -61,7 +66,8 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   String? _selectedTime;
   String? _consultationReason;
 
-  List<String> _bookedSlots = [];
+  /// الوقت (`HH:mm`) → عدد الحجوزات القائمة فيه.
+  Map<String, int> _bookedSlots = {};
   bool _isLoadingSlots = false;
   bool _hasAppointmentToday = false;
 
@@ -87,28 +93,18 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
 
     try {
       final auth = Provider.of<FirebaseAuthService>(context, listen: false);
-      final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate!);
 
-      final snapshot = await FirebaseFirestore.instance
-          .collection('appointments')
-          .where('doctorId', isEqualTo: _selectedDoctorId)
-          .where('appointmentDate', isEqualTo: dateStr)
-          .where('status', whereIn: ['Booked', 'Scheduled', 'upcoming']).get();
-
-      List<String> taken = [];
-      bool patientAlreadyBooked = false;
-
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        if (data['startTime'] != null) {
-          taken.add(data['startTime'].toString());
-        } else if (data['time'] != null) {
-          taken.add(data['time'].toString());
-        }
-        if (data['patientId'] == auth.userId) {
-          patientAlreadyBooked = true;
-        }
-      }
+      // الاستعلامان يعتمدان الآن على BookingService، وهو نفس المصدر الذي
+      // يستخدمه الحجز — فلا تختلف الواجهة عمّا ستقبله قاعدة البيانات.
+      final taken = await _bookingService.bookedCountsFor(
+        doctorId: _selectedDoctorId!,
+        date: _selectedDate!,
+      );
+      final patientAlreadyBooked = await _bookingService.hasAppointmentOnDate(
+        doctorId: _selectedDoctorId!,
+        patientId: auth.userId ?? '',
+        date: _selectedDate!,
+      );
 
       if (mounted) {
         setState(() {
@@ -117,7 +113,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
         });
       }
     } catch (e) {
-      print('Error fetching slots: $e');
+      AppLogger.error('تعذّر جلب الخانات المحجوزة', e);
     } finally {
       if (mounted) setState(() => _isLoadingSlots = false);
     }
@@ -609,17 +605,22 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
             runSpacing: 8,
             children: _getAvailableTimeSlots(doctor)
                 .map((time) {
-                  final String sysType = doctor['bookingSystemType'] ?? 'Individual';
-                  final int maxPerSlot = (sysType == 'Grouped') ? (doctor['maxPatientsPerSlot'] ?? 4) : 1;
-                  int bookedCount = _bookedSlots.where((t) => t == time).length;
-                  
-                  if (sysType == 'Individual' && _bookedSlots.contains(time)) {
-                    return const SizedBox.shrink();
-                  } else if (sysType == 'Grouped' && bookedCount >= maxPerSlot) {
+                  final String sysType =
+                      doctor['bookingSystemType'] ?? 'Individual';
+                  final int maxPerSlot = (sysType == 'Grouped')
+                      ? ((doctor['maxPatientsPerSlot'] as num?)?.toInt() ?? 4)
+                      : 1;
+                  // التوحيد ضروري: الخانات المولّدة بصيغة `HH:mm` والمحجوزة
+                  // قادمة من قاعدة البيانات بصيغ متعددة.
+                  final int bookedCount =
+                      _bookedSlots[SlotId.normalizeTime(time)] ?? 0;
+
+                  if (bookedCount >= maxPerSlot) {
                     return const SizedBox.shrink();
                   }
 
-                  return _buildTimeSlot(time, sysType == 'Grouped' ? (maxPerSlot - bookedCount) : null);
+                  return _buildTimeSlot(time,
+                      sysType == 'Grouped' ? (maxPerSlot - bookedCount) : null);
                 })
                 .where((widget) => widget is! SizedBox)
                 .toList(),
@@ -630,29 +631,32 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   }
 
   Widget _buildTimeSlot(String time, int? remaining) {
-      final isSelected = _selectedTime == time;
-      String formattedTime = time;
-      final parts = time.split(':');
-      if (parts.length == 2) {
-        int h = int.tryParse(parts[0]) ?? 0;
-        final m = parts[1].split('\n')[0]; // strip anything extra
-        final period = h >= 12 ? 'م' : 'ص';
-        if (h == 0) h = 12;
-        else if (h > 12) h -= 12;
-        formattedTime = '${h.toString()}:$m $period';
-      }
-      
-      final displayLabel = remaining != null ? '$formattedTime\n(باقي $remaining مكان)' : formattedTime;
-      return chip(
-        label: displayLabel,
-        selected: isSelected,
-        onSelected: (selected) {
-          setState(() => _selectedTime = time);
-        },
-      );
+    final isSelected = _selectedTime == time;
+    String formattedTime = time;
+    final parts = time.split(':');
+    if (parts.length == 2) {
+      int h = int.tryParse(parts[0]) ?? 0;
+      final m = parts[1].split('\n')[0]; // strip anything extra
+      final period = h >= 12 ? 'م' : 'ص';
+      if (h == 0)
+        h = 12;
+      else if (h > 12) h -= 12;
+      formattedTime = '${h.toString()}:$m $period';
     }
 
-    Widget chip({
+    final displayLabel = remaining != null
+        ? '$formattedTime\n(باقي $remaining مكان)'
+        : formattedTime;
+    return chip(
+      label: displayLabel,
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() => _selectedTime = time);
+      },
+    );
+  }
+
+  Widget chip({
     required String label,
     required bool selected,
     required Function(bool) onSelected,
@@ -856,48 +860,53 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                     const Center(child: CircularProgressIndicator()),
               );
 
-              try {
-                final auth =
-                    Provider.of<FirebaseAuthService>(context, listen: false);
+              final auth =
+                  Provider.of<FirebaseAuthService>(context, listen: false);
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
 
-                final String dateStr =
-                    DateFormat('yyyy-MM-dd').format(_selectedDate!);
-                await FirebaseFirestore.instance
-                    .collection('appointments')
-                    .add({
-                  'doctorId': doctor['id'],
-                  'patientId': auth.userId,
+              // نظام المجموعات يسمح بأكثر من مريض في نفس الساعة؛ النظام
+              // الفردي سعته مريض واحد فقط.
+              final int capacity =
+                  (doctor['bookingSystemType'] ?? 'Individual') == 'Grouped'
+                      ? ((doctor['maxPatientsPerSlot'] as num?)?.toInt() ?? 4)
+                      : 1;
+
+              final result = await _bookingService.book(
+                doctorId: doctor['id'].toString(),
+                patientId: auth.userId!,
+                date: _selectedDate!,
+                time: _selectedTime!,
+                capacity: capacity,
+                appointmentData: {
                   'patientName': auth.userName,
+                  'patientPhone': auth.userPhone,
                   'doctorName': doctor['name'],
                   'doctorNameEn': doctor['nameEn'],
                   'doctorSpecialization': doctor['specialization'] ?? '',
-                  'appointmentDate': dateStr,
-                  'startTime': _selectedTime,
                   'reason': _consultationReason,
                   'price': doctor['price'],
-                  'status': 'Booked',
-                  'createdAt': FieldValue.serverTimestamp(),
-                });
+                },
+              );
 
-                if (mounted) {
-                  Navigator.pop(dialogContext);
-                  Navigator.pop(dialogContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('تم حجز الموعد بنجاح، ألف سلامة عليك'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                  Navigator.pop(context);
-                }
-              } catch (e) {
-                if (mounted) {
-                  Navigator.pop(dialogContext);
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text('خطأ في الحجز: $e'),
-                    backgroundColor: Colors.red,
-                  ));
-                }
+              if (!mounted) return;
+
+              // إغلاق مؤشر التحميل ثم نافذة التأكيد.
+              Navigator.pop(dialogContext);
+              Navigator.pop(dialogContext);
+
+              messenger.showSnackBar(SnackBar(
+                content: Text(result.message),
+                backgroundColor:
+                    result.isSuccess ? Colors.green : Colors.red[700],
+              ));
+
+              if (result.isSuccess) {
+                navigator.pop();
+              } else {
+                // الخانة اتحجزت أثناء التأكيد — نُحدّث القائمة فوراً حتى لا
+                // يحاول المريض على نفس الوقت مرة أخرى.
+                await _fetchBookedSlots();
               }
             },
             style: ElevatedButton.styleFrom(

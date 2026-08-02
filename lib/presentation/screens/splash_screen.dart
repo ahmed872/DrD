@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
-import 'package:provider/provider.dart';
-import '../providers/firebase_auth_service.dart';
 
+/// شاشة البداية — عرض فقط، بلا أي منطق تنقّل.
+///
+/// كانت هذه الشاشة تنتظر 1500 مللي ثانية ثابتة ثم تستدعي `checkSession()`
+/// وتنتقل بنفسها عبر `pushReplacementNamed`. بعد أن صار `main.dart` يوجّه
+/// المستخدم تفاعلياً حسب حالة المصادقة، كان بقاء ذلك المنطق يعني تنقّلين
+/// متنافسين على نفس اللحظة. كما أن التأخير الثابت كان يضيف ثانية ونصفاً لكل
+/// إقلاع بلا سبب.
+///
+/// الآن: تُعرض ما دامت الجلسة قيد الاستعادة، وتختفي فور معرفة النتيجة.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -19,7 +25,7 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     );
 
@@ -28,33 +34,11 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _animationController.forward();
-
-    _initializeApp();
-  }
-
-  Future<void> _initializeApp() async {
-    // Wait for animation slightly
-    await Future.delayed(const Duration(milliseconds: 1500));
-
-    if (!mounted) return;
-
-    final authService =
-        Provider.of<FirebaseAuthService>(context, listen: false);
-    await authService.checkSession();
-
-    if (mounted) {
-      if (authService.isLoggedIn) {
-        Navigator.of(context).pushReplacementNamed('/home');
-      } else {
-        Navigator.of(context).pushReplacementNamed('/login');
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: Center(
         child: FadeTransition(
           opacity: _fadeAnimation,

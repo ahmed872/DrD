@@ -1,0 +1,290 @@
+rules_version = '2';
+
+// قواعد أمان Firestore لتطبيق DrD.
+//
+// قبل هذا الملف لم تكن هناك قواعد في المستودع إطلاقاً — أي أن قاعدة البيانات
+// كانت تعمل بما ضُبط يدوياً في وحدة تحكم Firebase، وغالباً بوضع الاختبار
+// المفتوح. التطبيق يخزّن أسماء مرضى وأرقام هواتف وتواريخ ميلاد وأعراضاً
+// وتقييمات صحية؛ هذه بيانات طبية، وفتحها للقراءة العامة مشكلة حقيقية.
+//
+// المبدأ العام: كل شيء ممنوع إلا ما سُمح به صراحةً.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===================== دوال مساعدة =====================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isDoctor() {
+      return isSignedIn() && userDoc().role == 'doctor';
+    }
+
+    // الحقول التي لا يجوز للمستخدم تغييرها بنفسه.
+    //
+    // - `role`: بدونه يستطيع أي مريض ترقية نفسه إلى طبيب من العميل مباشرة،
+    //   فيرى كل مواعيد العيادة وبيانات مرضاها.
+    // - `rating` و`reviews`: حقول مجمَّعة تُحسب من مراجعات المرضى. لو تُركت
+    //   لصاحب الحساب لاستطاع الطبيب أن يكتب لنفسه 5 نجوم و500 مراجعة.
+    //   تحديثها الشرعي يمرّ عبر `isReviewAggregateUpdate()` وحدها.
+    //
+    // `phone` غير محمي هنا عمداً: شاشة إعدادات الطبيب تسمح بتعديل الرقم،
+    // ومنعه كان سيكسر ميزة قائمة. (مزامنة `phone_index` مسؤولية التطبيق.)
+    function keepsProtectedFields() {
+      return request.resource.data.role == resource.data.role
+          && request.resource.data.get('rating', 0)
+             == resource.data.get('rating', 0)
+          && request.resource.data.get('reviews', 0)
+             == resource.data.get('reviews', 0);
+    }
+
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    // ===================== المستخدمون =====================
+
+    match /users/{userId} {
+      // تحديث متوسط تقييم الطبيب بعد إضافة مراجعة.
+      //
+      // القاعدة الحالية في مشروعك هي:
+      //   hasOnly(['rating', 'reviews'])
+      // وهي تسمح لأي مستخدم مسجَّل بكتابة **أي قيمة** في تقييم أي طبيب —
+      // فيستطيع شخص أن يضع لطبيب منافس صفراً، أو يرفع تقييم نفسه إلى 5،
+      // أو يكتب `reviews: 99999`، كل ذلك بطلب واحد من العميل.
+      //
+      // الشروط أدناه تُبقي الميزة تعمل لكن تحصرها في زيادة مراجعة واحدة
+      // بقيمة ضمن النطاق المسموح، ولطبيب غير صاحب الطلب.
+      //
+      // ملاحظة: الحل الأمثل نقل الحساب إلى Cloud Function تُشغَّل عند الكتابة
+      // في `reviews`، ثم منع تعديل هذين الحقلين من العميل نهائياً.
+      function isReviewAggregateUpdate() {
+        return isSignedIn()
+          && request.resource.data.diff(resource.data)
+               .affectedKeys().hasOnly(['rating', 'reviews'])
+          && request.resource.data.rating is number
+          && request.resource.data.rating >= 0
+          && request.resource.data.rating <= 5
+          && request.resource.data.reviews == resource.data.get('reviews', 0) + 1
+          && resource.data.role == 'doctor'
+          && request.auth.uid != userId;
+      }
+
+      // القراءة: صاحب الحساب يقرأ مستنده. الأطباء بحاجة لأن يكونوا مرئيين
+      // للمرضى حتى يمكن حجز المواعيد، ولذلك يُسمح لأي مستخدم مسجَّل بقراءة
+      // مستندات الأطباء فقط — لا مستندات المرضى.
+      allow read: if isUser(userId)
+                  || (isSignedIn() && resource.data.role == 'doctor');
+
+      // الإنشاء: عند التسجيل فقط، وبمعرّف يطابق حساب المصادقة.
+      allow create: if isUser(userId)
+                    && request.resource.data.role in ['doctor', 'patient'];
+
+      allow update: if (isUser(userId) && keepsProtectedFields())
+                    || isReviewAggregateUpdate();
+
+      // الحذف ممنوع من العميل — يمر عبر Cloud Function حتى تُنظَّف
+      // البيانات المرتبطة (المواعيد، الفهرس، التقييمات) معاً.
+      allow delete: if false;
+    }
+
+    // ===================== فهرس أرقام الجوال =====================
+
+    // يحتوي على الحد الأدنى المطلوب لتسجيل الدخول بالرقم: البريد والمعرّف.
+    // القراءة مفتوحة لأنها تحدث *قبل* المصادقة بالضرورة، لكن معرّف المستند هو
+    // رقم الجوال نفسه — فلا يمكن تصفّح المجموعة أو استخراج قائمة بها، ولا بد
+    // من معرفة الرقم مسبقاً للوصول لأي مدخل.
+    match /phone_index/{phone} {
+      allow get: if true;
+      allow list: if false;      // منع سحب الفهرس كاملاً.
+
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid;
+
+      // التعديل لصاحب المدخل القائم فقط — الشرط على `resource` وليس
+      // `request.resource`.
+      //
+      // الفرق ليس شكلياً: لو كان الشرط على `request.resource` لاستطاع أي
+      // مستخدم أن يكتب فوق مدخل رقم شخص آخر ويوجّهه لبريده هو، فيمنع صاحب
+      // الرقم الحقيقي من تسجيل الدخول (تعطيل حساب).
+      allow update: if isSignedIn()
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
+
+      allow delete: if false;
+    }
+
+    // ===================== أقفال الخانات الزمنية =====================
+
+    // هذه المجموعة هي ما يمنع الحجز المزدوج فعلياً.
+    //
+    // لا يكفي أن يتحقق التطبيق من الامتلاء، لأن أي عميل معدَّل يستطيع تخطّي
+    // ذلك الفحص. القواعد هنا تفرض الشرط على الخادم: العدّاد يزيد بواحد فقط،
+    // ولا يتجاوز السعة، والسعة نفسها لا تُغيَّر بعد إنشاء الخانة.
+    match /slots/{slotId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.bookedCount == 1
+                    && request.resource.data.capacity >= 1
+                    && request.resource.data.patientIds.size() == 1
+                    && request.resource.data.patientIds[0] == request.auth.uid;
+
+      allow update: if isSignedIn()
+                    && unchanged('capacity')
+                    && unchanged('doctorId')
+                    && unchanged('appointmentDate')
+                    && unchanged('startTime')
+                    && (
+                      // حجز: زيادة بواحد دون تجاوز السعة.
+                      (
+                        request.resource.data.bookedCount == resource.data.bookedCount + 1
+                        && request.resource.data.bookedCount <= resource.data.capacity
+                        && request.resource.data.patientIds.hasAll([request.auth.uid])
+                      )
+                      // إلغاء: نقص بواحد، ولا يقل عن الصفر.
+                      || (
+                        request.resource.data.bookedCount == resource.data.bookedCount - 1
+                        && request.resource.data.bookedCount >= 0
+                      )
+                      // الطبيب يدير خانات عيادته بحرية.
+                      || isUser(resource.data.doctorId)
+                    );
+
+      allow delete: if isUser(resource.data.doctorId);
+    }
+
+    // ===================== المواعيد =====================
+
+    match /appointments/{appointmentId} {
+      function isOwner() {
+        return isUser(resource.data.patientId) || isUser(resource.data.doctorId);
+      }
+
+      // المريض يرى مواعيده، والطبيب يرى المواعيد المحجوزة عنده فقط.
+      allow read: if isOwner();
+
+      // الحجز: المريض يكتب باسمه هو، بحالة ابتدائية `Booked` فقط.
+      // منع تعيين حالة أخرى يمنع مريضاً من تسجيل نفسه "مكتمل" لتفادي رسوم
+      // أو للتلاعب بإحصاءات الطبيب.
+      allow create: if isUser(request.resource.data.patientId)
+                    && request.resource.data.status == 'Booked'
+                    && request.resource.data.doctorId is string
+                    && request.resource.data.appointmentDate is string
+                    && request.resource.data.startTime is string;
+
+      // التحديث: الطرفان يستطيعان تغيير الحالة، لكن لا أحد ينقل الموعد
+      // لطبيب آخر أو لمريض آخر أو لوقت آخر.
+      allow update: if isOwner()
+                    && unchanged('doctorId')
+                    && unchanged('patientId')
+                    && unchanged('appointmentDate')
+                    && unchanged('startTime');
+
+      // لا حذف — الإلغاء يتم بتغيير الحالة، حتى يبقى سجل العيادة كاملاً.
+      allow delete: if false;
+    }
+
+    // ===================== التقييمات التفصيلية =====================
+
+    // مجموعة `ratings` تحمل تقييمين مختلفين تماماً في الحساسية:
+    //   - `patient_to_doctor`: تقييم المريض لجودة الخدمة.
+    //   - `doctor_to_patient`: تقييم الطبيب للحالة الصحية للمريض — **بيانات
+    //     طبية**، لا يجوز أن يقرأها أحد غير المريض والطبيب الذي كتبها.
+    //
+    // الحقول هنا `fromUserId` و`toUserId` و`ratingType` مطابقةً لـ
+    // `lib/data/models/rating_model.dart`.
+    match /ratings/{ratingId} {
+      allow read: if isSignedIn() && (
+                    isUser(resource.data.fromUserId)
+                    || isUser(resource.data.toUserId)
+                  );
+
+      // الكاتب لا يستطيع انتحال شخصية غيره.
+      allow create: if isSignedIn()
+                    && request.resource.data.fromUserId == request.auth.uid
+                    && request.resource.data.ratingType in
+                       ['doctor_to_patient', 'patient_to_doctor'];
+
+      allow update: if isSignedIn()
+                    && isUser(resource.data.fromUserId)
+                    && unchanged('fromUserId')
+                    && unchanged('toUserId');
+
+      allow delete: if isSignedIn() && isUser(resource.data.fromUserId);
+    }
+
+    // ===================== مراجعات الأطباء العلنية =====================
+
+    // مجموعة منفصلة يكتبها المريض من شاشة "مواعيدي" (نجوم + تعليق).
+    // القراءة متاحة لكل مستخدم مسجَّل لأنها جزء من اختيار الطبيب.
+    match /reviews/{reviewId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.patientId == request.auth.uid
+                    && request.resource.data.rating is number
+                    && request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5;
+
+      allow update: if isSignedIn()
+                    && isUser(resource.data.patientId)
+                    && unchanged('patientId')
+                    && unchanged('doctorId');
+
+      allow delete: if isSignedIn() && isUser(resource.data.patientId);
+    }
+
+    // ===================== الإشعارات =====================
+
+    match /notifications/{notificationId} {
+      // المرسَل إليه فقط. الحقول الثلاثة تغطي الصيغ المستخدمة في التطبيق
+      // وفي Cloud Functions.
+      function isRecipient() {
+        return isUser(resource.data.get('userId', ''))
+            || isUser(resource.data.get('patientId', ''))
+            || isUser(resource.data.get('doctorId', ''));
+      }
+
+      allow read: if isRecipient();
+
+      // الإنشاء من الخادم فقط (Cloud Functions تتجاوز هذه القواعد).
+      // لولا ذلك لاستطاع أي مستخدم إرسال إشعارات باسم العيادة.
+      allow create: if false;
+
+      // للمستلم أن يعلّمها كمقروءة، لا أكثر.
+      allow update: if isRecipient()
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys().hasOnly(['read']);
+
+      allow delete: if isRecipient();
+    }
+
+    // ===================== كلمات المرور لمرة واحدة =====================
+
+    // تُكتب من العميل ليقرأها Cloud Function ويرسلها بالبريد. لا يجوز لأحد
+    // قراءتها من العميل إطلاقاً، وإلا أمكن سرقة رمز تحقق شخص آخر.
+    match /otps/{otpId} {
+      allow read: if false;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+
+    // ===================== الافتراضي =====================
+
+    // أي مجموعة لم تُذكر أعلاه مغلقة تماماً.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/rating.dart';
 import '../../domain/repositories/rating_repository.dart';
 import '../../data/repositories/firestore_rating_repository.dart';
+import '../../core/utils/app_logger.dart';
 
 /// Provider لإدارة حالة التقييمات
 class RatingProvider with ChangeNotifier {
@@ -265,7 +266,7 @@ class RatingProvider with ChangeNotifier {
       );
       return _pendingRatings.length;
     } catch (e) {
-      print('❌ خطأ في حساب التقييمات المعلقة: $e');
+      AppLogger.error('❌ خطأ في حساب التقييمات المعلقة: $e');
       return 0;
     }
   }

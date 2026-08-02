@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/utils/app_logger.dart';
 
 class DoctorScheduleScreen extends StatefulWidget {
   const DoctorScheduleScreen({super.key});
@@ -12,6 +14,8 @@ class DoctorScheduleScreen extends StatefulWidget {
 }
 
 class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
+  final BookingService _bookingService = BookingService();
+
   late DateTime _selectedDate;
   int _selectedFilterIndex = 0; // 0: اليوم, 1: الغد, 2: هذا الأسبوع, -1: مخصص
   int _selectedStatusFilter = 0; // 0: All, 1: Pending, 2: Completed
@@ -103,7 +107,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
       if (mounted) setState(() => _isLoading = false);
       if (mounted) setState(() => _errorMessage = null);
     } catch (e) {
-      print('Error fetching appointments: $e');
+      AppLogger.info('Error fetching appointments: $e');
       final errorMsg = 'خطأ في الاتصال: ${e.toString().substring(0, 50)}...';
 
       if (mounted) {
@@ -786,10 +790,9 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
 
   Future<void> _cancelAppointment(String appointmentId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('appointments')
-          .doc(appointmentId)
-          .update({'status': 'Cancelled'});
+      // عبر BookingService حتى يُحرَّر قفل الخانة مع تغيير الحالة في معاملة
+      // واحدة، فيستطيع مريض آخر حجز الوقت الذي أخلاه الطبيب.
+      await _bookingService.cancel(appointmentId: appointmentId);
 
       await _fetchAppointments();
 
