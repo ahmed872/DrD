@@ -54,17 +54,25 @@ class DefaultFirebaseOptions {
       web.appId.isNotEmpty &&
       (web.authDomain?.isNotEmpty ?? false);
 
-  /// إعدادات الويب — تُملأ من `flutterfire configure`.
+  /// إعدادات الويب — تطبيق `DrD Web` المسجَّل في مشروع `heldoc-68abf`.
   ///
-  /// يمكن أيضاً تمريرها وقت البناء دون تعديل الملف:
+  /// القيم مكتوبة هنا مباشرة عمداً: كلها تُرسَل للمتصفح مع أول تحميل للصفحة،
+  /// فهي ليست أسراراً ولا فائدة من إخفائها. أي زائر يستطيع قراءتها من أدوات
+  /// المطوّر في أي موقع Firebase منشور. ما يحمي البيانات هو `firestore.rules`.
+  ///
+  /// تبقى قابلة للتجاوز وقت البناء عند الحاجة (مشروع اختبار مثلاً):
   /// ```bash
-  /// flutter build web --release \
-  ///   --dart-define=FIREBASE_WEB_API_KEY=... \
-  ///   --dart-define=FIREBASE_WEB_APP_ID=...
+  /// flutter build web --release --dart-define=FIREBASE_WEB_PROJECT_ID=...
   /// ```
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: String.fromEnvironment('FIREBASE_WEB_API_KEY'),
-    appId: String.fromEnvironment('FIREBASE_WEB_APP_ID'),
+    apiKey: String.fromEnvironment(
+      'FIREBASE_WEB_API_KEY',
+      defaultValue: 'AIzaSyBJTRMbaGayX4nZWhrxgSNewWVre6ExRR0',
+    ),
+    appId: String.fromEnvironment(
+      'FIREBASE_WEB_APP_ID',
+      defaultValue: '1:736610467870:web:c67826042ad41955b02e0f',
+    ),
     messagingSenderId: String.fromEnvironment(
       'FIREBASE_WEB_SENDER_ID',
       defaultValue: '736610467870',
@@ -80,6 +88,10 @@ class DefaultFirebaseOptions {
     storageBucket: String.fromEnvironment(
       'FIREBASE_WEB_STORAGE_BUCKET',
       defaultValue: 'heldoc-68abf.firebasestorage.app',
+    ),
+    measurementId: String.fromEnvironment(
+      'FIREBASE_WEB_MEASUREMENT_ID',
+      defaultValue: 'G-L5GG3TKN3X',
     ),
   );
 
