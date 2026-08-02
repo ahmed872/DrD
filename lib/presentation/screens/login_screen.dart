@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/firebase_auth_service.dart';
 import 'forgot_password_screen.dart';
-import 'email_verification_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -654,61 +653,6 @@ class _LoginScreenState extends State<LoginScreen> {
               size: 20,
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGenderSelection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'الجنس',
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.grey[700],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _buildGenderButton('ذكر', 'male'),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildGenderButton('أنثى', 'female'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGenderButton(String label, String value) {
-    final isSelected = _selectedGender == value;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedGender = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF0097A7) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF0097A7) : Colors.grey[300]!,
-            width: 1.5,
-          ),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.grey[700],
-            fontWeight: FontWeight.w500,
-            fontSize: 13,
-          ),
         ),
       ),
     );

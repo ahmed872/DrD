@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لا يوجد اتصال — DrD</title>
+  <meta name="theme-color" content="#0097A7">
+  <style>
+    :root { color-scheme: light dark; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 24px;
+      box-sizing: border-box;
+      text-align: center;
+      background: #F5F7FA;
+      color: #1B2A30;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Tahoma",
+                   "Cairo", "Noto Naskh Arabic", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body { background: #0E1416; color: #E1E7E9; }
+      p { color: #A5B3B8 !important; }
+    }
+
+    img { width: 76px; height: 76px; border-radius: 20px; }
+    h1 { font-size: 21px; margin: 0; color: #0097A7; }
+    p { font-size: 15px; line-height: 1.7; margin: 0; max-width: 380px; color: #5C6D75; }
+
+    button {
+      margin-top: 8px;
+      background: #0097A7;
+      color: #fff;
+      border: 0;
+      border-radius: 10px;
+      padding: 13px 32px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    button:active { opacity: 0.85; }
+  </style>
+</head>
+<body>
+  <img src="icons/Icon-192.png" alt="DrD">
+  <h1>لا يوجد اتصال بالإنترنت</h1>
+  <p>
+    حجز المواعيد يحتاج اتصالاً بالإنترنت للتأكد من أن الوقت الذي تختاره ما زال
+    متاحاً. تحقّق من اتصالك ثم أعد المحاولة.
+  </p>
+  <button type="button" onclick="window.location.reload()">إعادة المحاولة</button>
+
+  <script>
+    // إعادة التحميل تلقائياً بمجرد عودة الاتصال.
+    window.addEventListener('online', function () { window.location.reload(); });
+  </script>
+</body>
+</html>

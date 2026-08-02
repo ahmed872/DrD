@@ -1,17 +1,68 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/utils/app_logger.dart';
+
 /// خدمة Firebase للمصادقة وتخزين البيانات
 class FirebaseAuthService extends ChangeNotifier {
+  FirebaseAuthService() {
+    // الاستماع لحالة المصادقة بدل قراءتها مرة واحدة.
+    //
+    // على الويب تحديداً هذا هو الفارق بين أن يبقى المستخدم مسجّل الدخول بعد
+    // تحديث الصفحة وأن يُقذف لشاشة تسجيل الدخول في كل مرة: Firebase يستعيد
+    // الجلسة من IndexedDB بشكل غير متزامن بعد إقلاع التطبيق، فالقراءة
+    // اللحظية وقت الإقلاع ترى `null` دائماً.
+    _authSubscription = _firebaseAuth.authStateChanges().listen(
+      _onAuthStateChanged,
+      onError: (Object e) => AppLogger.error('خطأ في مراقبة حالة الدخول', e),
+    );
+  }
+
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  StreamSubscription<User?>? _authSubscription;
 
   String? _userId;
   Map<String, dynamic>? _userData;
   String? _errorMessage;
   bool _isLoading = false;
   bool _emailVerified = false;
+
+  /// تصبح `true` بعد أول رد من Firebase عن حالة الجلسة.
+  ///
+  /// شاشة البداية تنتظرها حتى لا تومض شاشة تسجيل الدخول للحظة قبل استعادة
+  /// جلسة مستخدم مسجَّل بالفعل.
+  bool _sessionRestored = false;
+  bool get sessionRestored => _sessionRestored;
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _onAuthStateChanged(User? user) async {
+    if (user == null) {
+      _userId = null;
+      _userData = null;
+      _emailVerified = false;
+    } else {
+      _userId = user.uid;
+      _emailVerified = true;
+      try {
+        final doc = await _firestore.collection('users').doc(user.uid).get();
+        if (doc.exists) _userData = doc.data();
+      } catch (e) {
+        AppLogger.error('تعذّر تحميل بيانات المستخدم', e);
+      }
+    }
+    _sessionRestored = true;
+    notifyListeners();
+  }
 
   String? get userId => _userId;
   Map<String, dynamic>? get userData => _userData;
@@ -32,22 +83,16 @@ class FirebaseAuthService extends ChangeNotifier {
     return null;
   }
 
-  /// التسجيل (إنشاء حساب جديد) مع Firebase Auth و Email Verification
+  /// إعادة تحميل بيانات المستخدم الحالي من Firestore.
+  ///
+  /// استعادة الجلسة نفسها صارت تلقائية عبر المستمع في المُنشئ؛ هذه الدالة
+  /// للتحديث اليدوي فقط. الصيغة القديمة كانت تنتظر
+  /// `authStateChanges().first` وهو انتظار قد لا ينتهي أبداً لو تعذّر
+  /// الاتصال بـ Firebase، فتتجمّد شاشة البداية.
   Future<void> checkSession() async {
-    try {
-      final user = await _firebaseAuth.authStateChanges().first;
-      if (user != null) {
-        final doc = await _firestore.collection('users').doc(user.uid).get();
-        if (doc.exists) {
-          _userId = user.uid;
-          _userData = doc.data();
-          _emailVerified = true;
-          notifyListeners();
-        }
-      }
-    } catch (e) {
-      print('Error checking session: $e');
-    }
+    final user = _firebaseAuth.currentUser;
+    if (user == null) return;
+    await _onAuthStateChanged(user);
   }
 
   Future<bool> signupWithPhone(
@@ -82,26 +127,16 @@ class FirebaseAuthService extends ChangeNotifier {
         return false;
       }
 
-      // التحقق من عدم وجود المستخدم بالفعل (بالبريد الإلكتروني)
-      final existingEmail = await _firestore
-          .collection('users')
-          .where('email', isEqualTo: cleanedEmail)
-          .get();
+      // التحقق من عدم استخدام رقم الجوال — قراءة مستند واحد بمعرّف معروف،
+      // بدل الاستعلام على المجموعة كلها.
+      //
+      // تكرار البريد الإلكتروني لا يُفحص هنا عمداً: Firebase Auth نفسه يرفضه
+      // بـ `email-already-in-use`، وهو فحص موثوق لأنه يجري على الخادم — بينما
+      // الفحص المسبق من العميل كان يتطلّب قراءة عامة لكل حسابات المستخدمين.
+      final phoneIndexDoc =
+          await _firestore.collection('phone_index').doc(cleanedPhone).get();
 
-      if (existingEmail.docs.isNotEmpty) {
-        _errorMessage = 'البريد الإلكتروني مستخدم بالفعل';
-        _isLoading = false;
-        notifyListeners();
-        return false;
-      }
-
-      // التحقق من عدم وجود المستخدم بالفعل (برقم الجوال)
-      final existingPhone = await _firestore
-          .collection('users')
-          .where('phone', isEqualTo: cleanedPhone)
-          .get();
-
-      if (existingPhone.docs.isNotEmpty) {
+      if (phoneIndexDoc.exists) {
         _errorMessage = 'رقم الجوال مستخدم بالفعل';
         _isLoading = false;
         notifyListeners();
@@ -140,6 +175,14 @@ class FirebaseAuthService extends ChangeNotifier {
 
       await _firestore.collection('users').doc(firebaseUser.uid).set(newUser);
 
+      // فهرس الجوال — هو ما يسمح بتسجيل الدخول بالرقم لاحقاً دون فتح
+      // مجموعة `users` للقراءة العامة.
+      await _firestore.collection('phone_index').doc(cleanedPhone).set({
+        'uid': firebaseUser.uid,
+        'email': cleanedEmail,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
       _userId = firebaseUser.uid;
       _userData = newUser;
       _emailVerified = true;
@@ -165,24 +208,19 @@ class FirebaseAuthService extends ChangeNotifier {
 
       String cleanedPhone = normalizePhoneNumber(phoneNumber);
 
-      // البحث عن المستخدم برقم الجوال
-      final userQuery = await _firestore
-          .collection('users')
-          .where('phone', isEqualTo: cleanedPhone)
-          .get();
-
-      if (userQuery.docs.isEmpty) {
-        _errorMessage = 'رقم الجوال أو كلمة المرور غير صحيحة';
-        _isLoading = false;
-        notifyListeners();
-        return false;
-      }
-
-      final userData = userQuery.docs.first.data();
-      final email = userData['email'] as String?;
+      // ترجمة رقم الجوال إلى بريد إلكتروني عبر فهرس مخصّص.
+      //
+      // الصيغة السابقة كانت تستعلم على مجموعة `users` كاملة قبل تسجيل الدخول،
+      // وهو ما يفرض السماح بالقراءة العامة لكل مستندات المستخدمين (الأسماء،
+      // الأرقام، تواريخ الميلاد، الأدوار). مجموعة `phone_index` تحتوي على
+      // الحد الأدنى فقط — البريد ومعرّف المستخدم — ومعرّف مستندها هو رقم
+      // الجوال، فلا يمكن تصفّحها إلا لمن يعرف الرقم أصلاً.
+      final email = await _resolveEmailForPhone(cleanedPhone);
 
       if (email == null || email.isEmpty) {
-        _errorMessage = 'البريد الإلكتروني غير محفوظ';
+        // نفس رسالة كلمة المرور الخاطئة عمداً، حتى لا تكشف الواجهة أي
+        // الأرقام مسجَّلة لدينا وأيها لا.
+        _errorMessage = 'رقم الجوال أو كلمة المرور غير صحيحة';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -216,10 +254,14 @@ class FirebaseAuthService extends ChangeNotifier {
         }
         */
 
-        // تحديث بيانات المستخدم
+        // بيانات المستخدم تُقرأ الآن *بعد* المصادقة، فتستطيع قواعد الأمان
+        // حصر القراءة على صاحب المستند وحده.
         _userId = firebaseUser.uid;
-        _userData = userData;
         _emailVerified = true; // تعيينها مفعّلة تلقائياً
+
+        final userDoc =
+            await _firestore.collection('users').doc(firebaseUser.uid).get();
+        _userData = userDoc.data();
 
         _isLoading = false;
         notifyListeners();
@@ -356,7 +398,7 @@ class FirebaseAuthService extends ChangeNotifier {
           'تم إرسال لينك تغيير كلمة المرور إلى $cleanedEmail ✅\nتحقق من بريدك الإلكتروني';
       notifyListeners();
 
-      print('📧 Password reset email sent to: $cleanedEmail');
+      AppLogger.info('📧 Password reset email sent to: $cleanedEmail');
       return true;
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found' ||
@@ -417,39 +459,112 @@ class FirebaseAuthService extends ChangeNotifier {
     }
   }
 
-  /// تحديث بيانات المريض
+  /// تحديث بيانات المريض وحفظها في Firestore.
+  ///
+  /// كانت هذه الدالة تُعدّل النسخة المحفوظة في الذاكرة فقط وتستدعي
+  /// `notifyListeners()`، فتظهر البيانات محدَّثة على الشاشة بينما لم يُكتب
+  /// شيء في قاعدة البيانات — ويعود الاسم القديم عند أول تسجيل دخول جديد.
+  /// الآن الكتابة تسبق تحديث الذاكرة، وإن فشلت لا تتغير الواجهة.
   Future<bool> updatePatientProfile({
     String? name,
     String? gender,
     DateTime? birthDate,
   }) async {
+    if (_userId == null || _userData == null) {
+      _errorMessage = 'لا يوجد مستخدم مسجل دخول';
+      notifyListeners();
+      return false;
+    }
+
+    final updates = <String, dynamic>{};
+    if (name != null && name.trim().isNotEmpty) {
+      updates['name'] = name.trim();
+    }
+    if (gender != null) updates['gender'] = gender;
+    if (birthDate != null) {
+      updates['birthDate'] = birthDate.toIso8601String();
+    }
+
+    if (updates.isEmpty) return true;
+
     try {
-      if (_userData == null) {
-        _errorMessage = 'لا يوجد مستخدم مسجل دخول';
-        return false;
-      }
+      _isLoading = true;
+      notifyListeners();
 
-      if (name != null && name.isNotEmpty) {
-        _userData!['name'] = name;
-      }
+      updates['updatedAt'] = FieldValue.serverTimestamp();
+      await _firestore.collection('users').doc(_userId).update(updates);
 
-      if (gender != null) {
-        _userData!['gender'] = gender;
-      }
+      // `serverTimestamp` قيمة حارسة لا معنى لها محلياً، فلا تُنسخ للذاكرة.
+      updates.remove('updatedAt');
+      _userData!.addAll(updates);
 
-      if (birthDate != null) {
-        _userData!['birthDate'] = birthDate.toIso8601String();
-      }
-
+      _isLoading = false;
+      _errorMessage = 'تم حفظ البيانات بنجاح ✅';
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'خطأ في تحديث البيانات: $e';
+      AppLogger.error('فشل حفظ بيانات المريض', e);
+      _isLoading = false;
+      _errorMessage = 'تعذّر حفظ البيانات، تأكد من اتصالك بالإنترنت';
+      notifyListeners();
       return false;
     }
   }
 
   // ========== Helper Functions ==========
+
+  /// إيجاد البريد الإلكتروني المرتبط برقم جوال.
+  ///
+  /// يجرّب `phone_index` أولاً. الحسابات التي أُنشئت قبل وجود هذا الفهرس ليس
+  /// لها مدخل فيه، فيسقط الكود للطريقة القديمة (الاستعلام على `users`) حتى
+  /// لا يفقد أي مستخدم قائم قدرته على تسجيل الدخول. عند نجاح المسار القديم
+  /// يُكتب المدخل الناقص تلقائياً، فتُهاجَر الحسابات تدريجياً مع الاستخدام.
+  ///
+  /// بعد اكتمال الهجرة (راجع `docs/SECURITY.md`) يمكن حذف المسار الاحتياطي
+  /// وإغلاق القراءة العامة على `users` نهائياً.
+  Future<String?> _resolveEmailForPhone(String cleanedPhone) async {
+    try {
+      final indexDoc =
+          await _firestore.collection('phone_index').doc(cleanedPhone).get();
+      final indexedEmail = indexDoc.data()?['email'] as String?;
+      if (indexedEmail != null && indexedEmail.isNotEmpty) {
+        return indexedEmail;
+      }
+    } catch (e) {
+      AppLogger.warning('تعذّرت قراءة فهرس الجوال: $e');
+    }
+
+    try {
+      final legacy = await _firestore
+          .collection('users')
+          .where('phone', isEqualTo: cleanedPhone)
+          .limit(1)
+          .get();
+
+      if (legacy.docs.isEmpty) return null;
+
+      final doc = legacy.docs.first;
+      final email = doc.data()['email'] as String?;
+      if (email == null || email.isEmpty) return null;
+
+      // كتابة المدخل الناقص. الفشل هنا غير مهم — تسجيل الدخول ينجح بأي حال
+      // وسيُعاد المحاولة في المرة القادمة.
+      unawaited(
+        _firestore.collection('phone_index').doc(cleanedPhone).set({
+          'uid': doc.id,
+          'email': email,
+          'backfilledAt': FieldValue.serverTimestamp(),
+        }).catchError((Object e) {
+          AppLogger.warning('تعذّرت تعبئة فهرس الجوال: $e');
+        }),
+      );
+
+      return email;
+    } catch (e) {
+      AppLogger.error('تعذّر إيجاد البريد المرتبط بالرقم', e);
+      return null;
+    }
+  }
 
   String normalizePhoneNumber(String phone) {
     // إزالة المسافات والشُرط والـ +

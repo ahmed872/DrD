@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'patient_booking_screen.dart';
+import '../../core/utils/app_logger.dart';
 
 class PatientSearchDoctorScreen extends StatefulWidget {
   const PatientSearchDoctorScreen({super.key});
@@ -79,7 +80,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
         });
       }
     } catch (e) {
-      print('Error fetching doctors: $e');
+      AppLogger.info('Error fetching doctors: $e');
       if (mounted) {
         setState(() => _isLoadingDoctors = false);
         ScaffoldMessenger.of(context).showSnackBar(

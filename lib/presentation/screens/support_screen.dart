@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/utils/app_logger.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
@@ -371,7 +372,7 @@ class SupportScreen extends StatelessWidget {
         }
       }
     } catch (e) {
-      print('Error launching WhatsApp: $e');
+      AppLogger.info('Error launching WhatsApp: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('حدث خطأ أثناء محاولة فتح واتساب')),

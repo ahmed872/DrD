@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/utils/app_logger.dart';
 
 class DoctorPatientsScreen extends StatefulWidget {
   const DoctorPatientsScreen({super.key});
@@ -45,7 +46,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
       
       Map<String, List<QueryDocumentSnapshot>> patientAppointments = {};
       for (var doc in appointmentsSnapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data();
         final patientId = data['patientId'] as String?;
         if (patientId != null) {
           patientAppointments.putIfAbsent(patientId, () => []).add(doc);
@@ -121,7 +122,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
         });
       }
     } catch (e) {
-      print('Error fetching patients: $e');
+      AppLogger.info('Error fetching patients: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }

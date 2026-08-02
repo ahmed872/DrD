@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/utils/app_logger.dart';
 
 class PatientMyAppointmentsScreen extends StatefulWidget {
   const PatientMyAppointmentsScreen({super.key});
@@ -14,6 +16,8 @@ class PatientMyAppointmentsScreen extends StatefulWidget {
 
 class _PatientMyAppointmentsScreenState
     extends State<PatientMyAppointmentsScreen> {
+  final BookingService _bookingService = BookingService();
+
   int _selectedFilterIndex = 0; // 0: Upcoming, 1: Past
   List<Map<String, dynamic>> _allAppointments = [];
   bool _isLoading = false;
@@ -74,7 +78,7 @@ class _PatientMyAppointmentsScreenState
           return (b['time'] as String).compareTo(a['time'] as String);
         });
       } catch (e) {
-        print('Error fetching appointments: $e');
+        AppLogger.info('Error fetching appointments: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -111,16 +115,18 @@ class _PatientMyAppointmentsScreenState
 
     if (confirmed == true) {
       try {
-        await FirebaseFirestore.instance
-            .collection('appointments')
-            .doc(appointmentId)
-            .update({'status': 'Cancelled'});
+        // الإلغاء يمرّ عبر BookingService حتى يُحرَّر قفل الخانة في نفس
+        // المعاملة. تغيير الحالة وحده — كما كان — يترك عدّاد الخانة مرفوعاً،
+        // فتبدو الخانة محجوزة إلى الأبد ولا يستطيع أي مريض آخر أخذها.
+        final ok = await _bookingService.cancel(appointmentId: appointmentId);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('تم إلغاء الموعد بنجاح'),
-              backgroundColor: Colors.green,
+            SnackBar(
+              content: Text(ok
+                  ? 'تم إلغاء الموعد بنجاح'
+                  : 'تعذّر إلغاء الموعد، حاول مرة أخرى'),
+              backgroundColor: ok ? Colors.green : Colors.red,
             ),
           );
           _fetchMyAppointments();

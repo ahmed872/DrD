@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/rating_model.dart';
 import '../../domain/repositories/rating_repository.dart';
 import '../../domain/entities/rating.dart';
+import '../../core/utils/app_logger.dart';
 
 /// تنفيذ Firestore لـ Rating Repository
 class FirestoreRatingRepository implements RatingRepository {
@@ -26,7 +27,7 @@ class FirestoreRatingRepository implements RatingRepository {
         query.docs.first.id,
       );
     } catch (e) {
-      print('❌ خطأ في الحصول على التقييم: $e');
+      AppLogger.error('❌ خطأ في الحصول على التقييم: $e');
       return null;
     }
   }
@@ -50,9 +51,9 @@ class FirestoreRatingRepository implements RatingRepository {
       );
 
       await doc.set(model.toJson());
-      print('✅ تم حفظ التقييم بنجاح');
+      AppLogger.success('✅ تم حفظ التقييم بنجاح');
     } catch (e) {
-      print('❌ خطأ في حفظ التقييم: $e');
+      AppLogger.error('❌ خطأ في حفظ التقييم: $e');
       rethrow;
     }
   }
@@ -92,9 +93,9 @@ class FirestoreRatingRepository implements RatingRepository {
           .doc(docId)
           .update(model.toJson());
 
-      print('✅ تم تحديث التقييم بنجاح');
+      AppLogger.success('✅ تم تحديث التقييم بنجاح');
     } catch (e) {
-      print('❌ خطأ في تحديث التقييم: $e');
+      AppLogger.error('❌ خطأ في تحديث التقييم: $e');
       rethrow;
     }
   }
@@ -113,7 +114,7 @@ class FirestoreRatingRepository implements RatingRepository {
           .map((doc) => RatingModel.fromJson(doc.data(), doc.id))
           .toList();
     } catch (e) {
-      print('❌ خطأ في الحصول على تقييمات المريض: $e');
+      AppLogger.error('❌ خطأ في الحصول على تقييمات المريض: $e');
       return [];
     }
   }
@@ -132,7 +133,7 @@ class FirestoreRatingRepository implements RatingRepository {
           .map((doc) => RatingModel.fromJson(doc.data(), doc.id))
           .toList();
     } catch (e) {
-      print('❌ خطأ في الحصول على تقييمات الطبيب: $e');
+      AppLogger.error('❌ خطأ في الحصول على تقييمات الطبيب: $e');
       return [];
     }
   }
@@ -159,7 +160,7 @@ class FirestoreRatingRepository implements RatingRepository {
           .map((doc) => RatingModel.fromJson(doc.data(), doc.id))
           .toList();
     } catch (e) {
-      print('❌ خطأ في الحصول على التقييمات المطلوبة: $e');
+      AppLogger.error('❌ خطأ في الحصول على التقييمات المطلوبة: $e');
       return [];
     }
   }
@@ -170,7 +171,7 @@ class FirestoreRatingRepository implements RatingRepository {
       final existing = await getRating(appointmentId, 'doctor_to_patient');
       return existing == null || !existing.isComplete;
     } catch (e) {
-      print('❌ خطأ في التحقق من التقييم: $e');
+      AppLogger.error('❌ خطأ في التحقق من التقييم: $e');
       return false;
     }
   }
@@ -190,10 +191,10 @@ class FirestoreRatingRepository implements RatingRepository {
             .collection(_ratingsCollection)
             .doc(query.docs.first.id)
             .delete();
-        print('✅ تم حذف التقييم بنجاح');
+        AppLogger.success('✅ تم حذف التقييم بنجاح');
       }
     } catch (e) {
-      print('❌ خطأ في حذف التقييم: $e');
+      AppLogger.error('❌ خطأ في حذف التقييم: $e');
       rethrow;
     }
   }

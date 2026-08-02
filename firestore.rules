@@ -1,0 +1,212 @@
+rules_version = '2';
+
+// قواعد أمان Firestore لتطبيق DrD.
+//
+// قبل هذا الملف لم تكن هناك قواعد في المستودع إطلاقاً — أي أن قاعدة البيانات
+// كانت تعمل بما ضُبط يدوياً في وحدة تحكم Firebase، وغالباً بوضع الاختبار
+// المفتوح. التطبيق يخزّن أسماء مرضى وأرقام هواتف وتواريخ ميلاد وأعراضاً
+// وتقييمات صحية؛ هذه بيانات طبية، وفتحها للقراءة العامة مشكلة حقيقية.
+//
+// المبدأ العام: كل شيء ممنوع إلا ما سُمح به صراحةً.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===================== دوال مساعدة =====================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isDoctor() {
+      return isSignedIn() && userDoc().role == 'doctor';
+    }
+
+    // الحقول التي لا يجوز للمستخدم تغييرها بنفسه.
+    // بدون هذا يستطيع أي مريض ترقية نفسه إلى طبيب بتعديل حقل `role` من
+    // العميل، فيرى كل مواعيد العيادة.
+    function keepsProtectedFields() {
+      return request.resource.data.role == resource.data.role
+          && request.resource.data.phone == resource.data.phone;
+    }
+
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    // ===================== المستخدمون =====================
+
+    match /users/{userId} {
+      // القراءة: صاحب الحساب يقرأ مستنده. الأطباء بحاجة لأن يكونوا مرئيين
+      // للمرضى حتى يمكن حجز المواعيد، ولذلك يُسمح لأي مستخدم مسجَّل بقراءة
+      // مستندات الأطباء فقط — لا مستندات المرضى.
+      allow read: if isUser(userId)
+                  || (isSignedIn() && resource.data.role == 'doctor');
+
+      // الإنشاء: عند التسجيل فقط، وبمعرّف يطابق حساب المصادقة.
+      allow create: if isUser(userId)
+                    && request.resource.data.role in ['doctor', 'patient'];
+
+      // التحديث: صاحب الحساب فقط، ودون المساس بالدور أو رقم الجوال.
+      allow update: if isUser(userId) && keepsProtectedFields();
+
+      // الحذف ممنوع من العميل — يمر عبر Cloud Function حتى تُنظَّف
+      // البيانات المرتبطة (المواعيد، الفهرس، التقييمات) معاً.
+      allow delete: if false;
+    }
+
+    // ===================== فهرس أرقام الجوال =====================
+
+    // يحتوي على الحد الأدنى المطلوب لتسجيل الدخول بالرقم: البريد والمعرّف.
+    // القراءة مفتوحة لأنها تحدث *قبل* المصادقة بالضرورة، لكن معرّف المستند هو
+    // رقم الجوال نفسه — فلا يمكن تصفّح المجموعة أو استخراج قائمة بها، ولا بد
+    // من معرفة الرقم مسبقاً للوصول لأي مدخل.
+    match /phone_index/{phone} {
+      allow get: if true;
+      allow list: if false;      // منع سحب الفهرس كاملاً.
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // ===================== أقفال الخانات الزمنية =====================
+
+    // هذه المجموعة هي ما يمنع الحجز المزدوج فعلياً.
+    //
+    // لا يكفي أن يتحقق التطبيق من الامتلاء، لأن أي عميل معدَّل يستطيع تخطّي
+    // ذلك الفحص. القواعد هنا تفرض الشرط على الخادم: العدّاد يزيد بواحد فقط،
+    // ولا يتجاوز السعة، والسعة نفسها لا تُغيَّر بعد إنشاء الخانة.
+    match /slots/{slotId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.bookedCount == 1
+                    && request.resource.data.capacity >= 1
+                    && request.resource.data.patientIds.size() == 1
+                    && request.resource.data.patientIds[0] == request.auth.uid;
+
+      allow update: if isSignedIn()
+                    && unchanged('capacity')
+                    && unchanged('doctorId')
+                    && unchanged('appointmentDate')
+                    && unchanged('startTime')
+                    && (
+                      // حجز: زيادة بواحد دون تجاوز السعة.
+                      (
+                        request.resource.data.bookedCount == resource.data.bookedCount + 1
+                        && request.resource.data.bookedCount <= resource.data.capacity
+                        && request.resource.data.patientIds.hasAll([request.auth.uid])
+                      )
+                      // إلغاء: نقص بواحد، ولا يقل عن الصفر.
+                      || (
+                        request.resource.data.bookedCount == resource.data.bookedCount - 1
+                        && request.resource.data.bookedCount >= 0
+                      )
+                      // الطبيب يدير خانات عيادته بحرية.
+                      || isUser(resource.data.doctorId)
+                    );
+
+      allow delete: if isUser(resource.data.doctorId);
+    }
+
+    // ===================== المواعيد =====================
+
+    match /appointments/{appointmentId} {
+      function isOwner() {
+        return isUser(resource.data.patientId) || isUser(resource.data.doctorId);
+      }
+
+      // المريض يرى مواعيده، والطبيب يرى المواعيد المحجوزة عنده فقط.
+      allow read: if isOwner();
+
+      // الحجز: المريض يكتب باسمه هو، بحالة ابتدائية `Booked` فقط.
+      // منع تعيين حالة أخرى يمنع مريضاً من تسجيل نفسه "مكتمل" لتفادي رسوم
+      // أو للتلاعب بإحصاءات الطبيب.
+      allow create: if isUser(request.resource.data.patientId)
+                    && request.resource.data.status == 'Booked'
+                    && request.resource.data.doctorId is string
+                    && request.resource.data.appointmentDate is string
+                    && request.resource.data.startTime is string;
+
+      // التحديث: الطرفان يستطيعان تغيير الحالة، لكن لا أحد ينقل الموعد
+      // لطبيب آخر أو لمريض آخر أو لوقت آخر.
+      allow update: if isOwner()
+                    && unchanged('doctorId')
+                    && unchanged('patientId')
+                    && unchanged('appointmentDate')
+                    && unchanged('startTime');
+
+      // لا حذف — الإلغاء يتم بتغيير الحالة، حتى يبقى سجل العيادة كاملاً.
+      allow delete: if false;
+    }
+
+    // ===================== التقييمات =====================
+
+    match /ratings/{ratingId} {
+      // تقييمات الأطباء معروضة لكل مستخدم مسجَّل (وهي جزء من اختيار الطبيب)،
+      // أما تقييم الطبيب لحالة المريض الصحية فبيانات طبية خاصة لا يراها إلا
+      // المريض نفسه والطبيب الذي كتبها.
+      allow read: if isSignedIn() && (
+                    resource.data.type == 'doctor_rating'
+                    || isUser(resource.data.patientId)
+                    || isUser(resource.data.doctorId)
+                  );
+
+      allow create: if isSignedIn()
+                    && request.resource.data.createdBy == request.auth.uid;
+
+      allow update, delete: if isSignedIn()
+                            && resource.data.createdBy == request.auth.uid;
+    }
+
+    // ===================== الإشعارات =====================
+
+    match /notifications/{notificationId} {
+      // المرسَل إليه فقط. الحقول الثلاثة تغطي الصيغ المستخدمة في التطبيق
+      // وفي Cloud Functions.
+      function isRecipient() {
+        return isUser(resource.data.get('userId', ''))
+            || isUser(resource.data.get('patientId', ''))
+            || isUser(resource.data.get('doctorId', ''));
+      }
+
+      allow read: if isRecipient();
+
+      // الإنشاء من الخادم فقط (Cloud Functions تتجاوز هذه القواعد).
+      // لولا ذلك لاستطاع أي مستخدم إرسال إشعارات باسم العيادة.
+      allow create: if false;
+
+      // للمستلم أن يعلّمها كمقروءة، لا أكثر.
+      allow update: if isRecipient()
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys().hasOnly(['read']);
+
+      allow delete: if isRecipient();
+    }
+
+    // ===================== كلمات المرور لمرة واحدة =====================
+
+    // تُكتب من العميل ليقرأها Cloud Function ويرسلها بالبريد. لا يجوز لأحد
+    // قراءتها من العميل إطلاقاً، وإلا أمكن سرقة رمز تحقق شخص آخر.
+    match /otps/{otpId} {
+      allow read: if false;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+
+    // ===================== الافتراضي =====================
+
+    // أي مجموعة لم تُذكر أعلاه مغلقة تماماً.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

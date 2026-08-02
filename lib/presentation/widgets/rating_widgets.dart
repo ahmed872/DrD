@@ -225,7 +225,6 @@ class RatingBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final percentage = (rating / maxRating) * 100;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
