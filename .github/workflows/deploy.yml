@@ -1,0 +1,73 @@
+name: نشر تلقائي
+
+# ينشر نسخة الويب على Firebase Hosting مع كل دفعة على البرانش.
+#
+# الهدف: بعد الإعداد لمرة واحدة، ما عدتش تحتاج تبني أو تنشر من جهازك —
+# كل `git push` يحدّث الموقع لوحده.
+#
+# ═══════════════════════════════════════════════════════════════════
+# مطلوب منك مرة واحدة (٣ أسرار في GitHub)
+# ═══════════════════════════════════════════════════════════════════
+#
+# Settings ← Secrets and variables ← Actions ← New repository secret
+#
+# 1. FIREBASE_SERVICE_ACCOUNT
+#    Firebase Console ← ⚙️ Project settings ← Service accounts
+#    ← Generate new private key ← افتح الملف وانسخ محتواه **كاملاً**
+#
+# 2. FIREBASE_WEB_API_KEY   ← من إعدادات تطبيق الويب
+# 3. FIREBASE_WEB_APP_ID    ← من إعدادات تطبيق الويب
+#
+# لو لسه مسجّلتش تطبيق ويب: Project settings ← Your apps ← أيقونة `</>`
+#
+# ═══════════════════════════════════════════════════════════════════
+
+on:
+  push:
+    branches:
+      - main
+      - claude/doctor-booking-pwa-80y6cq
+  workflow_dispatch: # يسمح بالتشغيل يدوياً من تبويب Actions
+
+jobs:
+  deploy:
+    name: بناء ونشر
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: بناء الـ PWA
+        # `--no-web-resources-cdn` يستضيف محرّك العرض محلياً بدل gstatic،
+        # فيقدر عامل الخدمة يخزّنه ويشتغل التطبيق على الشبكات الضعيفة.
+        run: |
+          flutter build web --release \
+            --no-web-resources-cdn \
+            --dart-define=FIREBASE_WEB_API_KEY=${{ secrets.FIREBASE_WEB_API_KEY }} \
+            --dart-define=FIREBASE_WEB_APP_ID=${{ secrets.FIREBASE_WEB_APP_ID }}
+
+      - name: التحقق من ملفات الـ PWA قبل النشر
+        # حارس ضد نشر بناء مكسور: لو رجع Flutter لتسجيل عامل خدمته، أو
+        # اختفى عاملنا، ينكسر العمل بدون إنترنت دون أن يلاحظ أحد.
+        run: |
+          set -e
+          test -f build/web/sw.js
+          test -f build/web/offline.html
+          grep -q "register('sw.js')" build/web/index.html
+          grep -q '_flutter.loader.load();' build/web/flutter_bootstrap.js
+          ! grep -q '_flutter.loader.load({' build/web/flutter_bootstrap.js
+          echo "✅ البناء سليم"
+
+      - name: النشر على Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: heldoc-68abf
+          channelId: live
