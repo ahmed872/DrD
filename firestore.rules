@@ -31,11 +31,21 @@ service cloud.firestore {
     }
 
     // الحقول التي لا يجوز للمستخدم تغييرها بنفسه.
-    // بدون هذا يستطيع أي مريض ترقية نفسه إلى طبيب بتعديل حقل `role` من
-    // العميل، فيرى كل مواعيد العيادة.
+    //
+    // - `role`: بدونه يستطيع أي مريض ترقية نفسه إلى طبيب من العميل مباشرة،
+    //   فيرى كل مواعيد العيادة وبيانات مرضاها.
+    // - `rating` و`reviews`: حقول مجمَّعة تُحسب من مراجعات المرضى. لو تُركت
+    //   لصاحب الحساب لاستطاع الطبيب أن يكتب لنفسه 5 نجوم و500 مراجعة.
+    //   تحديثها الشرعي يمرّ عبر `isReviewAggregateUpdate()` وحدها.
+    //
+    // `phone` غير محمي هنا عمداً: شاشة إعدادات الطبيب تسمح بتعديل الرقم،
+    // ومنعه كان سيكسر ميزة قائمة. (مزامنة `phone_index` مسؤولية التطبيق.)
     function keepsProtectedFields() {
       return request.resource.data.role == resource.data.role
-          && request.resource.data.phone == resource.data.phone;
+          && request.resource.data.get('rating', 0)
+             == resource.data.get('rating', 0)
+          && request.resource.data.get('reviews', 0)
+             == resource.data.get('reviews', 0);
     }
 
     function unchanged(field) {
@@ -45,6 +55,31 @@ service cloud.firestore {
     // ===================== المستخدمون =====================
 
     match /users/{userId} {
+      // تحديث متوسط تقييم الطبيب بعد إضافة مراجعة.
+      //
+      // القاعدة الحالية في مشروعك هي:
+      //   hasOnly(['rating', 'reviews'])
+      // وهي تسمح لأي مستخدم مسجَّل بكتابة **أي قيمة** في تقييم أي طبيب —
+      // فيستطيع شخص أن يضع لطبيب منافس صفراً، أو يرفع تقييم نفسه إلى 5،
+      // أو يكتب `reviews: 99999`، كل ذلك بطلب واحد من العميل.
+      //
+      // الشروط أدناه تُبقي الميزة تعمل لكن تحصرها في زيادة مراجعة واحدة
+      // بقيمة ضمن النطاق المسموح، ولطبيب غير صاحب الطلب.
+      //
+      // ملاحظة: الحل الأمثل نقل الحساب إلى Cloud Function تُشغَّل عند الكتابة
+      // في `reviews`، ثم منع تعديل هذين الحقلين من العميل نهائياً.
+      function isReviewAggregateUpdate() {
+        return isSignedIn()
+          && request.resource.data.diff(resource.data)
+               .affectedKeys().hasOnly(['rating', 'reviews'])
+          && request.resource.data.rating is number
+          && request.resource.data.rating >= 0
+          && request.resource.data.rating <= 5
+          && request.resource.data.reviews == resource.data.get('reviews', 0) + 1
+          && resource.data.role == 'doctor'
+          && request.auth.uid != userId;
+      }
+
       // القراءة: صاحب الحساب يقرأ مستنده. الأطباء بحاجة لأن يكونوا مرئيين
       // للمرضى حتى يمكن حجز المواعيد، ولذلك يُسمح لأي مستخدم مسجَّل بقراءة
       // مستندات الأطباء فقط — لا مستندات المرضى.
@@ -55,8 +90,8 @@ service cloud.firestore {
       allow create: if isUser(userId)
                     && request.resource.data.role in ['doctor', 'patient'];
 
-      // التحديث: صاحب الحساب فقط، ودون المساس بالدور أو رقم الجوال.
-      allow update: if isUser(userId) && keepsProtectedFields();
+      allow update: if (isUser(userId) && keepsProtectedFields())
+                    || isReviewAggregateUpdate();
 
       // الحذف ممنوع من العميل — يمر عبر Cloud Function حتى تُنظَّف
       // البيانات المرتبطة (المواعيد، الفهرس، التقييمات) معاً.
@@ -72,8 +107,20 @@ service cloud.firestore {
     match /phone_index/{phone} {
       allow get: if true;
       allow list: if false;      // منع سحب الفهرس كاملاً.
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid;
+
+      // التعديل لصاحب المدخل القائم فقط — الشرط على `resource` وليس
+      // `request.resource`.
+      //
+      // الفرق ليس شكلياً: لو كان الشرط على `request.resource` لاستطاع أي
+      // مستخدم أن يكتب فوق مدخل رقم شخص آخر ويوجّهه لبريده هو، فيمنع صاحب
+      // الرقم الحقيقي من تسجيل الدخول (تعطيل حساب).
+      allow update: if isSignedIn()
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
+
       allow delete: if false;
     }
 
@@ -148,23 +195,54 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ===================== التقييمات =====================
+    // ===================== التقييمات التفصيلية =====================
 
+    // مجموعة `ratings` تحمل تقييمين مختلفين تماماً في الحساسية:
+    //   - `patient_to_doctor`: تقييم المريض لجودة الخدمة.
+    //   - `doctor_to_patient`: تقييم الطبيب للحالة الصحية للمريض — **بيانات
+    //     طبية**، لا يجوز أن يقرأها أحد غير المريض والطبيب الذي كتبها.
+    //
+    // الحقول هنا `fromUserId` و`toUserId` و`ratingType` مطابقةً لـ
+    // `lib/data/models/rating_model.dart`.
     match /ratings/{ratingId} {
-      // تقييمات الأطباء معروضة لكل مستخدم مسجَّل (وهي جزء من اختيار الطبيب)،
-      // أما تقييم الطبيب لحالة المريض الصحية فبيانات طبية خاصة لا يراها إلا
-      // المريض نفسه والطبيب الذي كتبها.
       allow read: if isSignedIn() && (
-                    resource.data.type == 'doctor_rating'
-                    || isUser(resource.data.patientId)
-                    || isUser(resource.data.doctorId)
+                    isUser(resource.data.fromUserId)
+                    || isUser(resource.data.toUserId)
                   );
 
+      // الكاتب لا يستطيع انتحال شخصية غيره.
       allow create: if isSignedIn()
-                    && request.resource.data.createdBy == request.auth.uid;
+                    && request.resource.data.fromUserId == request.auth.uid
+                    && request.resource.data.ratingType in
+                       ['doctor_to_patient', 'patient_to_doctor'];
 
-      allow update, delete: if isSignedIn()
-                            && resource.data.createdBy == request.auth.uid;
+      allow update: if isSignedIn()
+                    && isUser(resource.data.fromUserId)
+                    && unchanged('fromUserId')
+                    && unchanged('toUserId');
+
+      allow delete: if isSignedIn() && isUser(resource.data.fromUserId);
+    }
+
+    // ===================== مراجعات الأطباء العلنية =====================
+
+    // مجموعة منفصلة يكتبها المريض من شاشة "مواعيدي" (نجوم + تعليق).
+    // القراءة متاحة لكل مستخدم مسجَّل لأنها جزء من اختيار الطبيب.
+    match /reviews/{reviewId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.patientId == request.auth.uid
+                    && request.resource.data.rating is number
+                    && request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5;
+
+      allow update: if isSignedIn()
+                    && isUser(resource.data.patientId)
+                    && unchanged('patientId')
+                    && unchanged('doctorId');
+
+      allow delete: if isSignedIn() && isUser(resource.data.patientId);
     }
 
     // ===================== الإشعارات =====================

@@ -144,6 +144,98 @@
       cursor: pointer;
       white-space: nowrap;
     }
+
+    /* ===== بطاقة "ثبّت التطبيق" ===== */
+    #install-card {
+      position: fixed;
+      inset-inline: 12px;
+      bottom: calc(12px + env(safe-area-inset-bottom));
+      display: none;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border-radius: 16px;
+      background: #fff;
+      color: #1B2A30;
+      box-shadow: 0 6px 28px rgba(0, 0, 0, 0.22);
+      z-index: 10001;
+      max-width: 520px;
+      margin-inline: auto;
+      animation: rise 260ms ease-out;
+    }
+
+    #install-card.visible { display: flex; }
+
+    @keyframes rise {
+      from { transform: translateY(20px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #install-card { animation: none; }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #install-card { background: #1A2226; color: #E1E7E9; }
+      #install-text small { color: #A5B3B8 !important; }
+      #ios-sheet-inner { background: #1A2226 !important; color: #E1E7E9 !important; }
+    }
+
+    #install-card img {
+      width: 44px; height: 44px; border-radius: 11px; flex: 0 0 auto;
+    }
+
+    #install-text { flex: 1; min-width: 0; }
+    #install-text strong { display: block; font-size: 15px; margin-bottom: 3px; }
+    #install-text small { font-size: 12.5px; line-height: 1.5; color: #5C6D75; }
+
+    #install-yes {
+      background: #0097A7; color: #fff; border: 0; border-radius: 10px;
+      padding: 11px 18px; font-size: 14px; font-weight: 700;
+      font-family: inherit; cursor: pointer; flex: 0 0 auto;
+    }
+
+    #install-no {
+      background: transparent; border: 0; color: #93A1A8;
+      font-size: 22px; line-height: 1; padding: 4px 6px;
+      cursor: pointer; flex: 0 0 auto; font-family: inherit;
+    }
+
+    /* شرح التثبيت على iOS — سفاري لا يوفّر زر تثبيت برمجياً */
+    #ios-sheet {
+      position: fixed; inset: 0; display: none;
+      align-items: flex-end; justify-content: center;
+      background: rgba(0, 0, 0, 0.55); z-index: 10002; padding: 16px;
+    }
+
+    #ios-sheet.visible { display: flex; }
+
+    #ios-sheet-inner {
+      background: #fff; color: #1B2A30; border-radius: 18px; padding: 22px;
+      max-width: 420px; width: 100%;
+      margin-bottom: calc(8px + env(safe-area-inset-bottom));
+    }
+
+    #ios-sheet h2 {
+      font-size: 17px; margin: 0 0 16px; color: #0097A7; text-align: center;
+    }
+
+    .ios-step {
+      display: flex; align-items: center; gap: 11px;
+      font-size: 14.5px; line-height: 1.6; margin-bottom: 13px;
+    }
+
+    .ios-num {
+      flex: 0 0 auto; width: 25px; height: 25px; border-radius: 50%;
+      background: #0097A7; color: #fff; font-size: 13px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    #ios-sheet button {
+      margin-top: 6px; width: 100%; background: #0097A7; color: #fff;
+      border: 0; border-radius: 11px; padding: 13px; font-size: 15px;
+      font-weight: 700; font-family: inherit; cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -157,6 +249,35 @@
   <div id="app-banner" role="status" aria-live="polite">
     <span id="app-banner-text"></span>
     <button id="app-banner-action" type="button"></button>
+  </div>
+
+  <div id="install-card" role="dialog" aria-label="تثبيت التطبيق">
+    <img src="icons/Icon-192.png" alt="">
+    <div id="install-text">
+      <strong>ثبّت تطبيق DrD</strong>
+      <small>احجز أسرع، وافتحه من شاشتك الرئيسية زي أي تطبيق</small>
+    </div>
+    <button id="install-yes" type="button">تثبيت</button>
+    <button id="install-no" type="button" aria-label="إغلاق">&times;</button>
+  </div>
+
+  <div id="ios-sheet" role="dialog" aria-label="طريقة التثبيت على الآيفون">
+    <div id="ios-sheet-inner">
+      <h2>ثبّت DrD على الآيفون</h2>
+      <div class="ios-step">
+        <span class="ios-num">١</span>
+        <span>اضغط زر المشاركة <strong>􀈂</strong> في شريط سفاري بالأسفل</span>
+      </div>
+      <div class="ios-step">
+        <span class="ios-num">٢</span>
+        <span>انزل لتحت واختر <strong>«إضافة إلى الشاشة الرئيسية»</strong></span>
+      </div>
+      <div class="ios-step">
+        <span class="ios-num">٣</span>
+        <span>اضغط <strong>«إضافة»</strong> — وهيظهر التطبيق على شاشتك</span>
+      </div>
+      <button id="ios-close" type="button">تمام</button>
+    </div>
   </div>
 
   <script>
@@ -266,6 +387,121 @@
           window.__drdReloading = true;
           window.location.reload();
         });
+      }
+
+      // ===================================================================
+      // تثبيت التطبيق
+      // ===================================================================
+      //
+      // الهدف: تبعت اللينك لأي حد، يفتحه، ويطلعله زر يثبّت بيه التطبيق.
+      //
+      // الفرق بين المنصّتين ليس في إمكانية التثبيت — التطبيق يُثبَّت على
+      // الاثنين ويفتح بلا شريط متصفح — بل في طريقة الزر:
+      //
+      //   • أندرويد/كروم: يطلق `beforeinstallprompt`، فنمسكه ونعرض زراً
+      //     حقيقياً يفتح نافذة التثبيت بضغطة واحدة.
+      //
+      //   • آيفون/سفاري: لا يدعم `beforeinstallprompt` ولا يوجد أي واجهة
+      //     برمجية للتثبيت. المتاح الوحيد أن نعرض شرحاً مصوّراً لخطوات
+      //     «مشاركة ← إضافة إلى الشاشة الرئيسية». الزر هنا يفتح الشرح، لا
+      //     يثبّت بنفسه — وهذا حدّ فرضه سفاري، ليس نقصاً في التطبيق.
+
+      var installCard = document.getElementById('install-card');
+      var iosSheet = document.getElementById('ios-sheet');
+      var deferredPrompt = null;
+
+      var DISMISS_KEY = 'drd_install_dismissed_at';
+      var DISMISS_DAYS = 14;
+
+      function isStandalone() {
+        // `navigator.standalone` خاص بسفاري على iOS.
+        return window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true;
+      }
+
+      function isIos() {
+        return /iphone|ipad|ipod/i.test(window.navigator.userAgent)
+            // آيباد الحديث يعرّف نفسه كـ Macintosh، ويُميَّز بوجود لمس.
+            || (/macintosh/i.test(window.navigator.userAgent)
+                && navigator.maxTouchPoints > 1);
+      }
+
+      function isIosSafari() {
+        var ua = window.navigator.userAgent;
+        // كروم وفَيَرفُكس على iOS لا يستطيعان الإضافة للشاشة الرئيسية،
+        // فعرض الشرح لهما يوجّه المستخدم لخطوات لن يجدها.
+        return isIos() && !/crios|fxios|edgios|opt\//i.test(ua);
+      }
+
+      function recentlyDismissed() {
+        try {
+          var at = parseInt(localStorage.getItem(DISMISS_KEY) || '0', 10);
+          if (!at) return false;
+          return (Date.now() - at) < DISMISS_DAYS * 86400000;
+        } catch (e) {
+          // الوضع الخاص في سفاري قد يمنع localStorage — لا نمنع العرض بسببه.
+          return false;
+        }
+      }
+
+      function showInstallCard() {
+        if (isStandalone() || recentlyDismissed()) return;
+        installCard.classList.add('visible');
+      }
+
+      function hideInstallCard(remember) {
+        installCard.classList.remove('visible');
+        if (remember) {
+          try { localStorage.setItem(DISMISS_KEY, String(Date.now())); }
+          catch (e) { /* لا يضر */ }
+        }
+      }
+
+      // --- أندرويد وسطح المكتب ---
+      window.addEventListener('beforeinstallprompt', function (e) {
+        // المنع يوقف شريط كروم التلقائي ليظهر زرّنا العربي بدلاً منه.
+        e.preventDefault();
+        deferredPrompt = e;
+        showInstallCard();
+      });
+
+      document.getElementById('install-yes').addEventListener('click', function () {
+        if (deferredPrompt) {
+          hideInstallCard(false);
+          deferredPrompt.prompt();
+          deferredPrompt.userChoice.then(function () {
+            // لا يُعاد استخدام نفس الحدث مرتين.
+            deferredPrompt = null;
+          });
+          return;
+        }
+        // آيفون: لا يوجد ما نستدعيه، فنعرض الخطوات.
+        iosSheet.classList.add('visible');
+      });
+
+      document.getElementById('install-no').addEventListener('click', function () {
+        hideInstallCard(true);
+      });
+
+      document.getElementById('ios-close').addEventListener('click', function () {
+        iosSheet.classList.remove('visible');
+        hideInstallCard(true);
+      });
+
+      iosSheet.addEventListener('click', function (e) {
+        if (e.target === iosSheet) iosSheet.classList.remove('visible');
+      });
+
+      window.addEventListener('appinstalled', function () {
+        hideInstallCard(false);
+        deferredPrompt = null;
+      });
+
+      // --- آيفون ---
+      // لا يوجد حدث ننتظره، فنعرض البطاقة بعد أن يستقر التطبيق قليلاً حتى
+      // لا تظهر فوق شاشة الإقلاع.
+      if (isIosSafari() && !isStandalone()) {
+        setTimeout(showInstallCard, 4000);
       }
     })();
   </script>

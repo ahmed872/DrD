@@ -55,3 +55,7 @@ firestore-debug.log
 android/key.properties
 *.jks
 *.keystore
+
+# اختبارات القواعد
+test/firestore_rules/node_modules/
+test/firestore_rules/package-lock.json

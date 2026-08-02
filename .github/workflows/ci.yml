@@ -32,6 +32,33 @@ jobs:
       - name: الاختبارات
         run: flutter test
 
+  firestore-rules:
+    name: اختبار قواعد الأمان
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # محاكي Firestore مكتوب بلغة Java.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - run: npm install -g firebase-tools
+
+      - run: npm --prefix test/firestore_rules install
+
+      - name: تشغيل الاختبارات على المحاكي
+        # تُثبت أن القواعد تمنع فعلاً: تجاوز سعة الخانة، انتحال هوية مريض
+        # آخر، تزوير تقييم طبيب، وقراءة بيانات مريض من حساب غريب.
+        run: |
+          firebase emulators:exec --only firestore --project drd-rules-test \
+            "npm --prefix test/firestore_rules test"
+
   build-web:
     name: بناء نسخة الويب
     runs-on: ubuntu-latest
