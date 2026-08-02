@@ -108,7 +108,8 @@ void main() {
       final startedTwentyMinutesAgo = now.subtract(const Duration(minutes: 20));
 
       final slots = TimeSlotGenerator.generateSlots(
-        startTimeStr: '${startedTwentyMinutesAgo.hour.toString().padLeft(2, '0')}'
+        startTimeStr:
+            '${startedTwentyMinutesAgo.hour.toString().padLeft(2, '0')}'
             ':${startedTwentyMinutesAgo.minute.toString().padLeft(2, '0')}',
         endTimeStr: '23:59',
         durationMinutes: 5,

@@ -44,7 +44,6 @@ class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor:
           isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-
       appBarTheme: AppBarTheme(
         backgroundColor: isDark ? AppColors.primaryDark : AppColors.primary,
         foregroundColor: Colors.white,
@@ -53,12 +52,10 @@ class AppTheme {
         // بدون هذا يرسم Material 3 لوناً مختلفاً عند تمرير المحتوى تحت الشريط.
         scrolledUnderElevation: 2,
       ),
-
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         actionTextColor: Colors.white,
       ),
-
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: isDark ? const Color(0xFF1A2226) : Colors.white,
@@ -77,7 +74,6 @@ class AppTheme {
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
       ),
-
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           // 48 بكسل هو الحد الأدنى الموصى به لمساحة اللمس، ومهم هنا لأن
@@ -88,7 +84,6 @@ class AppTheme {
           ),
         ),
       ),
-
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           minimumSize: const Size.fromHeight(48),
@@ -97,7 +92,6 @@ class AppTheme {
           ),
         ),
       ),
-
       cardTheme: CardThemeData(
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -105,7 +99,6 @@ class AppTheme {
           side: BorderSide(color: colorScheme.outlineVariant),
         ),
       ),
-
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),

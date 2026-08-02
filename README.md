@@ -1,52 +1,146 @@
-# Medical Appointment System for Local Villages
+# DrD — نظام حجز مواعيد الأطباء
 
-A Flutter application built with **Clean Architecture** and **Supabase** backend. Designed specifically for rural areas with **Arabic (RTL)** support and a clean medical theme.
+تطبيق لحجز موعد محدد عند الطبيب، بدل الانتظار ساعات في العيادة.
+مبني بـ **Flutter** مع **Firebase**، بواجهة **عربية RTL** بالكامل.
 
-## 🚀 Features
+يعمل على: **الويب (PWA قابل للتثبيت)** · **أندرويد** · **iOS**
 
-- **Doctor Mode**: Manage schedule, session duration, buffer time, and daily patient list.
-- **Patient Mode**: Browse doctors, real-time slot booking.
-- **Auto Slot Generation**: Logic to calculate slots based on doctor settings.
-- **Arabic Support**: Full RTL layout and Arabic localization.
-- **Live Countdown**: Real-time timer for the next appointment.
-- **Strict Policy**: 10-minute late expiration for slots.
+---
 
-## 🏗️ Architecture (Clean Architecture)
+## ✨ المميزات
 
-- **Domain Layer**: Entities, Use Cases, Repository Interfaces.
-- **Data Layer**: Models (DTOs), Repository Implementations, Supabase Data Sources.
-- **Presentation Layer**: Providers (State Management), Screens, Widgets.
-- **Core**: Utilities like `TimeSlotGenerator`.
+**للمريض**
+- تصفّح الأطباء والبحث بالتخصص
+- حجز خانة زمنية محددة — **مع ضمان عدم حجز نفس الوقت لمريضين**
+- عرض المواعيد القادمة والسابقة، وإلغاء الموعد
+- السجل الطبي وتقييم الطبيب
 
-## 🛠️ Tech Stack
+**للطبيب**
+- ضبط مواعيد العمل ومدة الكشف والفاصل بين المرضى
+- نظامان للحجز: فردي، أو مجموعات بسعة محددة لكل ساعة
+- جدول اليوم، قائمة المرضى، وإحصاءات العيادة
+- تقييم الحالة الصحية للمريض
 
-- **Frontend**: Flutter (Dart)
-- **Backend**: Supabase (PostgreSQL)
-- **State Management**: Provider
-- **Localization**: flutter_localizations
+---
 
-## 📋 Database Setup (Supabase)
+## 🔒 كيف يُمنع الحجز المزدوج؟
 
-The database schema is located in `supabase/schema.sql`. Run these SQL commands in your Supabase SQL Editor:
+هذا جوهر التطبيق، ويستحق الشرح.
 
-1. `profiles`: Stores user info (Doctor/Patient).
-2. `doctors`: Stores doctor-specific settings (Schedule, Duration).
-3. `appointments`: Stores booking details and status.
+الفحص في الواجهة وحده لا يكفي: بين لحظة عرض الخانات ولحظة ضغط "تأكيد" قد
+يمرّ نصف دقيقة، ويكفي أن يضغط مريضان في نفس الثانية ليصل الاثنان للعيادة في
+نفس التوقيت.
 
-## ⏱️ Slot Logic
+الحل على ثلاث طبقات:
 
-The logic is implemented in `lib/core/utils/time_slot_generator.dart`.
-- **Duration**: Custom per doctor.
-- **Buffer**: Added between slots.
-- **Expiration**: Slots mark as 'Expired' if current time > slot start + 10 mins.
+1. **معرّف ثابت لكل خانة** — `{doctorId}_{التاريخ}_{الوقت}`. مستندان لا
+   يمكن أن يحملا نفس المعرّف في Firestore.
+2. **معاملة ذرّية** (`runTransaction`) تقرأ عدّاد الخانة وتزيده في عملية
+   واحدة. عند التزامن يُعيد Firestore تشغيل إحدى المعاملتين فترى العدّاد
+   ممتلئاً وتفشل برسالة واضحة.
+3. **قاعدة أمان على الخادم** في `firestore.rules` تمنع تجاوز السعة حتى لو
+   كان العميل معدَّلاً.
 
-## 📁 Folder Structure
+الكود في `lib/data/services/booking_service.dart`.
+
+---
+
+## 🚀 التشغيل
+
+```bash
+flutter pub get
+
+# الويب
+flutter run -d chrome
+
+# أندرويد
+flutter run
+```
+
+> **قبل تشغيل نسخة الويب لأول مرة** لا بد من إعداد Firebase للويب، وإلا لن
+> يعمل تسجيل الدخول:
+> ```bash
+> flutterfire configure --project=heldoc-68abf --platforms=web
+> ```
+> التفاصيل في [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+---
+
+## 🏗️ البنية
 
 ```text
 lib/
-├── core/             # Utils, constants, themes
-├── data/             # Models, repo implementations
-├── domain/           # Entities, use cases, repo interfaces
-├── presentation/     # Screens, providers, widgets
-└── main.dart         # Entry point
+├── core/
+│   ├── constants/     # AppointmentStatus — الحالة المعتمدة للموعد
+│   ├── theme/         # الألوان والنسق (فاتح + ليلي)
+│   ├── services/      # الإشعارات والتحقق من المدخلات
+│   └── utils/         # SlotId، توليد الخانات، التسجيل
+├── data/
+│   ├── models/        # نماذج البيانات
+│   ├── repositories/  # تنفيذ المستودعات
+│   └── services/      # BookingService — الحجز الذرّي
+├── domain/            # الكيانات وحالات الاستخدام
+├── presentation/
+│   ├── providers/     # إدارة الحالة (Provider)
+│   ├── screens/       # الشاشات
+│   └── widgets/       # مكوّنات مشتركة
+└── main.dart
+
+web/                   # ملفات الـ PWA (manifest, sw.js, offline.html)
+firestore.rules        # قواعد أمان قاعدة البيانات
+functions/             # Cloud Functions (تذكير بالمواعيد، بريد)
+test/                  # اختبارات المنطق الحرج
 ```
+
+---
+
+## 🧪 الجودة
+
+```bash
+flutter analyze   # يجب أن يمرّ بلا أخطاء ولا تحذيرات
+flutter test      # اختبارات معرّفات الخانات والحالات وتوليد المواعيد
+```
+
+يعمل الاثنان تلقائياً على كل دفعة عبر `.github/workflows/ci.yml`.
+
+---
+
+## 📱 الـ PWA
+
+نسخة الويب قابلة للتثبيت كتطبيق: تعمل بلا اتصال (للمحتوى المحمَّل مسبقاً)،
+وتنبّه المستخدم عند توفّر إصدار جديد، وتفتح بلا شريط عنوان المتصفح.
+
+```bash
+flutter build web --release --no-web-resources-cdn
+```
+
+> `--no-web-resources-cdn` يستضيف محرّك العرض محلياً بدل تحميله من
+> gstatic.com، فيصبح قابلاً للتخزين المؤقت ويعمل التطبيق على الشبكات الضعيفة.
+
+**ملاحظة مهمة عن المتاجر**: متجر Apple لا يقبل تطبيقات PWA المغلَّفة. المسار
+الصحيح هو بناء نسخ أصلية من نفس الكود (`flutter build appbundle` و
+`flutter build ipa`) — راجع [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+---
+
+## 🛠️ التقنيات
+
+| الطبقة | الأداة |
+|---|---|
+| الواجهة | Flutter · Material 3 |
+| قاعدة البيانات | Cloud Firestore |
+| المصادقة | Firebase Auth |
+| إدارة الحالة | Provider |
+| المهام المجدولة | Cloud Functions |
+| التعريب | flutter_localizations (RTL) |
+
+---
+
+## 📚 التوثيق
+
+| الملف | المحتوى |
+|---|---|
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | النشر على الويب وGoogle Play وApp Store |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | نموذج الأمان وقواعد Firestore |
+| [`docs/MASTER_PROMPT.md`](docs/MASTER_PROMPT.md) | المراجعة الكاملة وخطة العمل |
+| [`DEVELOPMENT_GUIDE.md`](DEVELOPMENT_GUIDE.md) | دليل التطوير |

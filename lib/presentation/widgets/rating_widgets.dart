@@ -225,7 +225,6 @@ class RatingBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
       child: LinearProgressIndicator(

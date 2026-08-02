@@ -15,7 +15,7 @@ class DoctorPatientsScreen extends StatefulWidget {
 class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
   late TextEditingController _searchController;
   int _selectedSortIndex = 0; // 0: Recent, 1: Name, 2: Visits
-  
+
   List<Map<String, dynamic>> _allPatients = [];
   bool _isLoading = true;
 
@@ -38,12 +38,12 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
     try {
       final auth = Provider.of<FirebaseAuthService>(context, listen: false);
-      
+
       final appointmentsSnapshot = await FirebaseFirestore.instance
           .collection('appointments')
           .where('doctorId', isEqualTo: auth.userId)
           .get();
-      
+
       Map<String, List<QueryDocumentSnapshot>> patientAppointments = {};
       for (var doc in appointmentsSnapshot.docs) {
         final data = doc.data();
@@ -52,26 +52,27 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
           patientAppointments.putIfAbsent(patientId, () => []).add(doc);
         }
       }
-      
+
       List<Map<String, dynamic>> loadedPatients = [];
       final now = DateTime.now();
-      
+
       for (var entry in patientAppointments.entries) {
         String patientId = entry.key;
         List<QueryDocumentSnapshot> apps = entry.value;
-        
+
         int totalVisits = apps.length;
-        
+
         DateTime? lastVisit;
         DateTime? nextAppointment;
         String? nextTime;
-        
+
         for (var appDoc in apps) {
           final appData = appDoc.data() as Map<String, dynamic>;
           final dateStr = appData['appointmentDate'] as String?;
-          final timeStr = appData['startTime'] as String? ?? appData['time'] as String?;
+          final timeStr =
+              appData['startTime'] as String? ?? appData['time'] as String?;
           if (dateStr == null) continue;
-          
+
           try {
             DateTime appDate = DateTime.parse(dateStr);
             if (appDate.isBefore(now)) {
@@ -79,26 +80,33 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                 lastVisit = appDate;
               }
             } else if (appDate.isAfter(now) || appDate.isAtSameMomentAs(now)) {
-              if (nextAppointment == null || appDate.isBefore(nextAppointment)) {
+              if (nextAppointment == null ||
+                  appDate.isBefore(nextAppointment)) {
                 nextAppointment = appDate;
                 nextTime = timeStr;
               }
             }
-          } catch(e){}
+          } catch (e) {}
         }
 
         lastVisit ??= DateTime.now();
-        
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(patientId).get();
+
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(patientId)
+            .get();
         final userData = userDoc.data() ?? {};
-        
+
         String fallbackName = 'مريض غير معروف';
         try {
-           fallbackName = (apps.first.data() as Map<String,dynamic>)['patientName'] ?? fallbackName;
-        } catch(e){}
-        
-        final patientName = userData['name'] ?? userData['userName'] ?? fallbackName;
-        
+          fallbackName =
+              (apps.first.data() as Map<String, dynamic>)['patientName'] ??
+                  fallbackName;
+        } catch (e) {}
+
+        final patientName =
+            userData['name'] ?? userData['userName'] ?? fallbackName;
+
         loadedPatients.add({
           'id': patientId,
           'name': patientName,
@@ -114,7 +122,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
           'status': nextAppointment != null ? 'active' : 'inactive',
         });
       }
-      
+
       if (mounted) {
         setState(() {
           _allPatients = loadedPatients;
@@ -170,9 +178,10 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-    
+
     final filteredPatients = _getFilteredAndSortedPatients();
-    final activePatients = _allPatients.where((p) => p['status'] == 'active').length;
+    final activePatients =
+        _allPatients.where((p) => p['status'] == 'active').length;
 
     return Scaffold(
       appBar: AppBar(
@@ -595,7 +604,8 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Icon(Icons.event_available, color: Colors.green, size: 24),
+                    const Icon(Icons.event_available,
+                        color: Colors.green, size: 24),
                   ],
                 ),
               ),

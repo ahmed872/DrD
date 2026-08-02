@@ -185,8 +185,7 @@ class _MissingWebConfigApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const _StartupErrorApp(
       title: 'إعدادات Firebase للويب غير مضبوطة',
-      message:
-          'شغّل الأمر التالي مرة واحدة ثم أعد البناء:\n\n'
+      message: 'شغّل الأمر التالي مرة واحدة ثم أعد البناء:\n\n'
           'flutterfire configure --platforms=web\n\n'
           'التفاصيل في docs/DEPLOYMENT.md',
     );

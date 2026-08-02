@@ -66,7 +66,8 @@ class BookingService {
 
   final FirebaseFirestore _db;
 
-  CollectionReference<Map<String, dynamic>> get _slots => _db.collection('slots');
+  CollectionReference<Map<String, dynamic>> get _slots =>
+      _db.collection('slots');
   CollectionReference<Map<String, dynamic>> get _appointments =>
       _db.collection('appointments');
 

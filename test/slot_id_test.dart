@@ -20,7 +20,10 @@ void main() {
     });
 
     test('يدعم الصباح والمساء بالعربية', () {
-      expect(SlotId.normalizeTime('٣:٠٠ م'.replaceAll('٣', '3').replaceAll('٠', '0')), '15:00');
+      expect(
+          SlotId.normalizeTime(
+              '٣:٠٠ م'.replaceAll('٣', '3').replaceAll('٠', '0')),
+          '15:00');
       expect(SlotId.normalizeTime('9:00 ص'), '09:00');
     });
 

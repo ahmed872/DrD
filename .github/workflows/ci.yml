@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: تحليل واختبار
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: تثبيت الحزم
+        run: flutter pub get
+
+      - name: التحقق من التنسيق
+        # `--set-exit-if-changed` يجعل الخطوة تفشل بدل أن تصلح الملفات بصمت.
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: التحليل الساكن
+        # أي خطأ أو تحذير يوقف البناء. الرسائل الإرشادية (info) مسموحة حالياً.
+        run: flutter analyze --no-fatal-infos
+
+      - name: الاختبارات
+        run: flutter test
+
+  build-web:
+    name: بناء نسخة الويب
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: بناء PWA
+        # `--no-web-resources-cdn` يستضيف CanvasKit محلياً بدل gstatic، فيصبح
+        # قابلاً للتخزين في عامل الخدمة ويعمل التطبيق على الشبكات الضعيفة.
+        run: |
+          flutter build web --release \
+            --no-web-resources-cdn \
+            --dart-define=FIREBASE_WEB_API_KEY=${{ secrets.FIREBASE_WEB_API_KEY }} \
+            --dart-define=FIREBASE_WEB_APP_ID=${{ secrets.FIREBASE_WEB_APP_ID }}
+
+      - name: التحقق من ملفات الـ PWA
+        # حارس ضد الانحدار: لو عاد Flutter لتسجيل عامل الخدمة الخاص به، أو
+        # اختفى عاملنا، ينكسر دعم العمل بلا اتصال دون أن يلاحظ أحد.
+        run: |
+          set -e
+          test -f build/web/sw.js
+          test -f build/web/offline.html
+          test -f build/web/manifest.json
+          grep -q '"display"' build/web/manifest.json
+          grep -q "register('sw.js')" build/web/index.html
+          # يجب أن يُستدعى المُقلِع بلا وسائط. الصيغة `load({...})` تعني أن
+          # Flutter عاد لتسجيل عامل خدمته على نفس نطاق عاملنا فيلغيه.
+          # لا يصلح البحث عن "serviceWorkerSettings" وحدها: الكلمة موجودة
+          # داخل flutter.js المُضمَّن كاسم وسيط، فتُنتج فشلاً كاذباً.
+          grep -q '_flutter.loader.load();' build/web/flutter_bootstrap.js
+          ! grep -q '_flutter.loader.load({' build/web/flutter_bootstrap.js
+          echo "✅ ملفات PWA سليمة"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/web
+          retention-days: 7

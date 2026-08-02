@@ -631,29 +631,32 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   }
 
   Widget _buildTimeSlot(String time, int? remaining) {
-      final isSelected = _selectedTime == time;
-      String formattedTime = time;
-      final parts = time.split(':');
-      if (parts.length == 2) {
-        int h = int.tryParse(parts[0]) ?? 0;
-        final m = parts[1].split('\n')[0]; // strip anything extra
-        final period = h >= 12 ? 'م' : 'ص';
-        if (h == 0) h = 12;
-        else if (h > 12) h -= 12;
-        formattedTime = '${h.toString()}:$m $period';
-      }
-      
-      final displayLabel = remaining != null ? '$formattedTime\n(باقي $remaining مكان)' : formattedTime;
-      return chip(
-        label: displayLabel,
-        selected: isSelected,
-        onSelected: (selected) {
-          setState(() => _selectedTime = time);
-        },
-      );
+    final isSelected = _selectedTime == time;
+    String formattedTime = time;
+    final parts = time.split(':');
+    if (parts.length == 2) {
+      int h = int.tryParse(parts[0]) ?? 0;
+      final m = parts[1].split('\n')[0]; // strip anything extra
+      final period = h >= 12 ? 'م' : 'ص';
+      if (h == 0)
+        h = 12;
+      else if (h > 12) h -= 12;
+      formattedTime = '${h.toString()}:$m $period';
     }
 
-    Widget chip({
+    final displayLabel = remaining != null
+        ? '$formattedTime\n(باقي $remaining مكان)'
+        : formattedTime;
+    return chip(
+      label: displayLabel,
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() => _selectedTime = time);
+      },
+    );
+  }
+
+  Widget chip({
     required String label,
     required bool selected,
     required Function(bool) onSelected,

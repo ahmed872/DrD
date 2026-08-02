@@ -16,9 +16,10 @@ class FirebaseAuthService extends ChangeNotifier {
     // الجلسة من IndexedDB بشكل غير متزامن بعد إقلاع التطبيق، فالقراءة
     // اللحظية وقت الإقلاع ترى `null` دائماً.
     _authSubscription = _firebaseAuth.authStateChanges().listen(
-      _onAuthStateChanged,
-      onError: (Object e) => AppLogger.error('خطأ في مراقبة حالة الدخول', e),
-    );
+          _onAuthStateChanged,
+          onError: (Object e) =>
+              AppLogger.error('خطأ في مراقبة حالة الدخول', e),
+        );
   }
 
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
