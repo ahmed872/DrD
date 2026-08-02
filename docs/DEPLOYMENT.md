@@ -41,7 +41,7 @@ flutterfire configure --project=heldoc-68abf --platforms=web,android
 
 ```bash
 flutter build web --release \
-  --service-worker-strategy=none \
+  --no-web-resources-cdn \
   --dart-define=FIREBASE_WEB_API_KEY=AIza... \
   --dart-define=FIREBASE_WEB_APP_ID=1:736610467870:web:...
 ```
@@ -57,13 +57,18 @@ Firebase Console ← Authentication ← Settings ← Authorized domains ←
 ### الخطوة 3 — البناء
 
 ```bash
-flutter build web --release --service-worker-strategy=none
+flutter build web --release --no-web-resources-cdn
 ```
 
-**لماذا `--service-worker-strategy=none`؟**
-لأن Flutter (منذ 3.35) لم يعد يولّد عامل خدمة يخزّن أي شيء — الملف المولَّد
-صار بذرة تُلغي تسجيل نفسها. المشروع يستخدم `web/sw.js` المكتوب يدوياً بدلاً
-منه، ويُسجَّل من `web/index.html`. تمرير `none` يمنع تعارض الاثنين.
+**`--no-web-resources-cdn`**: يستضيف محرّك العرض (CanvasKit) على نطاقك بدل
+تحميله من `gstatic.com`. بدونه لا يستطيع عامل الخدمة تخزينه (لأنه من نطاق
+آخر)، فيفشل الإقلاع بلا اتصال ويبطؤ على الشبكات الضعيفة.
+
+**ملاحظة عن عامل الخدمة**: كان هناك خيار `--service-worker-strategy`، لكنه
+**حُذف من Flutter 3.44** — تمريره الآن يُنتج خطأ `Could not find an option`.
+لم يعد مطلوباً أصلاً: ملف `web/flutter_bootstrap.js` في المستودع يستدعي
+`_flutter.loader.load()` بلا وسائط، فلا يسجّل Flutter عامل خدمته المهمل، ويبقى
+`web/sw.js` وحده المتحكّم. الفحص في CI يحرس هذا السلوك من الانحدار.
 
 ### الخطوة 4 — نشر القواعد ثم الموقع
 
@@ -214,7 +219,7 @@ GitHub ← Settings ← Secrets:
 
 ```bash
 # الويب
-flutter build web --release --service-worker-strategy=none
+flutter build web --release --no-web-resources-cdn
 firebase deploy --only firestore:rules,firestore:indexes
 firebase deploy --only hosting
 
