@@ -175,6 +175,16 @@ class BookingService {
           'patientId': patientId,
           'appointmentDate': dateStr,
           'startTime': normalizedTime,
+          // لحظة بدء الموعد كطابع زمني مطلق.
+          //
+          // `appointmentDate` و`startTime` نصّان يمثّلان توقيتاً محلياً بلا
+          // منطقة زمنية. دوال السحابة تعمل بتوقيت UTC، فحسابها من النصّين
+          // يتطلّب معرفة المنطقة والتوقيت الصيفي — وهو مصدر أخطاء متكرر
+          // (تذكير يصل قبل الموعد بساعتين أو بعده).
+          //
+          // العميل يعرف التوقيت المحلي للمستخدم يقيناً، فيكتب اللحظة المطلقة
+          // هنا مرة واحدة، وتقارنها دالة التذكير مباشرة بلا أي تحويل.
+          'startsAt': Timestamp.fromDate(_slotStart(date, normalizedTime)),
           'slotId': slotId,
           'status': AppointmentStatus.booked.wireValue,
           'createdAt': FieldValue.serverTimestamp(),
@@ -351,17 +361,20 @@ class BookingService {
     }
   }
 
-  bool _isInThePast(DateTime date, String time) {
+  /// لحظة بدء الخانة كتاريخ محلي.
+  static DateTime _slotStart(DateTime date, String time) {
     final parts = time.split(':');
-    if (parts.length < 2) return false;
-    final slotStart = DateTime(
+    return DateTime(
       date.year,
       date.month,
       date.day,
-      int.tryParse(parts[0]) ?? 0,
-      int.tryParse(parts[1]) ?? 0,
+      parts.isNotEmpty ? (int.tryParse(parts[0]) ?? 0) : 0,
+      parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0,
     );
-    return slotStart.isBefore(DateTime.now());
+  }
+
+  bool _isInThePast(DateTime date, String time) {
+    return _slotStart(date, time).isBefore(DateTime.now());
   }
 }
 

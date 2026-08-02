@@ -10,8 +10,10 @@
  * مجرّد بذرة تُلغي تسجيل نفسها ولا تخزّن شيئاً. أي أن بناء الويب الافتراضي
  * **لا يعمل بلا اتصال إطلاقاً** ولا يستوفي شروط تثبيت PWA الكاملة.
  *
- * لذلك يُبنى المشروع بـ `--service-worker-strategy=none` (حتى لا تتعارض بذرة
- * Flutter مع هذا الملف) ويُسجَّل هذا العامل يدوياً من `index.html`.
+ * ولمنع تعارض بذرة Flutter مع هذا الملف (الاثنان يُسجَّلان على النطاق الجذر
+ * `/`، فالأخير يستبدل الأول ثم يُلغي نفسه) يستدعي `web/flutter_bootstrap.js`
+ * الدالة `_flutter.loader.load()` بلا وسائط، فلا يسجّل Flutter عامله أصلاً.
+ * هذا العامل يُسجَّل يدوياً من `index.html`.
  *
  * ## الاستراتيجية
  *
@@ -24,7 +26,7 @@
  */
 
 // ⚠️ ارفع هذا الرقم مع كل إصدار جديد. تغييره يُبطل كل الذاكرة المؤقتة القديمة.
-const VERSION = 'v1';
+const VERSION = 'v2';
 
 const SHELL_CACHE = `drd-shell-${VERSION}`;
 const ASSETS_CACHE = `drd-assets-${VERSION}`;
@@ -41,9 +43,11 @@ const SHELL_ASSETS = [
   'index.html',
   'manifest.json',
   OFFLINE_URL,
+  'privacy.html',
   'favicon.png',
   'icons/Icon-192.png',
   'icons/Icon-512.png',
+  'icons/apple-touch-icon.png',
 ];
 
 /** نطاقات لا يجوز تخزين ردودها مطلقاً. */

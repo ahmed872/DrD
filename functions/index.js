@@ -1,143 +1,198 @@
-const functions = require("firebase-functions");
+/**
+ * Cloud Functions لتطبيق DrD.
+ *
+ * ## ما كان مكسوراً
+ *
+ * دالة التذكير السابقة لم ترسل تذكيراً واحداً منذ كتابتها، لثلاثة أسباب
+ * مجتمعة — كل واحد منها كافٍ وحده:
+ *
+ *   1. كانت تستعلم عن `status == "Scheduled"` بينما التطبيق يكتب `"Booked"`،
+ *      فيعود الاستعلام فارغاً دائماً.
+ *   2. كانت تقرأ `data.date` والتطبيق يكتب `appointmentDate`.
+ *   3. كانت تقرأ `data.time` والتطبيق يكتب `startTime`.
+ *
+ * والسطر `if (!data.date || !data.time) continue;` كان يبتلع الخطأ بصمت،
+ * فلم يظهر في السجلات ما يشير إلى وجود مشكلة.
+ *
+ * ## التوقيت
+ *
+ * الدوال تعمل بتوقيت UTC والمواعيد بتوقيت مصر المحلي. بدل حساب الفارق
+ * وتتبّع التوقيت الصيفي داخل الخادم (مصدر شائع لتذكيرات تصل قبل موعدها
+ * بساعتين)، صار العميل يكتب `startsAt` كطابع زمني مطلق وقت الحجز، والدالة
+ * تقارن الطوابع مباشرة.
+ *
+ * المواعيد القديمة لا تحمل `startsAt`، فتُحسب من النصّين مع منطقة
+ * [CLINIC_TIMEZONE] كحل احتياطي.
+ */
+
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+// المسار الفرعي مقصود: `require("firebase-functions")` يُحمّل فهرس v2 كاملاً،
+// ومعه مزوّد Realtime Database الذي يسحب `@firebase/database-compat` ويطلب
+// `@firebase/app` — وهي تبعية نظيرة غير مثبَّتة، فينهار التحميل. الاستيراد
+// المباشر يتفادى ذلك ويقلّل زمن الإقلاع البارد أيضاً.
+const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
-const nodemailer = require("nodemailer");
 
 admin.initializeApp();
 
-// إعدادات البريد (استخدم Gmail مع App Password)
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER, // بريد Gmail
-    pass: process.env.EMAIL_PASSWORD, // App Password من Gmail
-  },
-});
+const db = admin.firestore();
 
-// إرسال الإشعارات بناءً على مواعيد الحضور وغيرها
-exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(async (context) => {
-  const now = admin.firestore.Timestamp.now();
-  const nowMillis = now.toMillis();
-  const db = admin.firestore();
-  const appointmentsSnapshot = await db.collection("appointments").where("status", "==", "Scheduled").get();
+/** المنطقة الزمنية للعيادة — تُستخدم للمواعيد القديمة فقط. */
+const CLINIC_TIMEZONE = "Africa/Cairo";
 
-  const batch = db.batch();
+/**
+ * كل الصيغ التي تعني "موعد قائم" في قاعدة البيانات.
+ *
+ * مطابقة لـ `AppointmentStatus` في `lib/core/constants/appointment_status.dart`.
+ * البيانات تراكمت عبر إصدارات مختلفة من التطبيق، فالتسامح هنا ضروري وإلا
+ * سقطت مواعيد حقيقية من التذكير.
+ */
+const ACTIVE_STATUSES = [
+  "Booked", "booked",
+  "Scheduled", "scheduled",
+  "upcoming", "Upcoming",
+  "pending", "Pending",
+  "confirmed", "Confirmed",
+];
 
-  for (const doc of appointmentsSnapshot.docs) {
-    const data = doc.data();
-    if (!data.date || !data.time) continue;
-    
-    // تجميع تاريخ ووقت الموعد
-    const parts = data.date.split("T")[0].split("-");
-    const hms = data.time.split(":");
-    let hour = parseInt(hms[0]);
-    const minute = parseInt(hms[1].split(" ")[0]);
-    if (data.time.includes("PM") && hour !== 12) hour += 12;
-    if (data.time.includes("AM") && hour === 12) hour = 0;
-    
-    const appointmentDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), hour, minute);
-    const appointmentMillis = appointmentDate.getTime();
-    
-    const diffMins = (appointmentMillis - nowMillis) / 60000;
+/**
+ * إزاحة منطقة زمنية بالدقائق عند لحظة معيّنة، مع مراعاة التوقيت الصيفي.
+ *
+ * تُحسب بمقارنة نفس اللحظة مُنسَّقة بالمنطقتين — أدق من ثابت مكتوب يدوياً،
+ * لأن مصر تعمل بالتوقيت الصيفي منذ 2023.
+ */
+function timezoneOffsetMinutes(date, timeZone) {
+  const asUtc = new Date(date.toLocaleString("en-US", { timeZone: "UTC" }));
+  const asZone = new Date(date.toLocaleString("en-US", { timeZone }));
+  return (asZone.getTime() - asUtc.getTime()) / 60000;
+}
 
-    // 1-hour prior reminder (تذكير قبلها بساعة)
-    if (diffMins <= 60 && diffMins > 55 && !data.reminderSent) {
-       // Save notification in firestore for the patient
-       const notifRef = db.collection("notifications").doc();
-       batch.set(notifRef, {
-         userId: data.patientId,
-         title: "تذكير بموعدك 🏥",
-         body: `موعدك مع ${data.doctorName} بعد أقل من ساعة (${data.time}).`,
-         read: false,
-         createdAt: admin.firestore.FieldValue.serverTimestamp()
-       });
-       batch.update(doc.ref, { reminderSent: true });
-    }
-
-    // 10-minutes after appointment logic (تحذير إذا لم يحضر المريض)
-    // وهنا يجب على الطبيب أن يغيّر حالة الموعد لـ "Completed" أو "NoShow"
-    // فلو مر 10 دقائق بعد الموعد ولسا Status بتاعه "Scheduled" معناه الطبيب معملوش Completed
-    if (diffMins < -10 && !data.noShowWarningSent) {
-      // إرسال تنبيه للمريض، وتغيير الحالة لـ Needs Confirmation من الطبيب مثلاً
-       const notifRef = db.collection("notifications").doc();
-       batch.set(notifRef, {
-         userId: data.patientId,
-         title: "تنبيه غياب ⚠️",
-         body: `عذراً، يبدو أنك لم تحضر موعدك مع ${data.doctorName} الساعة ${data.time}. يرجى تأكيد حضورك مع الطبيب.`,
-         read: false,
-         createdAt: admin.firestore.FieldValue.serverTimestamp()
-       });
-       batch.update(doc.ref, { noShowWarningSent: true, status: "PendingConfirmation" });
-    }
+/** لحظة بدء الموعد، من `startsAt` أو من النصّين للمواعيد القديمة. */
+function appointmentStart(data) {
+  if (data.startsAt && typeof data.startsAt.toDate === "function") {
+    return data.startsAt.toDate();
   }
 
-  await batch.commit();
-  console.log("Appointment checks completed.");
-  return null;
-});
+  const dateStr = data.appointmentDate || data.date;
+  const timeStr = data.startTime || data.time;
+  if (!dateStr || !timeStr) return null;
 
-// مراقبة collection 'otps' وإرسال إيميل عند إضافة OTP جديد
-exports.sendOTPEmail = functions.firestore
-  .document("otps/{docId}")
-  .onCreate(async (snap, context) => {
-    const data = snap.data();
-    const email = context.params.docId;
-    const otpCode = data.code;
-    const expiryTime = data.expiryTime;
+  const dateParts = String(dateStr).split("T")[0].split("-");
+  if (dateParts.length < 3) return null;
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "🔐 رمز التحقق الخاص بك - Medical Appointment App",
-      html: `
-        <div style="font-family: 'Arial', sans-serif; direction: rtl; text-align: right; background-color: #f5f5f5; padding: 20px;">
-          <div style="background-color: white; border-radius: 10px; padding: 30px; max-width: 500px; margin: 0 auto;">
-            <h2 style="color: #2c3e50; margin-bottom: 20px;">مرحباً بك!</h2>
-            
-            <p style="color: #555; font-size: 16px; margin-bottom: 20px;">
-              تم طلب رمز التحقق الخاص بك لتطبيق الحجز الطبي.
-            </p>
-            
-            <div style="background-color: #e8f4f8; border-left: 4px solid #3498db; padding: 20px; margin: 20px 0; border-radius: 5px;">
-              <p style="color: #999; margin: 0; font-size: 14px;">رمز التحقق:</p>
-              <h1 style="color: #3498db; font-size: 40px; letter-spacing: 5px; margin: 10px 0; font-family: 'Courier New', monospace;">
-                ${otpCode}
-              </h1>
-              <p style="color: #999; margin: 10px 0; font-size: 12px;">
-                ⏱️ ينتهي الصلاحية في 10 دقائق
-              </p>
-            </div>
-            
-            <p style="color: #e74c3c; background-color: #fadbd8; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              ⚠️ لا تشارك هذا الرمز مع أحد. نحن لن نطلبه منك عبر البريد الإلكتروني.
-            </p>
-            
-            <p style="color: #555; font-size: 14px; margin-top: 20px;">
-              إذا لم تطلب هذا الرمز، يرجى تجاهل هذا البريد الإلكتروني.
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-            
-            <p style="color: #999; font-size: 12px; text-align: center;">
-              © 2026 Medical Appointment App | جميع الحقوق محفوظة
-            </p>
-          </div>
-        </div>
-      `,
-    };
+  const raw = String(timeStr).trim().toUpperCase();
+  const timeParts = raw.replace(/[^0-9:]/g, "").split(":");
+  if (!timeParts[0]) return null;
 
-    try {
-      await transporter.sendMail(mailOptions);
-      console.log(`✅ Email sent to: ${email}`);
-      
-      // تحديث الـ Firestore لتسجيل أن الإيميل تم إرساله
-      await admin.firestore().collection("otps").doc(email).update({
-        emailSent: true,
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      
-      return { success: true, message: "Email sent successfully" };
-    } catch (error) {
-      console.error(`❌ Error sending email to ${email}:`, error);
-      return { success: false, error: error.message };
+  let hour = parseInt(timeParts[0], 10);
+  const minute = parseInt(timeParts[1] || "0", 10);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+
+  if (raw.includes("PM") && hour !== 12) hour += 12;
+  if (raw.includes("AM") && hour === 12) hour = 0;
+
+  // نبني اللحظة كأنها UTC ثم نطرح إزاحة المنطقة للحصول على اللحظة الحقيقية.
+  const naive = Date.UTC(
+    parseInt(dateParts[0], 10),
+    parseInt(dateParts[1], 10) - 1,
+    parseInt(dateParts[2], 10),
+    hour,
+    minute
+  );
+  const offset = timezoneOffsetMinutes(new Date(naive), CLINIC_TIMEZONE);
+  return new Date(naive - offset * 60000);
+}
+
+/**
+ * فحص المواعيد كل خمس دقائق: تذكير قبل ساعة، وتنبيه غياب بعد عشر دقائق.
+ */
+exports.checkAppointments = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    timeZone: CLINIC_TIMEZONE,
+    memory: "256MiB",
+  },
+  async () => {
+    const now = Date.now();
+
+    // نطاق ضيّق حول الوقت الحالي بدل قراءة كل المواعيد القائمة — الاستعلام
+    // السابق كان يجلب المجموعة كاملة في كل تشغيل، وهو ما يصبح مكلفاً ثم
+    // يتجاوز حدود القراءة مع نمو العيادة.
+    const windowStart = new Date(now - 2 * 60 * 60 * 1000); // ساعتان للخلف
+    const windowEnd = new Date(now + 2 * 60 * 60 * 1000);   // ساعتان للأمام
+
+    const snapshot = await db
+      .collection("appointments")
+      .where("status", "in", ACTIVE_STATUSES)
+      .where("startsAt", ">=", admin.firestore.Timestamp.fromDate(windowStart))
+      .where("startsAt", "<=", admin.firestore.Timestamp.fromDate(windowEnd))
+      .get();
+
+    if (snapshot.empty) {
+      logger.info("لا توجد مواعيد ضمن النطاق الحالي");
+      return;
     }
-  });
+
+    const batch = db.batch();
+    let reminders = 0;
+    let noShows = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const start = appointmentStart(data);
+      if (!start) {
+        logger.warn(`موعد بلا وقت صالح: ${doc.id}`);
+        continue;
+      }
+
+      const minutesUntil = (start.getTime() - now) / 60000;
+
+      // تذكير قبل الموعد بساعة (نافذة 55–60 دقيقة تغطي دورة الخمس دقائق).
+      if (minutesUntil <= 60 && minutesUntil > 55 && !data.reminderSent) {
+        batch.set(db.collection("notifications").doc(), {
+          userId: data.patientId,
+          type: "appointment_reminder",
+          title: "تذكير بموعدك 🏥",
+          body: `موعدك مع ${data.doctorName || "الطبيب"} بعد أقل من ساعة `
+            + `(${data.startTime || ""}).`,
+          appointmentId: doc.id,
+          read: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        batch.update(doc.ref, { reminderSent: true });
+        reminders++;
+      }
+
+      // مرّت عشر دقائق على الموعد ولم يسجّل الطبيب حضوراً.
+      if (minutesUntil < -10 && !data.noShowWarningSent) {
+        batch.set(db.collection("notifications").doc(), {
+          userId: data.patientId,
+          type: "appointment_missed",
+          title: "تنبيه غياب ⚠️",
+          body: `يبدو أنك لم تحضر موعدك مع ${data.doctorName || "الطبيب"} `
+            + `الساعة ${data.startTime || ""}. يرجى التواصل مع العيادة.`,
+          appointmentId: doc.id,
+          read: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        batch.update(doc.ref, {
+          noShowWarningSent: true,
+          status: "PendingConfirmation",
+        });
+        noShows++;
+      }
+    }
+
+    if (reminders || noShows) {
+      await batch.commit();
+    }
+    logger.info(`تذكيرات: ${reminders} · تنبيهات غياب: ${noShows}`);
+  }
+);
+
+// ملاحظة: دالة `sendOTPEmail` حُذفت.
+//
+// كانت تراقب مجموعة `otps` وترسل رمزاً بالبريد عبر nodemailer، لكن الشاشة
+// التي كانت تكتب في تلك المجموعة (`firebase_phone_auth.dart`) أُزيلت — فلم
+// يعد أي شيء في التطبيق يكتب فيها. حذفها يلغي أيضاً الحاجة إلى إعداد
+// `EMAIL_USER` و`EMAIL_PASSWORD` وإلى تبعية nodemailer، فيصبح النشر أبسط.

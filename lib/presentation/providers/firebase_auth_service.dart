@@ -6,6 +6,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/utils/app_logger.dart';
 
+/// هل يُشترط تفعيل البريد الإلكتروني قبل السماح بالدخول؟
+///
+/// اتركها `false` إلى أن يتم تفعيل بريد المستخدمين القائمين، ثم اجعلها
+/// `true`. راجع `docs/SECURITY.md` قسم "تفعيل البريد الإلكتروني".
+const bool kRequireEmailVerification = false;
+
 /// خدمة Firebase للمصادقة وتخزين البيانات
 class FirebaseAuthService extends ChangeNotifier {
   FirebaseAuthService() {
@@ -53,7 +59,8 @@ class FirebaseAuthService extends ChangeNotifier {
       _emailVerified = false;
     } else {
       _userId = user.uid;
-      _emailVerified = true;
+      // الحالة الحقيقية من Firebase — لا قيمة ثابتة.
+      _emailVerified = user.emailVerified;
       try {
         final doc = await _firestore.collection('users').doc(user.uid).get();
         if (doc.exists) _userData = doc.data();
@@ -159,8 +166,22 @@ class FirebaseAuthService extends ChangeNotifier {
         return false;
       }
 
-      // تم تعطيل إرسال رسالة تفعيل الإيميل بناءً على طلبك
-      // await firebaseUser.sendEmailVerification();
+      // إرسال رسالة التفعيل — دون منع الدخول.
+      //
+      // كان الإرسال معطّلاً وكانت `emailVerified: true` تُكتب دائماً، أي أن
+      // قاعدة البيانات تقول إن كل بريد مُفعَّل بينما لم يتحقّق أي منها. النتيجة
+      // أن أي شخص يستطيع التسجيل ببريد شخص آخر، وأن رسالة "تحقق من بريدك"
+      // التي تظهر للمستخدم لم تكن صحيحة أصلاً لأن الرسالة لم تُرسَل.
+      //
+      // الآن تُرسَل الرسالة فعلاً وتُسجَّل الحالة الحقيقية، لكن الدخول يبقى
+      // مسموحاً كما كان — حتى لا يتغيّر سلوك التطبيق على مستخدميه الحاليين.
+      // للتشديد لاحقاً: اجعل [kRequireEmailVerification] تساوي `true`.
+      try {
+        await firebaseUser.sendEmailVerification();
+      } catch (e) {
+        // فشل الإرسال (تجاوز الحد مثلاً) لا يمنع إنشاء الحساب.
+        AppLogger.warning('تعذّر إرسال رسالة التفعيل: $e');
+      }
 
       // حفظ بيانات المستخدم في Firestore
       final newUser = {
@@ -170,7 +191,7 @@ class FirebaseAuthService extends ChangeNotifier {
         'role': role,
         'birthDate': birthDate?.toIso8601String(),
         'gender': gender,
-        'emailVerified': true, // تعيينها مفعّلة تلقائياً
+        'emailVerified': firebaseUser.emailVerified,
         'createdAt': FieldValue.serverTimestamp(),
       };
 
@@ -186,17 +207,48 @@ class FirebaseAuthService extends ChangeNotifier {
 
       _userId = firebaseUser.uid;
       _userData = newUser;
-      _emailVerified = true;
+      _emailVerified = firebaseUser.emailVerified;
 
       _isLoading = false;
-      _errorMessage = 'تم إنشاء الحساب! تحقق من بريدك الإلكتروني لتفعيله ✅';
+      _errorMessage = 'تم إنشاء الحساب بنجاح ✅\n'
+          'أرسلنا رسالة تفعيل إلى بريدك، يُفضَّل تفعيله لتتمكّن من استعادة '
+          'كلمة المرور لاحقاً.';
       notifyListeners();
       return true;
-    } catch (e) {
-      _errorMessage = 'خطأ في التسجيل: $e';
+    } on FirebaseAuthException catch (e) {
+      // رسائل عربية واضحة بدل نص الاستثناء الإنجليزي الذي كان يظهر للمستخدم.
+      _errorMessage = _describeAuthError(e);
       _isLoading = false;
       notifyListeners();
       return false;
+    } catch (e) {
+      AppLogger.error('خطأ غير متوقع في التسجيل', e);
+      _errorMessage =
+          'تعذّر إنشاء الحساب، تأكد من اتصالك بالإنترنت وحاول مرة أخرى';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// ترجمة أخطاء Firebase Auth إلى رسائل عربية مفهومة.
+  String _describeAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'email-already-in-use':
+        return 'البريد الإلكتروني مستخدم بالفعل';
+      case 'invalid-email':
+        return 'صيغة البريد الإلكتروني غير صحيحة';
+      case 'weak-password':
+        return 'كلمة المرور ضعيفة، اختر كلمة أقوى';
+      case 'operation-not-allowed':
+        return 'التسجيل غير متاح حالياً، حاول لاحقاً';
+      case 'network-request-failed':
+        return 'تعذّر الاتصال بالإنترنت، تأكد من الشبكة وحاول مرة أخرى';
+      case 'too-many-requests':
+        return 'محاولات كثيرة، انتظر قليلاً ثم حاول مرة أخرى';
+      default:
+        AppLogger.error('خطأ مصادقة غير مصنّف: ${e.code}');
+        return 'حدث خطأ، حاول مرة أخرى';
     }
   }
 
@@ -243,22 +295,25 @@ class FirebaseAuthService extends ChangeNotifier {
           return false;
         }
 
-        // تم إلغاء شرط التحقق من الإيميل
-        /*
-        if (!firebaseUser.emailVerified) {
-          _errorMessage =
-              '⚠️ يجب تفعيل بريدك الإلكتروني أولاً!\nتحقق من رسالة البريد المرسلة إليك.';
+        // شرط تفعيل البريد — مفتاح واحد يتحكّم فيه.
+        //
+        // معطّل حالياً حفاظاً على سلوك التطبيق الحالي: تفعيله فجأة سيمنع كل
+        // المستخدمين القائمين (الذين لم تُرسَل لهم رسالة تفعيل أصلاً) من
+        // الدخول. عند تفعيله لاحقاً، شغّل أولاً حملة تفعيل للحسابات القائمة.
+        if (kRequireEmailVerification && !firebaseUser.emailVerified) {
+          _errorMessage = 'يجب تفعيل بريدك الإلكتروني أولاً.\n'
+              'تحقّق من رسالة التفعيل المرسلة إليك.';
           await _firebaseAuth.signOut();
           _isLoading = false;
           notifyListeners();
           return false;
         }
-        */
 
         // بيانات المستخدم تُقرأ الآن *بعد* المصادقة، فتستطيع قواعد الأمان
         // حصر القراءة على صاحب المستند وحده.
         _userId = firebaseUser.uid;
-        _emailVerified = true; // تعيينها مفعّلة تلقائياً
+        // الحالة الحقيقية من Firebase، لا قيمة ثابتة.
+        _emailVerified = firebaseUser.emailVerified;
 
         final userDoc =
             await _firestore.collection('users').doc(firebaseUser.uid).get();

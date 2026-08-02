@@ -864,6 +864,10 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                   Provider.of<FirebaseAuthService>(context, listen: false);
               final messenger = ScaffoldMessenger.of(context);
               final navigator = Navigator.of(context);
+              // مِلاح النافذة يُلتقط أيضاً قبل `await`: بعد انتهاء الحجز قد
+              // تكون النافذة أُغلقت (المستخدم رجع للخلف)، فيصير
+              // `dialogContext` معطّلاً واستخدامه يرمي استثناءً.
+              final dialogNavigator = Navigator.of(dialogContext);
 
               // نظام المجموعات يسمح بأكثر من مريض في نفس الساعة؛ النظام
               // الفردي سعته مريض واحد فقط.
@@ -892,8 +896,8 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
               if (!mounted) return;
 
               // إغلاق مؤشر التحميل ثم نافذة التأكيد.
-              Navigator.pop(dialogContext);
-              Navigator.pop(dialogContext);
+              dialogNavigator.pop();
+              dialogNavigator.pop();
 
               messenger.showSnackBar(SnackBar(
                 content: Text(result.message),

@@ -316,10 +316,10 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     onPressed: () async {
                       final auth = Provider.of<FirebaseAuthService>(context,
                           listen: false);
+                      final navigator = Navigator.of(context);
                       await auth.logout();
-                      if (mounted) {
-                        Navigator.of(context).pushReplacementNamed('/');
-                      }
+                      if (!mounted) return;
+                      navigator.pushReplacementNamed('/');
                     },
                     child: const Text(
                       'الخروج',

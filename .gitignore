@@ -59,3 +59,7 @@ android/key.properties
 # اختبارات القواعد
 test/firestore_rules/node_modules/
 test/firestore_rules/package-lock.json
+
+# دوال السحابة
+functions/node_modules/
+functions/package-lock.json

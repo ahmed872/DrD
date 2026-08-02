@@ -178,7 +178,7 @@ class DataValidationService {
 
   static String? validatePassword(String password) {
     if (password.isEmpty) return 'كلمة المرور مطلوبة';
-    if (password.length < 6) return 'كلمة المرور قصيرة جداً (أقل من 6 أحرف)';
+    if (password.length < 8) return 'كلمة المرور يجب أن تكون 8 أحرف على الأقل';
     return null;
   }
 

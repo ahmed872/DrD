@@ -9,6 +9,7 @@ import 'patient_booking_screen.dart';
 import 'patient_my_appointments_screen.dart';
 import 'patient_medical_history_screen.dart';
 import 'patient_search_doctor_screen.dart';
+import 'notifications_screen.dart';
 import 'patient_settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -27,6 +28,8 @@ class HomeScreen extends StatelessWidget {
             elevation: 1,
             backgroundColor: const Color(0xFF0097A7),
             actions: [
+              // جرس الإشعارات — هو ما يجعل تذكيرات المواعيد مرئية للمستخدم.
+              const NotificationsBell(),
               // رابط الإعدادات للمرضى
               if (auth.userRole == 'patient')
                 IconButton(

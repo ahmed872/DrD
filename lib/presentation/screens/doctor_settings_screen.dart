@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import '../../core/utils/app_logger.dart';
 import '../providers/firebase_auth_service.dart';
 
 class DoctorSettingsScreen extends StatefulWidget {
@@ -166,10 +167,16 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           }
         }
       } catch (e) {
-        debugPrint('Error loading doctor profile: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load profile: $e')),
-        );
+        AppLogger.error('تعذّر تحميل بيانات الطبيب', e);
+        if (mounted) {
+          // الرسالة السابقة كانت تعرض نص الاستثناء بالإنجليزية للمستخدم.
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تعذّر تحميل بياناتك، تأكد من اتصالك بالإنترنت'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
 

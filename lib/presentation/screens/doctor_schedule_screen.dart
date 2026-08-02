@@ -649,6 +649,10 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
+                // يُلتقط قبل `await` وقبل إغلاق النافذة: بعدهما يصبح
+                // `context` تابعاً لعنصر أُزيل من الشجرة، واستخدامه يرمي
+                // استثناءً بدل أن يعرض الرسالة.
+                final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(context);
                 try {
                   await FirebaseFirestore.instance
@@ -656,13 +660,23 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                       .doc(appointmentId)
                       .update({'notes': noteController.text.trim()});
                   await _fetchAppointments();
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(
                       content: Text('تم حفظ الملاحظة بنجاح'),
                       backgroundColor: Colors.green,
                     ),
                   );
-                } catch (e) {}
+                } catch (e) {
+                  // كان `catch (e) {}` صامتاً تماماً: الطبيب يكتب ملاحظة عن
+                  // حالة مريض، تفشل الكتابة، ولا يعرف أنها ضاعت.
+                  AppLogger.error('تعذّر حفظ ملاحظة الموعد', e);
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text('تعذّر حفظ الملاحظة، حاول مرة أخرى'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               },
               child: const Text('حفظ / Save'),
             ),

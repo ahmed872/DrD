@@ -468,14 +468,12 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context);
+              // يُلتقط قبل `await` — بعده قد تكون الشاشة أُزيلت.
+              final navigator = Navigator.of(context);
+              navigator.pop();
               await auth.logout();
-              if (mounted) {
-                Navigator.of(context).pushNamedAndRemoveUntil(
-                  '/',
-                  (route) => false,
-                );
-              }
+              if (!mounted) return;
+              navigator.pushNamedAndRemoveUntil('/', (route) => false);
             },
             child:
                 const Text('تسجيل الخروج', style: TextStyle(color: Colors.red)),
