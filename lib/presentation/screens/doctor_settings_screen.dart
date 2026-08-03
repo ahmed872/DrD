@@ -1,7 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../core/theme/app_theme.dart';
+import '../../core/utils/app_logger.dart';
 import '../providers/firebase_auth_service.dart';
+import '../widgets/app_widgets.dart';
 
 class DoctorSettingsScreen extends StatefulWidget {
   const DoctorSettingsScreen({super.key});
@@ -42,6 +46,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 17, minute: 0);
 
+  // المفاتيح تُحفظ في Firestore كما هي، فلا تُغيَّر. النص المعروض للمستخدم
+  // يأتي من `_dayLabels` أدناه.
   final Map<String, bool> _workingDays = {
     'السبت (Saturday)': true,
     'الأحد (Sunday)': true,
@@ -52,7 +58,18 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     'الجمعة (Friday)': false,
   };
 
+  static const Map<String, String> _dayLabels = {
+    'السبت (Saturday)': 'السبت',
+    'الأحد (Sunday)': 'الأحد',
+    'الاثنين (Monday)': 'الاثنين',
+    'الثلاثاء (Tuesday)': 'الثلاثاء',
+    'الأربعاء (Wednesday)': 'الأربعاء',
+    'الخميس (Thursday)': 'الخميس',
+    'الجمعة (Friday)': 'الجمعة',
+  };
+
   bool _isLoading = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -85,7 +102,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         return TimeOfDay(hour: hour, minute: minute);
       }
     } catch (e) {
-      debugPrint('Error parsing time: $e');
+      AppLogger.info('Error parsing time: $e');
     }
 
     // Return default time if parsing fails
@@ -142,7 +159,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                 _endTime = _parseTime(parts[1].trim());
               }
             } catch (e) {
-              debugPrint('Error parsing working hours: $e');
+              AppLogger.info('Error parsing working hours: $e');
             }
           }
 
@@ -151,25 +168,19 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
             try {
               final workingDaysMap =
                   Map<String, dynamic>.from(data['workingDays']);
-              setState(() {
-                for (var key in workingDaysMap.keys) {
-                  if (_workingDays.containsKey(key)) {
-                    _workingDays[key] = workingDaysMap.keys.contains(key)
-                        ? (workingDaysMap[key] == true)
-                        : false;
-                  }
+              for (var key in workingDaysMap.keys) {
+                if (_workingDays.containsKey(key)) {
+                  _workingDays[key] = workingDaysMap[key] == true;
                 }
-              });
+              }
             } catch (e) {
-              debugPrint('Error loading working days: $e');
+              AppLogger.info('Error loading working days: $e');
             }
           }
         }
       } catch (e) {
-        debugPrint('Error loading doctor profile: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load profile: $e')),
-        );
+        AppLogger.info('Error loading doctor profile: $e');
+        if (mounted) AppSnack.error(context, 'تعذّر تحميل بيانات العيادة');
       }
     }
 
@@ -180,440 +191,316 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+    return AppScaffold(
+      title: 'إعدادات العيادة',
+      subtitle: 'هذه البيانات هي ما يراه المرضى عنك',
+      maxWidth: AppBreakpoints.content,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.xxxl,
+      ),
+      actions: [
+        IconButton(
+          onPressed: _isSaving ? null : _saveSetting,
+          icon: const Icon(Icons.check_rounded),
+          color: Colors.white,
+          tooltip: 'حفظ',
+        ),
+      ],
+      child: _isLoading
+          ? const AppLoader(message: 'جارٍ تحميل الإعدادات…')
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SectionTitle(
+                  title: 'معلومات العيادة',
+                  icon: Icons.local_hospital_outlined,
+                ),
+                _buildClinicCard(),
+                const SizedBox(height: AppSpacing.xxl),
+                const SectionTitle(
+                  title: 'نظام الحجز والسعر',
+                  subtitle: 'يحدّد كيف تُقسَّم مواعيدك على المرضى',
+                  icon: Icons.event_seat_outlined,
+                ),
+                _buildBookingCard(),
+                const SizedBox(height: AppSpacing.xxl),
+                const SectionTitle(
+                  title: 'ساعات العمل',
+                  icon: Icons.schedule_rounded,
+                ),
+                _buildHoursCard(),
+                const SizedBox(height: AppSpacing.xxl),
+                const SectionTitle(
+                  title: 'أيام العمل',
+                  icon: Icons.calendar_month_outlined,
+                ),
+                _buildDaysCard(),
+                const SizedBox(height: AppSpacing.xxl),
+                FilledButton.icon(
+                  onPressed: _isSaving ? null : _saveSetting,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.save_rounded),
+                  label: Text(_isSaving ? 'جارٍ الحفظ…' : 'حفظ الإعدادات'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                OutlinedButton.icon(
+                  onPressed: _showPreview,
+                  icon: const Icon(Icons.visibility_outlined),
+                  label: const Text('معاينة كما يراها المريض'),
+                ),
+              ],
+            ),
+    );
+  }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('إعدادات العيادة'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.check_circle),
-            onPressed: _saveSetting,
-            tooltip: 'Save / احفظ',
+  Widget _buildClinicCard() {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppTextField(
+            controller: _clinicNameAr,
+            label: 'اسم العيادة (بالعربية)',
+            icon: Icons.business_outlined,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          AppTextField(
+            controller: _clinicNameEn,
+            label: 'اسم العيادة (بالإنجليزية)',
+            icon: Icons.business_outlined,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          AppTextField(
+            controller: _clinicLocationController,
+            label: 'موقع العيادة',
+            hint: 'المدينة، الشارع، رقم العمارة',
+            icon: Icons.location_on_outlined,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          DropdownButtonFormField<String>(
+            initialValue: _selectedSpecialtyAr,
+            decoration: const InputDecoration(
+              labelText: 'التخصص',
+              prefixIcon: Icon(Icons.medical_services_outlined, size: 20),
+            ),
+            items: _specialties.map((spec) {
+              return DropdownMenuItem<String>(
+                value: spec['ar'],
+                child: Text(spec['ar']!),
+              );
+            }).toList(),
+            onChanged: (val) {
+              if (val != null) {
+                setState(() {
+                  _selectedSpecialtyAr = val;
+                  _selectedSpecialtyEn =
+                      _specialties.firstWhere((e) => e['ar'] == val)['en'];
+                });
+              }
+            },
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          AppTextField(
+            controller: _phoneController,
+            label: 'رقم هاتف العيادة',
+            icon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          AppTextField(
+            controller: _bioAr,
+            label: 'نبذة عنك (بالعربية)',
+            hint: 'خبرتك، شهاداتك، وما يميّز عيادتك',
+            icon: Icons.info_outline_rounded,
+            maxLines: 3,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          AppTextField(
+            controller: _bioEn,
+            label: 'نبذة عنك (بالإنجليزية)',
+            icon: Icons.info_outline_rounded,
+            maxLines: 3,
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+    );
+  }
+
+  Widget _buildBookingCard() {
+    final individual = _bookingSystemType == 'Individual';
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // خياران موصوفان بدل زرّي راديو بلا شرح: الفرق بين النظامين يغيّر
+          // شكل يوم الطبيب بالكامل، ولم يكن مشروحاً في أي مكان.
+          _SystemOption(
+            title: 'نظام فردي',
+            description: 'كل مريض له وقت خاص به، بمدة ثابتة تحدّدها أنت.',
+            icon: Icons.person_rounded,
+            selected: individual,
+            onTap: () => setState(() => _bookingSystemType = 'Individual'),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _SystemOption(
+            title: 'نظام مجمّع',
+            description: 'عدة مرضى في نفس الساعة، والكشف بأسبقية الحضور.',
+            icon: Icons.groups_rounded,
+            selected: !individual,
+            onTap: () => setState(() => _bookingSystemType = 'Grouped'),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
             children: [
-              // === معلومات العيادة ===
-              _buildSectionTitle('📋 معلومات العيادة / Clinic Info'),
-              const SizedBox(height: 16),
-
-              _buildTextField(
-                label: 'اسم العيادة (بالعربية)',
-                controller: _clinicNameAr,
-                icon: Icons.business,
-              ),
-              const SizedBox(height: 12),
-
-              _buildTextField(
-                label: 'Clinic Name (English)',
-                controller: _clinicNameEn,
-                icon: Icons.business,
-              ),
-              const SizedBox(height: 12),
-
-              _buildTextField(
-                label: 'موقع العيادة / Clinic Location',
-                controller: _clinicLocationController,
-                icon: Icons.location_on,
-              ),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<String>(
-                value: _selectedSpecialtyAr,
-                decoration: InputDecoration(
-                  labelText: 'التخصص / Specialization',
-                  prefixIcon:
-                      const Icon(Icons.medical_services, color: Colors.blue),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.blue, width: 2),
-                  ),
-                ),
-                items: _specialties.map((spec) {
-                  return DropdownMenuItem<String>(
-                    value: spec['ar'],
-                    child: Text('${spec['ar']} / ${spec['en']}'),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() {
-                      _selectedSpecialtyAr = val;
-                      _selectedSpecialtyEn =
-                          _specialties.firstWhere((e) => e['ar'] == val)['en'];
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-
-              _buildTextField(
-                label: 'رقم الهاتف / Phone',
-                controller: _phoneController,
-                icon: Icons.phone,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 12),
-
-              _buildTextField(
-                label: 'نبذة عنك (Arabic)',
-                controller: _bioAr,
-                icon: Icons.info,
-                maxLines: 3,
-              ),
-              const SizedBox(height: 12),
-
-              _buildTextField(
-                label: 'About You (English)',
-                controller: _bioEn,
-                icon: Icons.info,
-                maxLines: 3,
-              ),
-
-              const SizedBox(height: 24),
-
-              // === أسعار وأوقات المواعيد ===
-              _buildSectionTitle('⏱️ مدة الموعد والسعر / Duration & Price'),
-              const SizedBox(height: 16),
-
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      const Text('نظام مجمع (Grouped)',
-                          style: TextStyle(fontSize: 12)),
-                      Radio<String>(
-                        value: 'Grouped',
-                        groupValue: _bookingSystemType,
-                        onChanged: (value) =>
-                            setState(() => _bookingSystemType = value!),
+              Expanded(
+                child: individual
+                    ? AppTextField(
+                        controller: _sessionDurationController,
+                        label: 'مدة الجلسة (دقيقة)',
+                        icon: Icons.timer_outlined,
+                        keyboardType: TextInputType.number,
+                      )
+                    : AppTextField(
+                        controller: _maxPatientsPerSlotController,
+                        label: 'أقصى عدد في الساعة',
+                        icon: Icons.people_outline_rounded,
+                        keyboardType: TextInputType.number,
                       ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      const Text('نظام فردي (Individual)',
-                          style: TextStyle(fontSize: 12)),
-                      Radio<String>(
-                        value: 'Individual',
-                        groupValue: _bookingSystemType,
-                        onChanged: (value) =>
-                            setState(() => _bookingSystemType = value!),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      if (_bookingSystemType == 'Individual')
-                        Expanded(
-                          child: _buildTextField(
-                            label: 'المدة (دقيقة)',
-                            controller: _sessionDurationController,
-                            icon: Icons.schedule,
-                            keyboardType: TextInputType.number,
-                          ),
-                        )
-                      else
-                        Expanded(
-                          child: _buildTextField(
-                            label: 'أقصى عدد للحجز',
-                            controller: _maxPatientsPerSlotController,
-                            icon: Icons.people,
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          label: 'السعر (جنيه)',
-                          controller: _sessionPriceController,
-                          icon: Icons.attach_money,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
               ),
-
-              const SizedBox(height: 24),
-
-              // === ساعات العمل ===
-              _buildSectionTitle('🕐 ساعات العمل / Working Hours'),
-              const SizedBox(height: 16),
-
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildTimePickerButton(
-                          'وقت النهاية / End',
-                          _endTime,
-                          (time) => setState(() => _endTime = time),
-                        ),
-                        _buildTimePickerButton(
-                          'وقت البداية / Start',
-                          _startTime,
-                          (time) => setState(() => _startTime = time),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue),
-                        ),
-                        child: Text(
-                          '${_startTime.format(context)} - ${_endTime.format(context)}',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: AppTextField(
+                  controller: _sessionPriceController,
+                  label: 'سعر الكشف (جنيه)',
+                  icon: Icons.payments_outlined,
+                  keyboardType: TextInputType.number,
                 ),
               ),
-
-              const SizedBox(height: 24),
-
-              // === أيام العمل ===
-              _buildSectionTitle('📅 أيام العمل / Working Days'),
-              const SizedBox(height: 16),
-
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: _workingDays.entries.map((entry) {
-                    return Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              entry.key,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Switch(
-                              value: entry.value,
-                              onChanged: (value) {
-                                setState(() {
-                                  _workingDays[entry.key] = value;
-                                });
-                              },
-                              activeColor: Colors.green,
-                            ),
-                          ],
-                        ),
-                        const Divider(),
-                      ],
-                    );
-                  }).toList(),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // === زر الحفظ ===
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton.icon(
-                  onPressed: _saveSetting,
-                  icon: const Icon(Icons.save),
-                  label: const Text(
-                    'حفظ الإعدادات / Save Settings',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // === زر عرض المعاينة ===
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: OutlinedButton.icon(
-                  onPressed: _showPreview,
-                  icon: const Icon(Icons.visibility),
-                  label: const Text(
-                    'معاينة / Preview',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 40),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.blue.shade100,
-        borderRadius: BorderRadius.circular(8),
-        border: Border(
-          right: BorderSide(color: Colors.blue.shade700, width: 4),
-        ),
-      ),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Colors.blue.shade900,
-        ),
-      ),
-    );
-  }
+  Widget _buildHoursCard() {
+    final tokens = context.tokens;
 
-  Widget _buildTextField({
-    required String label,
-    required TextEditingController controller,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-    int maxLines = 1,
-  }) {
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blue),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.blue, width: 2),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimePickerButton(
-    String label,
-    TimeOfDay time,
-    Function(TimeOfDay) onTimeSelected,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
-        ),
-        const SizedBox(height: 4),
-        OutlinedButton(
-          onPressed: () async {
-            final pickedTime = await showTimePicker(
-              context: context,
-              initialTime: time,
-            );
-            if (pickedTime != null) {
-              onTimeSelected(pickedTime);
-            }
-          },
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+    return AppCard(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _TimeButton(
+                  label: 'من',
+                  time: _startTime,
+                  onPicked: (t) => setState(() => _startTime = t),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                child: Icon(
+                  Icons.arrow_back_rounded,
+                  color: tokens.textFaint,
+                  size: 18,
+                ),
+              ),
+              Expanded(
+                child: _TimeButton(
+                  label: 'إلى',
+                  time: _endTime,
+                  onPicked: (t) => setState(() => _endTime = t),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            decoration: BoxDecoration(
+              color: context.colors.primary.withValues(alpha: 0.08),
+              borderRadius: AppRadius.rMd,
+            ),
+            child: Text(
+              '${_startTime.format(context)}  —  ${_endTime.format(context)}',
+              textAlign: TextAlign.center,
+              textDirection: TextDirection.ltr,
+              style: context.texts.titleMedium
+                  ?.copyWith(color: context.colors.primary),
             ),
           ),
-          child: Text(
-            time.format(context),
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDaysCard() {
+    final tokens = context.tokens;
+    final entries = _workingDays.entries.toList();
+
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Column(
+        children: [
+          for (var i = 0; i < entries.length; i++) ...[
+            if (i > 0)
+              Divider(
+                color: tokens.border,
+                height: 1,
+                indent: AppSpacing.lg,
+                endIndent: AppSpacing.lg,
+              ),
+            SwitchListTile(
+              value: entries[i].value,
+              onChanged: (value) =>
+                  setState(() => _workingDays[entries[i].key] = value),
+              title: Text(
+                _dayLabels[entries[i].key] ?? entries[i].key,
+                style: context.texts.bodyLarge?.copyWith(
+                  color:
+                      entries[i].value ? tokens.textStrong : tokens.textMuted,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        ],
+      ),
     );
   }
 
   void _saveSetting() async {
-    setState(() => _isLoading = true);
+    setState(() => _isSaving = true);
     final auth = Provider.of<FirebaseAuthService>(context, listen: false);
 
     // Format working hours properly from TimeOfDay objects
-    String _formatTimeExplicit(TimeOfDay time) {
+    String formatTimeExplicit(TimeOfDay time) {
       final h =
           time.hour == 0 ? 12 : (time.hour > 12 ? time.hour - 12 : time.hour);
       final p = time.hour < 12 ? 'AM' : 'PM';
-      return '${h.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} $p';
+      final hh = h.toString().padLeft(2, '0');
+      final mm = time.minute.toString().padLeft(2, '0');
+      return '$hh:$mm $p';
     }
 
     String formattedWorkingHours =
-        '${_formatTimeExplicit(_startTime)} - ${_formatTimeExplicit(_endTime)}';
+        '${formatTimeExplicit(_startTime)} - ${formatTimeExplicit(_endTime)}';
 
     int duration = int.tryParse(_sessionDurationController.text) ?? 30;
     int maxPatientsPerSlot =
@@ -623,12 +510,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     if ((_bookingSystemType == 'Individual' && duration <= 0) ||
         (_bookingSystemType == 'Grouped' && maxPatientsPerSlot <= 0) ||
         price <= 0) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('يرجى التأكد من أن السعر ومدة الجلسة أكبر من صفر'),
-          backgroundColor: Colors.red,
-        ),
+      setState(() => _isSaving = false);
+      AppSnack.error(
+        context,
+        'يرجى التأكد من أن السعر ومدة الجلسة أكبر من صفر',
       );
       return;
     }
@@ -655,118 +540,119 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           'workingDays': _workingDays,
         }, SetOptions(merge: true));
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text(
-                    '✅ تم الحفظ بنجاح / Saved Successfully',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
+        if (mounted) AppSnack.success(context, 'تم حفظ الإعدادات بنجاح');
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error saving settings: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        if (mounted) AppSnack.error(context, 'تعذّر حفظ الإعدادات');
       }
     }
 
     if (mounted) {
-      setState(() => _isLoading = false);
+      setState(() => _isSaving = false);
     }
   }
 
+  /// معاينة تعرض بيانات العيادة كما ستظهر للمريض في نتائج البحث.
   void _showPreview() {
-    showDialog(
+    showModalBottomSheet<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Text('👁️ معاينة / Preview'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _previewRow('🏥 العيادة', _clinicNameAr.text, _clinicNameEn.text),
-              _previewRow('📍 الموقع', _clinicLocationController.text,
-                  _clinicLocationController.text),
-              _previewRow('🔬 التخصص', _selectedSpecialtyAr ?? '',
-                  _selectedSpecialtyEn ?? ''),
-              _previewRow(
-                  '📞 الهاتف', _phoneController.text, _phoneController.text),
-              _previewRow(
-                  _bookingSystemType == 'Grouped' ? '⏳ نظام الحجز' : '⏱️ المدة',
-                  _bookingSystemType == 'Grouped'
-                      ? '${_maxPatientsPerSlotController.text} مرضى كحد أقصى'
-                      : '${_sessionDurationController.text} دقيقة',
-                  _bookingSystemType == 'Grouped'
-                      ? '${_maxPatientsPerSlotController.text} patients/slot'
-                      : '${_sessionDurationController.text} min'),
-              _previewRow('السعر', '${_sessionPriceController.text} جنيه',
-                  '\$${_sessionPriceController.text}'),
-              _previewRow(
-                '🕐 الساعات',
-                '${_startTime.format(context)} - ${_endTime.format(context)}',
-                '${_startTime.format(context)} - ${_endTime.format(context)}',
-              ),
-            ],
+      isScrollControlled: true,
+      builder: (ctx) {
+        final tokens = ctx.tokens;
+        final grouped = _bookingSystemType == 'Grouped';
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            0,
+            AppSpacing.xl,
+            AppSpacing.xxl,
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إغلاق / Close'),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'هكذا يراك المريض',
+                  textAlign: TextAlign.center,
+                  style: ctx.texts.titleLarge,
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                AppCard(
+                  child: Column(
+                    children: [
+                      InfoRow(
+                        label: 'العيادة',
+                        value: _orDash(_clinicNameAr.text),
+                        icon: Icons.local_hospital_outlined,
+                      ),
+                      InfoRow(
+                        label: 'التخصص',
+                        value: _orDash(_selectedSpecialtyAr),
+                        icon: Icons.medical_services_outlined,
+                      ),
+                      InfoRow(
+                        label: 'الموقع',
+                        value: _orDash(_clinicLocationController.text),
+                        icon: Icons.location_on_outlined,
+                      ),
+                      InfoRow(
+                        label: 'الهاتف',
+                        value: _orDash(_phoneController.text),
+                        icon: Icons.phone_outlined,
+                      ),
+                      InfoRow(
+                        label: grouped ? 'نظام الحجز' : 'مدة الجلسة',
+                        value: grouped
+                            ? 'مجمّع — حتى '
+                                '${_maxPatientsPerSlotController.text} مرضى'
+                            : '${_sessionDurationController.text} دقيقة',
+                        icon: grouped
+                            ? Icons.groups_rounded
+                            : Icons.timer_outlined,
+                      ),
+                      InfoRow(
+                        label: 'سعر الكشف',
+                        value: '${_orDash(_sessionPriceController.text)} جنيه',
+                        icon: Icons.payments_outlined,
+                        valueColor: tokens.success,
+                      ),
+                      InfoRow(
+                        label: 'ساعات العمل',
+                        value: '${_startTime.format(ctx)} - '
+                            '${_endTime.format(ctx)}',
+                        icon: Icons.schedule_rounded,
+                      ),
+                      InfoRow(
+                        label: 'أيام العمل',
+                        value: _activeDaysText(),
+                        icon: Icons.calendar_month_outlined,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('إغلاق'),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _previewRow(String icon, String arText, String enText) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              enText,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-              textAlign: TextAlign.left,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 3,
-            child: Text(
-              arText,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(icon),
-        ],
-      ),
-    );
+  String _orDash(String? value) =>
+      (value == null || value.trim().isEmpty) ? 'لم يُحدَّد' : value.trim();
+
+  String _activeDaysText() {
+    final active = _workingDays.entries
+        .where((e) => e.value)
+        .map((e) => _dayLabels[e.key] ?? e.key)
+        .toList();
+    return active.isEmpty ? 'لم تُحدَّد أيام عمل' : active.join('، ');
   }
 
   @override
@@ -777,8 +663,132 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     _bioAr.dispose();
     _bioEn.dispose();
     _sessionDurationController.dispose();
+    _maxPatientsPerSlotController.dispose();
     _sessionPriceController.dispose();
     _clinicLocationController.dispose();
     super.dispose();
+  }
+}
+
+// =============================================================================
+// عناصر مساعدة
+// =============================================================================
+
+class _SystemOption extends StatelessWidget {
+  const _SystemOption({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final primary = context.colors.primary;
+
+    return Material(
+      color: selected ? primary.withValues(alpha: 0.07) : tokens.surfaceSunken,
+      borderRadius: AppRadius.rMd,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.rMd,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.rMd,
+            border: Border.all(
+              color: selected ? primary : tokens.border,
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 22,
+                color: selected ? primary : tokens.textMuted,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: context.texts.titleSmall?.copyWith(
+                        color: selected ? primary : tokens.textStrong,
+                      ),
+                    ),
+                    Text(
+                      description,
+                      style: context.texts.bodySmall
+                          ?.copyWith(color: tokens.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: selected ? primary : tokens.borderStrong,
+                size: 21,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimeButton extends StatelessWidget {
+  const _TimeButton({
+    required this.label,
+    required this.time,
+    required this.onPicked,
+  });
+
+  final String label;
+  final TimeOfDay time;
+  final ValueChanged<TimeOfDay> onPicked;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          label,
+          style: context.texts.labelSmall?.copyWith(color: tokens.textMuted),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        OutlinedButton(
+          onPressed: () async {
+            final picked = await showTimePicker(
+              context: context,
+              initialTime: time,
+              helpText: 'اختر $label',
+            );
+            if (picked != null) onPicked(picked);
+          },
+          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+          child: Text(
+            time.format(context),
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
   }
 }

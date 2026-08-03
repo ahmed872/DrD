@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/theme/app_theme.dart';
 import '../providers/firebase_auth_service.dart';
+import '../widgets/app_widgets.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -17,6 +20,8 @@ class _LoginScreenState extends State<LoginScreen> {
   // false = النسخة التي سيتم نشرها للمرضى فقط
   static const bool isDoctorRegistrationEnabled = true;
 
+  static const String _supportPhone = '+201093033884';
+
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
@@ -25,339 +30,279 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLogin = true;
   bool _showPassword = false;
   DateTime? _selectedBirthDate;
-  String _selectedGender = 'male'; // 'male' أو 'female'
+  final String _selectedGender = 'male'; // 'male' أو 'female'
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 40),
-              // Logo وعنوان
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                  image: const DecorationImage(
-                    image: AssetImage('assets/images/logo.png'),
-                    fit: BoxFit.cover,
+      body: DecoratedBox(
+        // تدرّج العلامة يملأ أعلى الشاشة، والبطاقة البيضاء تطفو فوقه. هذا هو
+        // الفارق بين «نموذج على خلفية رمادية» وواجهة لها هوية.
+        decoration: BoxDecoration(gradient: tokens.brandGradient),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxWidth: AppBreakpoints.form),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.xxl,
                   ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'نظام حجز المواعيد',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade900,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _isLogin ? 'تسجيل دخول' : 'إنشاء حساب جديد',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-              ),
-              const SizedBox(height: 40),
-
-              // رقم الجوال
-              _buildTextField(
-                controller: _phoneController,
-                label: 'رقم الجوال',
-                hint: '+20 1xx xxx xxxx',
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 16),
-
-              // كلمة المرور
-              _buildPasswordField(
-                controller: _passwordController,
-                label: 'كلمة المرور',
-              ),
-              const SizedBox(height: 16),
-
-              // زر نسيت كلمة المرور (في حالة الدخول فقط)
-              if (_isLogin)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        PageRouteBuilder(
-                          pageBuilder:
-                              (context, animation, secondaryAnimation) =>
-                                  const ForgotPasswordScreen(),
-                          transitionsBuilder:
-                              (context, animation, secondaryAnimation, child) {
-                            const begin = Offset(1.0, 0.0);
-                            const end = Offset.zero;
-                            const curve = Curves.easeInOutCubic;
-                            var tween = Tween(begin: begin, end: end)
-                                .chain(CurveTween(curve: curve));
-                            return SlideTransition(
-                              position: animation.drive(tween),
-                              child: child,
-                            );
-                          },
-                          transitionDuration: const Duration(milliseconds: 300),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'نسيت كلمة المرور؟',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF0097A7),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 16),
-
-              // الاسم (للتسجيل فقط)
-              if (!_isLogin) ...[
-                _buildTextField(
-                  controller: _nameController,
-                  label: 'الاسم الكامل',
-                  icon: Icons.person_outline,
-                ),
-                const SizedBox(height: 16),
-
-                // البريد الإلكتروني
-                _buildTextField(
-                  controller: _emailController,
-                  label: 'البريد الإلكتروني',
-                  hint: 'example@email.com',
-                  icon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 16),
-
-                // تاريخ الميلاد
-                _buildDateField(),
-                const SizedBox(height: 16),
-
-                // اختيار الدور (في نسخة الأدمن فقط)
-                if (isDoctorRegistrationEnabled) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Column(
                     children: [
-                      Radio<String>(
-                        value: 'patient',
-                        groupValue: _role,
-                        activeColor: const Color(0xFF0097A7),
-                        onChanged: (value) {
-                          setState(() {
-                            _role = value!;
-                          });
-                        },
-                      ),
-                      const Text('مريض'),
-                      const SizedBox(width: 16),
-                      Radio<String>(
-                        value: 'doctor',
-                        groupValue: _role,
-                        activeColor: const Color(0xFF0097A7),
-                        onChanged: (value) {
-                          setState(() {
-                            _role = value!;
-                          });
-                        },
-                      ),
-                      const Text('طبيب'),
+                      _buildBrand(),
+                      const SizedBox(height: AppSpacing.xxl),
+                      _buildFormCard(),
+                      const SizedBox(height: AppSpacing.xl),
+                      _buildSupportCard(),
+                      const SizedBox(height: AppSpacing.xl),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                ],
-
-                // معلومة عن الدعم (زر WhatsApp)
-                InkWell(
-                  onTap: () {
-                    _openWhatsApp('+201093033884');
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: const Color(0xFF0097A7).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: const Color(0xFF0097A7),
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'للدعم والاستفسارات',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: const Color(0xFF0097A7),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Text(
-                                    'اتصل بنا عبر واتس: ',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  Text(
-                                    '+20 109 303 3884',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF0097A7),
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          Icons.arrow_forward_ios,
-                          color: const Color(0xFF0097A7),
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
-                const SizedBox(height: 16),
-              ],
-
-              // ملاحظة: المرضى فقط يمكنهم التسجيل
-              // الأطباء يدخلون برقم وكلمة مرور موجودة بالفعل
-
-              // زر التسجيل/الدخول
-              Consumer<FirebaseAuthService>(
-                builder: (context, auth, _) {
-                  return SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: auth.isLoading ? null : _handleAuth,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFF2E7D32), // أخضر احترافي
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: auth.isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              _isLogin ? 'دخول' : 'تسجيل',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                    ),
-                  );
-                },
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-              // رسالة الخطأ
-              Consumer<FirebaseAuthService>(
-                builder: (context, auth, _) {
-                  if (auth.errorMessage != null) {
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.red.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.error_outline, color: Colors.red),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                auth.errorMessage!,
-                                style: TextStyle(color: Colors.red.shade700),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
+  Widget _buildBrand() {
+    return Column(
+      children: [
+        Container(
+          width: 84,
+          height: 84,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            image: const DecorationImage(
+              image: AssetImage('assets/images/logo.png'),
+              fit: BoxFit.cover,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 22,
+                offset: const Offset(0, 8),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Text(
+          'DrD — حجز مواعيد الأطباء',
+          textAlign: TextAlign.center,
+          style: context.texts.titleLarge?.copyWith(color: Colors.white),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'احجز موعدك في وقت محدد، واستغنِ عن الانتظار',
+          textAlign: TextAlign.center,
+          style: context.texts.bodySmall?.copyWith(
+            color: Colors.white.withValues(alpha: 0.85),
+          ),
+        ),
+      ],
+    );
+  }
 
-              const SizedBox(height: 24),
+  Widget _buildFormCard() {
+    final tokens = context.tokens;
 
-              // التبديل بين Login و Signup
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _isLogin ? 'ليس لديك حساب؟ ' : 'لديك حساب بالفعل؟ ',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _isLogin = !_isLogin;
-                      });
-                      // تنظيف الحقول
-                      _phoneController.clear();
-                      _passwordController.clear();
-                      _nameController.clear();
-                    },
-                    child: Text(
-                      _isLogin ? 'سجل الآن' : 'دخول',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0097A7),
-                      ),
-                    ),
-                  ),
-                ],
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: tokens.surfaceRaised,
+        borderRadius: AppRadius.rXl,
+        boxShadow: tokens.shadowLg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // مبدّل الدخول/التسجيل في أعلى البطاقة: الحالة الحالية صارت ظاهرة
+          // بدل رابط نصّي صغير في الأسفل لم يكن أحد ينتبه له.
+          AppSegmented(
+            labels: const ['تسجيل دخول', 'حساب جديد'],
+            selectedIndex: _isLogin ? 0 : 1,
+            onChanged: (i) {
+              setState(() => _isLogin = i == 0);
+              _phoneController.clear();
+              _passwordController.clear();
+              _nameController.clear();
+              _emailController.clear();
+            },
+          ),
+          const SizedBox(height: AppSpacing.xl),
+
+          AppTextField(
+            controller: _phoneController,
+            label: 'رقم الجوال',
+            hint: '01XXXXXXXXX',
+            icon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          AppTextField(
+            controller: _passwordController,
+            label: 'كلمة المرور',
+            hint: '6 أحرف على الأقل',
+            icon: Icons.lock_outline_rounded,
+            obscureText: !_showPassword,
+            suffix: IconButton(
+              icon: Icon(
+                _showPassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                size: 20,
+              ),
+              onPressed: () => setState(() => _showPassword = !_showPassword),
+              tooltip:
+                  _showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
+            ),
+          ),
+
+          if (_isLogin)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                onPressed: _openForgotPassword,
+                child: const Text('نسيت كلمة المرور؟'),
+              ),
+            ),
+
+          if (!_isLogin) ...[
+            const SizedBox(height: AppSpacing.lg),
+            AppTextField(
+              controller: _nameController,
+              label: 'الاسم الكامل',
+              icon: Icons.person_outline_rounded,
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            AppTextField(
+              controller: _emailController,
+              label: 'البريد الإلكتروني',
+              hint: 'example@email.com',
+              icon: Icons.mail_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            _buildDateField(),
+            if (isDoctorRegistrationEnabled) ...[
+              const SizedBox(height: AppSpacing.lg),
+              _buildRolePicker(),
+            ],
+          ],
+
+          const SizedBox(height: AppSpacing.xl),
+
+          Consumer<FirebaseAuthService>(
+            builder: (context, auth, _) {
+              return FilledButton(
+                onPressed: auth.isLoading ? null : _handleAuth,
+                child: auth.isLoading
+                    ? const SizedBox(
+                        height: 21,
+                        width: 21,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          valueColor: AlwaysStoppedAnimation(Colors.white),
+                        ),
+                      )
+                    : Text(_isLogin ? 'دخول' : 'إنشاء الحساب'),
+              );
+            },
+          ),
+
+          Consumer<FirebaseAuthService>(
+            builder: (context, auth, _) {
+              if (auth.errorMessage == null) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.lg),
+                child: NoticeBox.danger(message: auth.errorMessage!),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRolePicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('نوع الحساب', style: context.texts.labelMedium),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            Expanded(
+              child: _roleTile(
+                value: 'patient',
+                label: 'مريض',
+                icon: Icons.personal_injury_outlined,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: _roleTile(
+                value: 'doctor',
+                label: 'طبيب',
+                icon: Icons.medical_services_outlined,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _roleTile({
+    required String value,
+    required String label,
+    required IconData icon,
+  }) {
+    final tokens = context.tokens;
+    final selected = _role == value;
+    final primary = context.colors.primary;
+
+    return Material(
+      color: selected ? primary.withValues(alpha: 0.08) : tokens.surfaceSunken,
+      borderRadius: AppRadius.rMd,
+      child: InkWell(
+        onTap: () => setState(() => _role = value),
+        borderRadius: AppRadius.rMd,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.rMd,
+            border: Border.all(
+              color: selected ? primary : tokens.border,
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                size: 24,
+                color: selected ? primary : tokens.textMuted,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                label,
+                style: context.texts.labelMedium?.copyWith(
+                  color: selected ? primary : tokens.textBody,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -366,115 +311,96 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-    String? hint,
-  }) {
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(
-          icon,
-          color: const Color(0xFF0097A7),
+  Widget _buildDateField() {
+    final tokens = context.tokens;
+    final hasDate = _selectedBirthDate != null;
+
+    return InkWell(
+      onTap: _pickBirthDate,
+      borderRadius: AppRadius.rMd,
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'تاريخ الميلاد',
+          prefixIcon: Icon(Icons.cake_outlined, size: 20),
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!, width: 1.5),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Color(0xFF0097A7),
-            width: 2,
+        child: Text(
+          hasDate
+              ? '${_selectedBirthDate!.day}/${_selectedBirthDate!.month}/'
+                  '${_selectedBirthDate!.year}'
+              : 'اختر التاريخ',
+          style: context.texts.bodyLarge?.copyWith(
+            color: hasDate ? tokens.textStrong : tokens.textFaint,
           ),
         ),
-        filled: true,
-        fillColor: Colors.white,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-        labelStyle: TextStyle(
-          color: Colors.grey[700],
-          fontWeight: FontWeight.w500,
-          backgroundColor: Colors.white,
-        ),
-        hintStyle: TextStyle(
-          color: Colors.grey[400],
-          fontSize: 13,
-        ),
-      ),
-      style: TextStyle(
-        fontSize: 15,
-        color: Colors.grey[800],
       ),
     );
   }
 
-  Widget _buildPasswordField({
-    required TextEditingController controller,
-    required String label,
-  }) {
-    return TextField(
-      controller: controller,
-      obscureText: !_showPassword,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(
-          Icons.lock_outline,
-          color: const Color(0xFF0097A7),
-        ),
-        suffixIcon: IconButton(
-          icon: Icon(
-            _showPassword ? Icons.visibility : Icons.visibility_off,
-            color: Colors.grey[600],
+  Widget _buildSupportCard() {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.14),
+      borderRadius: AppRadius.rLg,
+      child: InkWell(
+        onTap: () => _openWhatsApp(_supportPhone),
+        borderRadius: AppRadius.rLg,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.rLg,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
           ),
-          onPressed: () => setState(() => _showPassword = !_showPassword),
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!, width: 1.5),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Color(0xFF1565C0),
-            width: 2,
+          child: Row(
+            children: [
+              const Icon(Icons.support_agent_rounded,
+                  color: Colors.white, size: 24),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'تحتاج مساعدة؟',
+                      style: context.texts.titleSmall
+                          ?.copyWith(color: Colors.white),
+                    ),
+                    Text(
+                      'كلّمنا على واتساب — $_supportPhone',
+                      style: context.texts.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Colors.white.withValues(alpha: 0.7),
+                size: 15,
+              ),
+            ],
           ),
         ),
-        filled: true,
-        fillColor: Colors.white,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-        labelStyle: TextStyle(
-          color: Colors.grey[700],
-          fontWeight: FontWeight.w500,
-          backgroundColor: Colors.white,
-        ),
-      ),
-      style: TextStyle(
-        fontSize: 15,
-        color: Colors.grey[800],
       ),
     );
+  }
+
+  void _openForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+    );
+  }
+
+  Future<void> _pickBirthDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedBirthDate ?? DateTime(2000),
+      firstDate: DateTime(1930),
+      lastDate: DateTime.now(),
+      locale: const Locale('ar'),
+      helpText: 'اختر تاريخ ميلادك',
+    );
+    if (picked != null) setState(() => _selectedBirthDate = picked);
   }
 
   void _handleAuth() async {
@@ -485,7 +411,8 @@ class _LoginScreenState extends State<LoginScreen> {
     // التحقق من صحة رقم الجوال
     if (!_isValidPhoneNumber(phone)) {
       _showErrorDialog(
-          'رقم الجوال غير صحيح.\nالصيغة الصحيحة: +201XXXXXXXXX أو 01XXXXXXXXX');
+        'رقم الجوال غير صحيح.\nالصيغة الصحيحة: +201XXXXXXXXX أو 01XXXXXXXXX',
+      );
       return;
     }
 
@@ -539,9 +466,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (signupSuccess && mounted) {
         // الذهاب إلى شاشة تفعيل البريد الإلكتروني
-        Navigator.of(context).pushReplacementNamed(
-          '/home',
-        );
+        Navigator.of(context).pushReplacementNamed('/home');
       }
     }
   }
@@ -586,74 +511,27 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showErrorDialog(String message) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تنبيه'),
-        content: Text(message),
+      builder: (ctx) => AlertDialog(
+        icon: Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: ctx.tokens.dangerSoft,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.error_outline_rounded,
+            color: ctx.tokens.danger,
+            size: 26,
+          ),
+        ),
+        title: const Text('تنبيه', textAlign: TextAlign.center),
+        content: Text(message, textAlign: TextAlign.center),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('حسناً'),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildDateField() {
-    return GestureDetector(
-      onTap: () async {
-        final pickedDate = await showDatePicker(
-          context: context,
-          initialDate: DateTime(2000),
-          firstDate: DateTime(1950),
-          lastDate: DateTime.now(),
-        );
-        if (pickedDate != null) {
-          setState(() => _selectedBirthDate = pickedDate);
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey[300]!, width: 1.5),
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.white,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'تاريخ الميلاد',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _selectedBirthDate != null
-                      ? '${_selectedBirthDate!.day}/${_selectedBirthDate!.month}/${_selectedBirthDate!.year}'
-                      : 'اختر التاريخ',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: _selectedBirthDate != null
-                        ? Colors.grey[800]
-                        : Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-            Icon(
-              Icons.calendar_today,
-              color: const Color(0xFF0097A7),
-              size: 20,
-            ),
-          ],
-        ),
       ),
     );
   }

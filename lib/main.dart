@@ -142,32 +142,46 @@ class _StartupErrorApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       home: Directionality(
         textDirection: TextDirection.rtl,
-        child: Scaffold(
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off,
-                      size: 64, color: AppColors.primary),
-                  const SizedBox(height: 20),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                    ),
+        child: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxWidth: AppBreakpoints.form),
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.xxl),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 88,
+                        height: 88,
+                        decoration: BoxDecoration(
+                          color: context.colors.primary.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.cloud_off_rounded,
+                          size: 40,
+                          color: context.colors.primary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: context.texts.headlineSmall,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: context.texts.bodyMedium
+                            ?.copyWith(color: context.tokens.textMuted),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 15, height: 1.7),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

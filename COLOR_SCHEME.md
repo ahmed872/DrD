@@ -1,28 +1,132 @@
-# ألوان التطبيق الموحدة
+# نظام التصميم — DrD
 
-## ألوان رئيسية:
+المرجع الوحيد لكل قرار بصري في التطبيق. التعريفات كلها في
+`lib/core/theme/app_theme.dart`، والعناصر الجاهزة في
+`lib/presentation/widgets/app_widgets.dart`.
 
-- **Primary Color (زيارة):** `#0097A7` - `const Color(0xFF0097A7)`
-- **Success Color (أخضر):** `#2E7D32` - `const Color(0xFF2E7D32)`
-- **Warning Color (برتقالي):** `#F57F17` - `const Color(0xFFF57F17)`
-- **Accent Color (بنفسجي):** `#6A1B9A` - `const Color(0xFF6A1B9A)`
-- **Error Color (أحمر):** `#C62828` - `const Color(0xFFC62828)`
+## القاعدة الأولى
 
-## الاستخدام:
+**لا يُكتب لون خام داخل أي شاشة.** لا `Colors.blue`، ولا `Color(0xFF...)`.
 
-- AppBars: Primary Color (#0097A7)
-- زر تسجيل الدخول: Success Color (#2E7D32)
-- زر الدعم والواتساب: Success Color (#2E7D32)
-- أيقونات: Primary Color (#0097A7)
-- Input Icons: Primary Color (#0097A7)
-- Borders/Highlights: Primary Color (#0097A7)
+```dart
+context.colors.primary   // من ColorScheme
+context.tokens.success   // من AppTokens — يتبدّل مع الوضع الليلي
+context.texts.titleSmall // من TextTheme
+```
 
-## الملفات المحدثة:
+كان التطبيق يحتوي على أكثر من 470 استدعاءً مباشراً لـ `Colors.*` بلونين
+أساسيين متضاربين (أزرق `#1565C0` وفيروزي `#0097A7`) وأخضر ثالث للأزرار.
+النتيجة كانت واجهة غير متّسقة ووضع ليلي مكسور بالكامل: نصوص رمادية على
+خلفيات بيضاء مثبَّتة في الكود.
 
-- ✅ login_screen.dart
-- ✅ forgot_password_screen.dart
-- ✅ splash_screen.dart
-- ✅ support_screen.dart
-- ✅ home_screen.dart
-- ✅ patient_settings_screen.dart
-- ⏳ باقي الشاشات (doctor*\*, patient*\*)
+## الألوان
+
+### العلامة — فيروزي طبي
+
+سُلّم كامل من `brand50` إلى `brand900`. اللون الأساسي `brand600` = `#0A8C9B`.
+
+| الاستخدام | الرمز |
+|---|---|
+| الأزرار والروابط والأيقونات النشطة | `colorScheme.primary` |
+| الرؤوس المتدرّجة | `tokens.brandGradient` |
+| خلفية العنصر المختار | `primary.withValues(alpha: 0.08)` |
+
+### الحالات
+
+| المعنى | الرمز | فاتح |
+|---|---|---|
+| نجاح / مكتمل | `tokens.success` | `#0E9D6E` |
+| تحذير / قيد الانتظار | `tokens.warning` | `#C97706` |
+| خطأ / ملغي | `tokens.danger` | `#D03A3A` |
+| معلومة / مجدول | `tokens.info` | `#2E6FE0` |
+| نجوم التقييم فقط | `tokens.gold` | `#F0AF1B` |
+| زر واتساب فقط | `tokens.whatsapp` | `#25D366` |
+
+لكل لون حالة نسخة هادئة للخلفيات: `successSoft`، `warningSoft`، …
+
+لحالات المواعيد تحديداً لا تكتب جدول ألوان جديداً — استخدم:
+
+```dart
+tokens.statusColor('Completed')  // → success
+tokens.statusSoft('Cancelled')   // → dangerSoft
+```
+
+### النصوص والأسطح
+
+| الرمز | الاستخدام |
+|---|---|
+| `tokens.textStrong` | العناوين والأرقام البارزة |
+| `tokens.textBody` | نص الفقرات |
+| `tokens.textMuted` | التسميات والشروح الثانوية |
+| `tokens.textFaint` | المعطَّل وحالات الفراغ |
+| `tokens.surfaceRaised` | خلفية البطاقات |
+| `tokens.surfaceSunken` | مناطق الإدخال والشرائح غير المختارة |
+| `tokens.border` / `borderStrong` | الحدود |
+
+## الخط
+
+**Cairo**، مُضمَّن مع التطبيق في `assets/fonts/` بثلاثة أوزان (400/600/700،
+‏265 ك.ب مجتمعة).
+
+التضمين مقصود: بدونه ينزّل CanvasKit خط احتياط عربياً من `gstatic.com` وقت
+التشغيل، فيختلف شكل النص بين جهاز وآخر ويختفي تماماً خلف الشبكات التي تحجب
+gstatic — وهي نفس الحالة التي بُني لها `--no-web-resources-cdn`.
+
+في `_textTheme` قراران مهمّان للعربية:
+
+- **`letterSpacing: 0`** — أي تباعد حروف يفصل الحروف العربية المتّصلة بصرياً
+  فيبدو النص مكسوراً.
+- **`height` أعلى من الافتراضي** (1.45–1.6) — العربية بها علامات فوق وتحت
+  السطر تتلامس عند التقارب.
+
+شاشة الإقلاع في `web/index.html` تشير إلى نفس ملفات الخط عبر `@font-face`،
+وإلا ظهر عنوانها بخط النظام ثم قفز إلى Cairo فجأة عند أول إطار.
+
+## المسافات والحواف
+
+استخدم `AppSpacing` و`AppRadius` بدل أرقام حرّة. الأرقام العشوائية (13، 18،
+36) كانت السبب الأول في شعور الواجهة بعدم الترتيب.
+
+```
+AppSpacing: xs 4 · sm 8 · md 12 · lg 16 · xl 20 · xxl 28 · xxxl 40
+AppRadius:  sm 10 · md 14 · lg 18 · xl 24 · pill
+```
+
+## عرض المحتوى على الويب
+
+التطبيق يُفتح من المتصفح على سطح المكتب. `AppScaffold` يحصر الجسم في
+`AppBreakpoints`:
+
+| الحدّ | العرض | الاستخدام |
+|---|---|---|
+| `form` | 480 | نماذج وحقول إدخال |
+| `content` | 720 | قوائم ومحتوى قرائي (الافتراضي) |
+| `wide` | 1080 | شبكات متعددة الأعمدة |
+
+بدون هذا الحدّ يمتد النموذج على 1900 بكسل فتصبح حقول الإدخال أشرطة عرضها متر.
+
+## العناصر الجاهزة
+
+| العنصر | الغرض |
+|---|---|
+| `AppScaffold` | رأس متدرّج + جسم محصور العرض + سحب للتحديث |
+| `AppCard` | بطاقة موحّدة، مع `accent` لشريط حالة و`selected` للاختيار |
+| `SectionTitle` | عنوان قسم بأيقونة وشرح |
+| `StatusPill` | شارة حالة بيضاوية |
+| `NoticeBox` | تنبيه: `.info` `.warning` `.danger` `.success` |
+| `EmptyState` | حالة فراغ مع إجراء يخرج المستخدم منها |
+| `AppChip` / `AppSegmented` | شرائح اختيار ومبدّل تبويبات |
+| `AppTextField` / `AppSearchField` | حقول إدخال وبحث |
+| `AppAvatar` / `StatTile` / `RatingStars` | صورة رمزية، بطاقة رقم، نجوم |
+| `AppSnack.success/error/info` | رسائل الحالة أسفل الشاشة |
+| `showConfirmDialog` | نافذة تأكيد موحّدة |
+
+## عند إضافة عنصر جديد
+
+1. اقرأ ألوانك من `context.tokens` أو `context.colors` — لا شيء غير ذلك.
+2. جرّبه في الوضعين: شغّل التطبيق وبدّل الوضع الليلي في إعدادات النظام.
+3. لو كان عنصر تخطيط، أضف اختباراً في `test/app_widgets_test.dart`.
+
+النقطة الأخيرة ليست شكلية: خطآن في التخطيط (`AppCard.accent` و
+`AppHeader.preferredSize`) كانا يُنتجان **شاشة فارغة تماماً بلا رسالة خطأ**،
+ولا يكشفهما `flutter analyze` لأن الكسر يحدث وقت التخطيط لا وقت الترجمة.

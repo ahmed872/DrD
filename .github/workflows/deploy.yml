@@ -1,0 +1,64 @@
+# نشر نسخة الويب على Firebase Hosting.
+#
+# لا يعمل حتى تُضاف الأسرار الثلاثة في:
+#   Settings → Secrets and variables → Actions
+#
+#   FIREBASE_SERVICE_ACCOUNT  — محتوى ملف JSON لحساب خدمة له دور
+#                               «Firebase Hosting Admin» على مشروع drd-clinic
+#   FIREBASE_WEB_API_KEY      — نفس القيمة المستخدمة في بناء CI
+#   FIREBASE_WEB_APP_ID       — نفس القيمة المستخدمة في بناء CI
+#
+# التشغيل يدوي عمداً (`workflow_dispatch`) بالإضافة إلى الدفع على `main`:
+# النشر التلقائي من كل فرع يعني أن أي تجربة تصل للمستخدمين مباشرة.
+name: نشر على Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hosting
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: بناء ونشر
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: بناء PWA
+        # نفس أمر البناء في ci.yml بالضبط. أي اختلاف بينهما يعني أن ما
+        # اختُبر ليس ما نُشر.
+        run: |
+          flutter build web --release \
+            --no-web-resources-cdn \
+            --dart-define=FIREBASE_WEB_API_KEY=${{ secrets.FIREBASE_WEB_API_KEY }} \
+            --dart-define=FIREBASE_WEB_APP_ID=${{ secrets.FIREBASE_WEB_APP_ID }}
+
+      - name: التحقق قبل النشر
+        # حارس أخير: نشر نسخة بلا إعدادات Firebase يعطي المستخدم شاشة
+        # «الإعدادات غير مضبوطة» بدل التطبيق.
+        run: |
+          set -e
+          test -s build/web/main.dart.js
+          test -f build/web/sw.js
+          test -f build/web/manifest.json
+          test -f build/web/assets/assets/fonts/Cairo-Regular.ttf
+          grep -q "register('sw.js')" build/web/index.html
+          echo "✅ جاهز للنشر"
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: drd-clinic

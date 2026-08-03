@@ -1,7 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'patient_booking_screen.dart';
+
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_logger.dart';
+import '../widgets/app_widgets.dart';
+import 'patient_booking_screen.dart';
 
 class PatientSearchDoctorScreen extends StatefulWidget {
   const PatientSearchDoctorScreen({super.key});
@@ -17,6 +20,12 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
   double _selectedRating = 0;
   RangeValues _priceRange = const RangeValues(100, 500);
   bool _availableNow = false;
+
+  /// الفلاتر المتقدّمة مطويّة افتراضياً.
+  ///
+  /// كانت ثلاث بطاقات فلاتر مفتوحة دائماً تدفع نتائج البحث تحت الطيّة، فيصل
+  /// المستخدم للشاشة ولا يرى طبيباً واحداً قبل أن يمرّر.
+  bool _filtersOpen = false;
 
   final List<String> _specialties = [
     'الكل',
@@ -69,7 +78,6 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
           'available': true,
           'nextSlot': 'متاح الآن',
           'patients': 0,
-          'icon': '👨‍⚕️',
         };
       }).toList();
 
@@ -83,12 +91,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
       AppLogger.info('Error fetching doctors: $e');
       if (mounted) {
         setState(() => _isLoadingDoctors = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('حدث خطأ في تحميل الأطباء'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppSnack.error(context, 'حدث خطأ في تحميل الأطباء');
       }
     }
   }
@@ -99,241 +102,18 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('البحث عن طبيب'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
-      ),
-      body: Column(
-        children: [
-          if (_isLoadingDoctors)
-            const LinearProgressIndicator(
-              minHeight: 2,
-            ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                await _fetchRealDoctors();
-              },
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSearchBar(),
-                      const SizedBox(height: 16),
-                      _buildSpecialtyFilter(),
-                      const SizedBox(height: 16),
-                      _buildAdvancedFilters(),
-                      const SizedBox(height: 16),
-                      _buildResults(),
-                      const SizedBox(height: 32),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return TextField(
-      controller: _searchController,
-      decoration: InputDecoration(
-        hintText: 'ابحث عن اسم الطبيب أو التخصص...',
-        prefixIcon: const Icon(Icons.search),
-        suffixIcon: _searchController.text.isNotEmpty
-            ? IconButton(
-                icon: const Icon(Icons.clear),
-                onPressed: () {
-                  _searchController.clear();
-                  setState(() {});
-                },
-              )
-            : null,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        filled: true,
-        fillColor: Colors.grey[50],
-      ),
-      onChanged: (value) {
-        setState(() {});
-      },
-    );
-  }
-
-  Widget _buildSpecialtyFilter() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'التخصص',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: List.generate(_specialties.length, (index) {
-              final isSelected = _selectedSpecialty == index;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: FilterChip(
-                  label: Text(_specialties[index]),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    setState(() => _selectedSpecialty = index);
-                  },
-                  backgroundColor: Colors.grey[100],
-                  selectedColor: Colors.blue.shade700,
-                  labelStyle: TextStyle(
-                    color: isSelected ? Colors.white : Colors.black87,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAdvancedFilters() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'الفلاتر المتقدمة',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 1,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'الحد الأدنى للتقييم',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Slider(
-                        value: _selectedRating,
-                        onChanged: (value) {
-                          setState(() => _selectedRating = value);
-                        },
-                        min: 0,
-                        max: 5,
-                        divisions: 10,
-                        label: _selectedRating.toStringAsFixed(1),
-                      ),
-                    ),
-                    Text(
-                      _selectedRating == 0
-                          ? 'الكل'
-                          : '${_selectedRating.toStringAsFixed(1)} ⭐',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 1,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'نطاق السعر (جنيه)',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-                const SizedBox(height: 8),
-                RangeSlider(
-                  values: _priceRange,
-                  onChanged: (values) {
-                    setState(() => _priceRange = values);
-                  },
-                  min: 100,
-                  max: 500,
-                  divisions: 8,
-                  labels: RangeLabels(
-                    '${_priceRange.start.toInt()}',
-                    '${_priceRange.end.toInt()}',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 1,
-          child: CheckboxListTile(
-            title: const Text('متاح الآن فقط'),
-            value: _availableNow,
-            onChanged: (value) {
-              setState(() => _availableNow = value ?? false);
-            },
-            activeColor: Colors.blue.shade700,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildResults() {
-    if (_isLoadingDoctors) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(40),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              Text(
-                'جاري تحميل الأطباء...',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    List<Map<String, dynamic>> filteredDoctors = _allDoctors;
+  List<Map<String, dynamic>> get _filteredDoctors {
+    var doctors = _allDoctors;
 
     if (_selectedSpecialty != 0) {
-      filteredDoctors = filteredDoctors
+      doctors = doctors
           .where((d) => d['specialization'] == _specialties[_selectedSpecialty])
           .toList();
     }
 
     if (_searchController.text.isNotEmpty) {
       final searchText = _searchController.text.toLowerCase();
-      filteredDoctors = filteredDoctors
+      doctors = doctors
           .where((d) =>
               (d['name'] as String).toLowerCase().contains(searchText) ||
               (d['clinicNameAr'] as String)
@@ -346,283 +126,428 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
     }
 
     if (_selectedRating > 0) {
-      filteredDoctors =
-          filteredDoctors.where((d) => d['rating'] >= _selectedRating).toList();
+      doctors = doctors.where((d) => d['rating'] >= _selectedRating).toList();
     }
 
-    filteredDoctors = filteredDoctors
+    doctors = doctors
         .where((d) =>
             d['price'] >= _priceRange.start && d['price'] <= _priceRange.end)
         .toList();
 
     if (_availableNow) {
-      filteredDoctors =
-          filteredDoctors.where((d) => d['available'] == true).toList();
+      doctors = doctors.where((d) => d['available'] == true).toList();
     }
 
-    if (filteredDoctors.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            children: [
-              Text(
-                '🔍',
-                style: TextStyle(fontSize: 48, color: Colors.grey[300]),
+    return doctors;
+  }
+
+  /// عدد الفلاتر النشطة — يظهر كشارة على زر الفلاتر المطويّ حتى لا ينسى
+  /// المستخدم أن نتائجه مفلترة.
+  int get _activeFilterCount {
+    var count = 0;
+    if (_selectedRating > 0) count++;
+    if (_priceRange.start != 100 || _priceRange.end != 500) count++;
+    if (_availableNow) count++;
+    return count;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final doctors = _filteredDoctors;
+
+    return AppScaffold(
+      title: 'البحث عن طبيب',
+      subtitle: _isLoadingDoctors ? null : '${doctors.length} نتيجة',
+      onRefresh: _fetchRealDoctors,
+      maxWidth: AppBreakpoints.content,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.xxxl,
+      ),
+      headerBottom: AppSearchField(
+        controller: _searchController,
+        hint: 'اسم الطبيب، العيادة، أو التخصص',
+        onChanged: (_) => setState(() {}),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildSpecialtyRow(),
+          const SizedBox(height: AppSpacing.md),
+          _buildFilterPanel(),
+          const SizedBox(height: AppSpacing.lg),
+          if (_isLoadingDoctors)
+            const AppLoader(message: 'جارٍ تحميل الأطباء…')
+          else if (doctors.isEmpty)
+            EmptyState(
+              icon: Icons.search_off_rounded,
+              title: 'لا توجد نتائج',
+              message: 'جرّب توسيع نطاق السعر أو خفض الحد الأدنى للتقييم.',
+              action: _activeFilterCount == 0
+                  ? null
+                  : OutlinedButton.icon(
+                      onPressed: _resetFilters,
+                      icon: const Icon(Icons.filter_alt_off_outlined),
+                      label: const Text('مسح الفلاتر'),
+                    ),
+            )
+          else
+            for (final doctor in doctors) ...[
+              _DoctorResultCard(
+                doctor: doctor,
+                onBook: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        PatientBookingScreen(initialDoctorId: doctor['id']),
+                  ),
+                ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'لا توجد نتائج تطابق البحث',
-                style: TextStyle(color: Colors.grey[500], fontSize: 16),
-              ),
+              const SizedBox(height: AppSpacing.md),
             ],
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'النتائج (${filteredDoctors.length})',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        const SizedBox(height: 12),
-        ...filteredDoctors.map((doctor) => _buildDoctorCard(doctor)).toList(),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildDoctorCard(Map<String, dynamic> doctor) {
-    String workingDaysText = 'غير محدد';
-    final workingDaysDynamic = doctor['workingDays'];
-    if (workingDaysDynamic is Map) {
-      final activeDays = workingDaysDynamic.entries
-          .where((e) => e.value == true)
-          .map((e) => e.key.split(' ').first)
-          .toList();
-      if (activeDays.isNotEmpty) {
-        workingDaysText = activeDays.join('، ');
-      }
-    } else if (workingDaysDynamic is List && workingDaysDynamic.isNotEmpty) {
-      workingDaysText = workingDaysDynamic.join('، ');
-    }
+  Widget _buildSpecialtyRow() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < _specialties.length; i++) ...[
+            AppChip(
+              label: _specialties[i],
+              selected: _selectedSpecialty == i,
+              onTap: () => setState(() => _selectedSpecialty = i),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+          ],
+        ],
+      ),
+    );
+  }
 
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        doctor['clinicNameAr'],
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        doctor['specialization'],
-                        style: TextStyle(
-                          color: Colors.blue.shade700,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    '👨‍⚕️',
-                    style: TextStyle(fontSize: 28),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Divider(color: Colors.grey[300]),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                ...List.generate(
-                  5,
-                  (i) => Icon(
-                    i < doctor['rating'].toInt()
-                        ? Icons.star
-                        : Icons.star_border,
-                    color: Colors.amber,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${doctor['rating']} (${doctor['reviews']} تقييم)',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              doctor['bio'],
-              style: TextStyle(color: Colors.grey[700], fontSize: 12),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildFilterPanel() {
+    final tokens = context.tokens;
+
+    return AppCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _filtersOpen = !_filtersOpen),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Row(
                 children: [
-                  _buildDetailRow(
-                    '📍',
-                    'الموقع',
-                    doctor['clinicLocation'],
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 19,
+                    color: context.colors.primary,
                   ),
-                  const SizedBox(height: 6),
-                  _buildDetailRow(
-                    '🕐',
-                    'ساعات العمل',
-                    doctor['workingHours'],
-                  ),
-                  const SizedBox(height: 6),
-                  _buildDetailRow(
-                    '📅',
-                    'أيام العمل',
-                    workingDaysText,
-                  ),
-                  const SizedBox(height: 6),
-                  _buildDetailRow(
-                    doctor['bookingSystemType'] == 'Grouped' ? '👥' : '⏱️',
-                    doctor['bookingSystemType'] == 'Grouped'
-                        ? 'نظام الحجز'
-                        : 'مدة الجلسة',
-                    doctor['bookingSystemType'] == 'Grouped'
-                        ? 'أسبقية الحضور (مجمع)'
-                        : '${doctor['sessionDuration']} دقيقة',
+                  const SizedBox(width: AppSpacing.md),
+                  Text('فلاتر متقدمة', style: context.texts.titleSmall),
+                  if (_activeFilterCount > 0) ...[
+                    const SizedBox(width: AppSpacing.sm),
+                    StatusPill(
+                      label: '$_activeFilterCount',
+                      color: context.colors.primary,
+                      compact: true,
+                    ),
+                  ],
+                  const Spacer(),
+                  AnimatedRotation(
+                    turns: _filtersOpen ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: tokens.textMuted,
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _infoChip('💰 ${doctor['price'].toInt()} جنيه', Colors.green),
-                _infoChip('👥 ${doctor['patients']} مريض', Colors.blue),
-                _infoChip(
-                  doctor['available'] ? '✅ متاح الآن' : '⏳ غير متاح',
-                  doctor['available'] ? Colors.green : Colors.orange,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade700,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 200),
+            crossFadeState: _filtersOpen
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.md,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Divider(color: tokens.border, height: AppSpacing.lg),
+                  _filterLabel(
+                    'الحد الأدنى للتقييم',
+                    _selectedRating == 0
+                        ? 'الكل'
+                        : '${_selectedRating.toStringAsFixed(1)} نجوم',
                   ),
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PatientBookingScreen(
-                        initialDoctorId: doctor['id'],
-                      ),
+                  Slider(
+                    value: _selectedRating,
+                    min: 0,
+                    max: 5,
+                    divisions: 10,
+                    label: _selectedRating.toStringAsFixed(1),
+                    onChanged: (value) =>
+                        setState(() => _selectedRating = value),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  _filterLabel(
+                    'نطاق السعر',
+                    '${_priceRange.start.toInt()} – '
+                        '${_priceRange.end.toInt()} جنيه',
+                  ),
+                  RangeSlider(
+                    values: _priceRange,
+                    min: 100,
+                    max: 500,
+                    divisions: 8,
+                    labels: RangeLabels(
+                      '${_priceRange.start.toInt()}',
+                      '${_priceRange.end.toInt()}',
                     ),
-                  );
-                },
-                child: const Text(
-                  'احجز موعداً',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                    onChanged: (values) => setState(() => _priceRange = values),
                   ),
-                ),
+                  const SizedBox(height: AppSpacing.sm),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title:
+                        Text('متاح الآن فقط', style: context.texts.bodyMedium),
+                    value: _availableNow,
+                    onChanged: (value) => setState(() => _availableNow = value),
+                  ),
+                  if (_activeFilterCount > 0)
+                    TextButton.icon(
+                      onPressed: _resetFilters,
+                      icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                      label: const Text('مسح الفلاتر'),
+                    ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildDetailRow(String emoji, String label, String value) {
+  Widget _filterLabel(String label, String value) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
+        Text(label, style: context.texts.labelMedium),
         Text(
-          emoji,
-          style: const TextStyle(fontSize: 16),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+          value,
+          style: context.texts.labelMedium
+              ?.copyWith(color: context.colors.primary),
         ),
       ],
     );
   }
 
-  Widget _infoChip(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        border: Border.all(color: color.withOpacity(0.3)),
-        borderRadius: BorderRadius.circular(6),
+  void _resetFilters() {
+    setState(() {
+      _selectedRating = 0;
+      _priceRange = const RangeValues(100, 500);
+      _availableNow = false;
+    });
+  }
+}
+
+// =============================================================================
+// بطاقة النتيجة
+// =============================================================================
+
+class _DoctorResultCard extends StatelessWidget {
+  const _DoctorResultCard({required this.doctor, required this.onBook});
+
+  final Map<String, dynamic> doctor;
+  final VoidCallback onBook;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final available = doctor['available'] == true;
+    final grouped = doctor['bookingSystemType'] == 'Grouped';
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              AppAvatar(
+                name: doctor['name']?.toString(),
+                icon: Icons.medical_services_rounded,
+                size: 50,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      doctor['clinicNameAr'].toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.titleSmall,
+                    ),
+                    Text(
+                      doctor['specialization'].toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.bodySmall
+                          ?.copyWith(color: context.colors.primary),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    RatingStars(
+                      rating: (doctor['rating'] as num).toDouble(),
+                      reviews: (doctor['reviews'] as num?)?.toInt(),
+                    ),
+                  ],
+                ),
+              ),
+              StatusPill(
+                label: available ? 'متاح' : 'غير متاح',
+                color: available ? tokens.success : tokens.warning,
+                compact: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            doctor['bio'].toString(),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.bodySmall?.copyWith(color: tokens.textMuted),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: tokens.surfaceSunken,
+              borderRadius: AppRadius.rMd,
+            ),
+            child: Column(
+              children: [
+                _MetaRow(
+                  icon: Icons.location_on_outlined,
+                  label: 'الموقع',
+                  value: doctor['clinicLocation'].toString(),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _MetaRow(
+                  icon: Icons.schedule_rounded,
+                  label: 'ساعات العمل',
+                  value: doctor['workingHours'].toString(),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _MetaRow(
+                  icon: Icons.calendar_month_outlined,
+                  label: 'أيام العمل',
+                  value: _workingDaysText(doctor['workingDays']),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _MetaRow(
+                  icon: grouped ? Icons.groups_rounded : Icons.timer_outlined,
+                  label: grouped ? 'نظام الحجز' : 'مدة الجلسة',
+                  value: grouped
+                      ? 'أسبقية الحضور (مجمّع)'
+                      : '${doctor['sessionDuration']} دقيقة',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              Text(
+                '${doctor['price'].toInt()}',
+                style: context.texts.headlineSmall
+                    ?.copyWith(color: tokens.success),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                'جنيه',
+                style:
+                    context.texts.bodySmall?.copyWith(color: tokens.textMuted),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: onBook,
+                icon: const Icon(Icons.event_available_rounded, size: 18),
+                label: const Text('احجز'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 44),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
+    );
+  }
+
+  static String _workingDaysText(dynamic workingDays) {
+    if (workingDays is Map) {
+      final activeDays = workingDays.entries
+          .where((e) => e.value == true)
+          .map((e) => e.key.toString().split(' ').first)
+          .toList();
+      if (activeDays.isNotEmpty) return activeDays.join('، ');
+    } else if (workingDays is List && workingDays.isNotEmpty) {
+      return workingDays.join('، ');
+    }
+    return 'غير محدد';
+  }
+}
+
+class _MetaRow extends StatelessWidget {
+  const _MetaRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: tokens.textMuted),
+        const SizedBox(width: AppSpacing.sm),
+        Text(
+          label,
+          style: context.texts.labelSmall?.copyWith(color: tokens.textMuted),
         ),
-      ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.labelSmall?.copyWith(color: tokens.textBody),
+          ),
+        ),
+      ],
     );
   }
 }

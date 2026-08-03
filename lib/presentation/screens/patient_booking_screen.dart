@@ -1,11 +1,14 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_logger.dart';
 import '../../core/utils/slot_id.dart';
 import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
+import '../widgets/app_widgets.dart';
 
 class PatientBookingScreen extends StatefulWidget {
   final String? initialDoctorId;
@@ -33,7 +36,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
         final data = doc.data();
         return {
           'id': doc.id,
-          'name': data['name'] ?? 'طبيب غير معروف',
+          'name': data['name'] ?? 'طبيب غير معروف',
           'nameEn': data['nameEn'] ?? 'Unknown Doctor',
           'specialization': data['specialization'] ?? 'عام',
           'rating': (data['rating'] ?? 0.0).toDouble(),
@@ -60,11 +63,14 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   }
 
   late TextEditingController _searchController;
-  String _selectedSpecialization = 'جميع التخصصات / All';
+  late TextEditingController _reasonController;
+  String _selectedSpecialization = _allSpecializations;
   String? _selectedDoctorId;
   DateTime? _selectedDate;
   String? _selectedTime;
   String? _consultationReason;
+
+  static const String _allSpecializations = 'الكل';
 
   /// الوقت (`HH:mm`) → عدد الحجوزات القائمة فيه.
   Map<String, int> _bookedSlots = {};
@@ -79,6 +85,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     }
     _fetchRealDoctors();
     _searchController = TextEditingController();
+    _reasonController = TextEditingController();
     _selectedDate = DateTime.now().add(const Duration(days: 1));
   }
 
@@ -122,21 +129,19 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _reasonController.dispose();
     super.dispose();
   }
 
   List<Map<String, dynamic>> _getFilteredDoctors() {
+    final query = _searchController.text.toLowerCase();
     return _allDoctors.where((doctor) {
-      final matchesSearch = doctor['name']
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase()) ||
-          doctor['specialization']
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase());
+      final matchesSearch =
+          doctor['name'].toString().toLowerCase().contains(query) ||
+              doctor['specialization'].toString().toLowerCase().contains(query);
 
-      final matchesSpec = _selectedSpecialization == 'جميع التخصصات / All' ||
-          doctor['specialization']
-              .contains(_selectedSpecialization.split(' / ')[0]);
+      final matchesSpec = _selectedSpecialization == _allSpecializations ||
+          doctor['specialization'].toString().contains(_selectedSpecialization);
 
       return matchesSearch && matchesSpec;
     }).toList();
@@ -235,81 +240,100 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     }
   }
 
+  // ===========================================================================
+  // الواجهة
+  // ===========================================================================
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('احجز موعد'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
+    final selectedDoctor = _selectedDoctorId == null
+        ? null
+        : _allDoctors.cast<Map<String, dynamic>?>().firstWhere(
+              (d) => d?['id'] == _selectedDoctorId,
+              orElse: () => null,
+            );
+
+    return AppScaffold(
+      title: 'حجز موعد',
+      subtitle: 'اختر الطبيب، ثم الوقت المناسب لك',
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.xxxl,
       ),
-      body: _isLoadingDoctors
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _buildSearchSection(),
-                    const SizedBox(height: 24),
-                    _buildDoctorListSection(),
-                    const SizedBox(height: 24),
-                    if (_selectedDoctorId != null) ...[
-                      _buildDateTimeSection(_allDoctors
-                          .firstWhere((d) => d['id'] == _selectedDoctorId)),
-                      const SizedBox(height: 24),
-                      _buildReasonSection(),
-                      const SizedBox(height: 24),
-                      _buildBookButton(),
-                      const SizedBox(height: 32),
-                    ],
-                  ],
+      onRefresh: _fetchRealDoctors,
+      child: _isLoadingDoctors
+          ? const AppLoader(message: 'جارٍ تحميل الأطباء…')
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // خطوات مرقّمة بدل قائمة أقسام متساوية الوزن. المريض يعرف
+                // الآن أين هو في العملية وكم بقي — وهو ما كان غائباً تماماً.
+                _StepHeader(
+                  step: 1,
+                  title: 'اختر الطبيب',
+                  done: _selectedDoctorId != null,
                 ),
-              ),
+                _buildSearchSection(),
+                const SizedBox(height: AppSpacing.lg),
+                _buildDoctorList(),
+                if (selectedDoctor != null) ...[
+                  const SizedBox(height: AppSpacing.xxl),
+                  _StepHeader(
+                    step: 2,
+                    title: 'اختر التاريخ والوقت',
+                    done: _selectedTime != null,
+                  ),
+                  _buildDateTimeSection(selectedDoctor),
+                  const SizedBox(height: AppSpacing.xxl),
+                  _StepHeader(
+                    step: 3,
+                    title: 'سبب الزيارة',
+                    done: (_consultationReason ?? '').trim().isNotEmpty,
+                  ),
+                  _buildReasonSection(),
+                  const SizedBox(height: AppSpacing.xxl),
+                  _buildSummaryAndBook(selectedDoctor),
+                ],
+              ],
             ),
     );
   }
 
   Widget _buildSearchSection() {
+    const specs = [
+      _allSpecializations,
+      'أسنان',
+      'نساء',
+      'جلدية',
+      'عام',
+    ];
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'ابحث عن طبيب / Search Doctor',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        TextField(
+        AppSearchField(
           controller: _searchController,
-          onChanged: (value) => setState(() {}),
-          decoration: InputDecoration(
-            hintText: 'اسم الطبيب أو التخصص / Doctor name or specialty',
-            prefixIcon: const Icon(Icons.search),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
+          hint: 'ابحث باسم الطبيب أو التخصص',
+          onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.md),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          reverse: true,
           child: Row(
             children: [
-              _specChip('جميع التخصصات / All', 'جميع التخصصات / All'),
-              const SizedBox(width: 8),
-              _specChip('أسنان / Dentistry', 'أسنان / Dentistry'),
-              const SizedBox(width: 8),
-              _specChip('نساء / Obstetrics', 'نساء / Obstetrics'),
-              const SizedBox(width: 8),
-              _specChip('جلدية / Dermatology', 'جلدية / Dermatology'),
-              const SizedBox(width: 8),
-              _specChip('عام / General', 'عام / General Practice'),
+              for (final spec in specs) ...[
+                AppChip(
+                  label: spec,
+                  selected: _selectedSpecialization == spec,
+                  onTap: () => setState(() {
+                    _selectedSpecialization = spec;
+                    _selectedDoctorId = null;
+                  }),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+              ],
             ],
           ),
         ),
@@ -317,410 +341,238 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     );
   }
 
-  Widget _specChip(String label, String spec) {
-    return FilterChip(
-      label: Text(label),
-      selected: _selectedSpecialization == spec,
-      onSelected: (selected) {
-        setState(() {
-          _selectedSpecialization = spec;
-          _selectedDoctorId = null;
-        });
-      },
-      backgroundColor: Colors.grey[100],
-      selectedColor: Colors.blue,
-      labelStyle: TextStyle(
-        color: _selectedSpecialization == spec ? Colors.white : Colors.black87,
-        fontWeight: _selectedSpecialization == spec
-            ? FontWeight.bold
-            : FontWeight.normal,
-      ),
-    );
-  }
+  Widget _buildDoctorList() {
+    final doctors = _getFilteredDoctors();
 
-  Widget _buildDoctorListSection() {
-    if (_isLoadingDoctors) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(40),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-    final filteredDoctors = _getFilteredDoctors();
-
-    if (filteredDoctors.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 40),
-          child: Column(
-            children: [
-              Icon(Icons.person_search, size: 64, color: Colors.grey[300]),
-              const SizedBox(height: 16),
-              Text(
-                'لم يتم العثور على أطباء',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[500],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
+    if (doctors.isEmpty) {
+      return const EmptyState(
+        icon: Icons.person_search_rounded,
+        title: 'لم نجد أطباء مطابقين',
+        message: 'جرّب اسماً آخر أو اختر «الكل» من التخصصات.',
       );
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text(
-          'الأطباء المتاحون / Available Doctors',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: filteredDoctors.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final doctor = filteredDoctors[index];
-            final isSelected = _selectedDoctorId == doctor['id'];
-
-            return Card(
-              elevation: isSelected ? 4 : 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: isSelected ? Colors.blue : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _selectedDoctorId = doctor['id'];
-                    _selectedTime = null;
-                  });
-                  _fetchBookedSlots();
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.star, color: Colors.amber, size: 18),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${doctor['rating']} (${doctor['reviews']})',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  doctor['name'],
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleSmall
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                                Text(
-                                  doctor['nameEn'],
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(color: Colors.grey[500]),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        doctor['specialization'],
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.blue.shade700,
-                              fontWeight: FontWeight.w500,
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (doctor['clinicLocation'] != null &&
-                          doctor['clinicLocation'].toString().isNotEmpty) ...[
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.location_on,
-                                size: 14, color: Colors.orange),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                doctor['clinicLocation'],
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: Colors.orange[700],
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      Text(
-                        doctor['bio'],
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            isSelected ? 'محدد ✓' : 'اختر',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color:
-                                      isSelected ? Colors.green : Colors.grey,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                          Text(
-                            '${doctor['price']} جنيه',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
+        for (final doctor in doctors) ...[
+          _DoctorCard(
+            doctor: doctor,
+            selected: _selectedDoctorId == doctor['id'],
+            onTap: () {
+              setState(() {
+                _selectedDoctorId = doctor['id'];
+                _selectedTime = null;
+              });
+              _fetchBookedSlots();
+            },
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
       ],
     );
   }
 
   Widget _buildDateTimeSection(Map<String, dynamic> doctor) {
+    final tokens = context.tokens;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppCard(
+          onTap: () => _selectDate(context, doctor),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: context.colors.primary.withValues(alpha: 0.12),
+                  borderRadius: AppRadius.rMd,
+                ),
+                child: Icon(
+                  Icons.calendar_month_rounded,
+                  color: context.colors.primary,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'تاريخ الزيارة',
+                      style: context.texts.bodySmall
+                          ?.copyWith(color: tokens.textMuted),
+                    ),
+                    Text(
+                      DateFormat('EEEE، d MMMM yyyy', 'ar')
+                          .format(_selectedDate!),
+                      style: context.texts.titleSmall,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.edit_calendar_outlined, color: tokens.textMuted),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        if (_isLoadingSlots)
+          const AppLoader(compact: true, message: 'جارٍ فحص الأوقات المتاحة…')
+        else if (_hasAppointmentToday)
+          const NoticeBox.warning(
+            title: 'لديك موعد بالفعل',
+            message: 'عندك موعد محجوز مع هذا الطبيب في نفس اليوم. اختر يوماً '
+                'آخر أو راجع صفحة «مواعيدي».',
+          )
+        else
+          _buildTimeSlots(doctor),
+      ],
+    );
+  }
+
+  Widget _buildTimeSlots(Map<String, dynamic> doctor) {
+    final String sysType = doctor['bookingSystemType'] ?? 'Individual';
+    final int maxPerSlot = (sysType == 'Grouped')
+        ? ((doctor['maxPatientsPerSlot'] as num?)?.toInt() ?? 4)
+        : 1;
+
+    final slots = _getAvailableTimeSlots(doctor).where((time) {
+      // التوحيد ضروري: الخانات المولّدة بصيغة `HH:mm` والمحجوزة قادمة من
+      // قاعدة البيانات بصيغ متعددة.
+      final booked = _bookedSlots[SlotId.normalizeTime(time)] ?? 0;
+      return booked < maxPerSlot;
+    }).toList();
+
+    if (slots.isEmpty) {
+      return const NoticeBox.info(
+        message: 'لا توجد أوقات متاحة في هذا اليوم. جرّب تاريخاً آخر.',
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'اختر التاريخ والوقت / Select Date & Time',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
+          'الأوقات المتاحة',
+          style: context.texts.labelMedium,
         ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: InkWell(
-              onTap: () => _selectDate(context, doctor),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(Icons.calendar_today, color: Colors.blue),
-                  Text(
-                    DateFormat('EEEE, d MMMM', 'ar').format(_selectedDate!),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w500),
-                  ),
-                ],
+        const SizedBox(height: AppSpacing.md),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            for (final time in slots)
+              AppChip(
+                label: _formatTime(time),
+                subtitle: sysType == 'Grouped'
+                    ? 'باقي ${maxPerSlot - (_bookedSlots[SlotId.normalizeTime(time)] ?? 0)}'
+                    : null,
+                selected: _selectedTime == time,
+                onTap: () => setState(() => _selectedTime = time),
               ),
-            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReasonSection() {
+    return TextField(
+      controller: _reasonController,
+      maxLines: 4,
+      onChanged: (value) => setState(() => _consultationReason = value),
+      style:
+          context.texts.bodyMedium?.copyWith(color: context.tokens.textStrong),
+      decoration: const InputDecoration(
+        hintText: 'اكتب باختصار سبب الزيارة أو الأعراض التي تشعر بها…',
+        floatingLabelBehavior: FloatingLabelBehavior.never,
+      ),
+    );
+  }
+
+  /// ملخّص الحجز + الزر. عرض الاختيارات قبل الضغط يمنع أشهر خطأ في التطبيقات
+  /// الطبية: تأكيد موعد في اليوم أو الوقت الخطأ.
+  Widget _buildSummaryAndBook(Map<String, dynamic> doctor) {
+    final tokens = context.tokens;
+    final isComplete = _selectedDoctorId != null &&
+        _selectedDate != null &&
+        _selectedTime != null &&
+        (_consultationReason?.trim().isNotEmpty ?? false);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppCard(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            children: [
+              InfoRow(
+                label: 'الطبيب',
+                value: doctor['name'].toString(),
+                icon: Icons.person_rounded,
+              ),
+              Divider(color: tokens.border, height: AppSpacing.lg),
+              InfoRow(
+                label: 'التاريخ',
+                value: DateFormat('EEEE، d MMMM', 'ar').format(_selectedDate!),
+                icon: Icons.calendar_today_rounded,
+              ),
+              Divider(color: tokens.border, height: AppSpacing.lg),
+              InfoRow(
+                label: 'الوقت',
+                value: _selectedTime == null
+                    ? 'لم يُحدَّد بعد'
+                    : _formatTime(_selectedTime!),
+                icon: Icons.access_time_rounded,
+                valueColor: _selectedTime == null ? tokens.textFaint : null,
+              ),
+              Divider(color: tokens.border, height: AppSpacing.lg),
+              InfoRow(
+                label: 'سعر الكشف',
+                value: '${doctor['price']} جنيه',
+                icon: Icons.payments_outlined,
+                valueColor: tokens.success,
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
-        if (_isLoadingSlots)
-          const Center(child: CircularProgressIndicator())
-        else if (_hasAppointmentToday)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.red[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.red[200]!),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.warning, color: Colors.red),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'لديك موعد محجوز مسبقاً في هذا اليوم.\nYou already have an appointment booked on this date.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.red[800]),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else ...[
+        const SizedBox(height: AppSpacing.lg),
+        FilledButton.icon(
+          onPressed: isComplete ? _confirmBooking : null,
+          icon: const Icon(Icons.check_circle_outline_rounded),
+          label: const Text('تأكيد الحجز'),
+        ),
+        if (!isComplete) ...[
+          const SizedBox(height: AppSpacing.sm),
           Text(
-            'أوقات متاحة / Available Times',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey[600],
-                ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 8,
-            runSpacing: 8,
-            children: _getAvailableTimeSlots(doctor)
-                .map((time) {
-                  final String sysType =
-                      doctor['bookingSystemType'] ?? 'Individual';
-                  final int maxPerSlot = (sysType == 'Grouped')
-                      ? ((doctor['maxPatientsPerSlot'] as num?)?.toInt() ?? 4)
-                      : 1;
-                  // التوحيد ضروري: الخانات المولّدة بصيغة `HH:mm` والمحجوزة
-                  // قادمة من قاعدة البيانات بصيغ متعددة.
-                  final int bookedCount =
-                      _bookedSlots[SlotId.normalizeTime(time)] ?? 0;
-
-                  if (bookedCount >= maxPerSlot) {
-                    return const SizedBox.shrink();
-                  }
-
-                  return _buildTimeSlot(time,
-                      sysType == 'Grouped' ? (maxPerSlot - bookedCount) : null);
-                })
-                .where((widget) => widget is! SizedBox)
-                .toList(),
+            'أكمل الخطوات الثلاث لتفعيل زر التأكيد',
+            textAlign: TextAlign.center,
+            style: context.texts.bodySmall?.copyWith(color: tokens.textFaint),
           ),
         ],
       ],
     );
   }
 
-  Widget _buildTimeSlot(String time, int? remaining) {
-    final isSelected = _selectedTime == time;
-    String formattedTime = time;
+  /// تحويل `HH:mm` إلى صيغة 12 ساعة بالعربية.
+  static String _formatTime(String time) {
     final parts = time.split(':');
-    if (parts.length == 2) {
-      int h = int.tryParse(parts[0]) ?? 0;
-      final m = parts[1].split('\n')[0]; // strip anything extra
-      final period = h >= 12 ? 'م' : 'ص';
-      if (h == 0)
-        h = 12;
-      else if (h > 12) h -= 12;
-      formattedTime = '${h.toString()}:$m $period';
+    if (parts.length != 2) return time;
+    var h = int.tryParse(parts[0]) ?? 0;
+    final m = parts[1].split('\n')[0];
+    final period = h >= 12 ? 'م' : 'ص';
+    if (h == 0) {
+      h = 12;
+    } else if (h > 12) {
+      h -= 12;
     }
-
-    final displayLabel = remaining != null
-        ? '$formattedTime\n(باقي $remaining مكان)'
-        : formattedTime;
-    return chip(
-      label: displayLabel,
-      selected: isSelected,
-      onSelected: (selected) {
-        setState(() => _selectedTime = time);
-      },
-    );
+    return '$h:$m $period';
   }
 
-  Widget chip({
-    required String label,
-    required bool selected,
-    required Function(bool) onSelected,
-  }) {
-    return FilterChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: onSelected,
-      backgroundColor: Colors.grey[100],
-      selectedColor: Colors.green,
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : Colors.black87,
-        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-      ),
-    );
-  }
-
-  Widget _buildReasonSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          'سبب الزيارة / Reason for Visit',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          maxLines: 4,
-          onChanged: (value) => setState(() => _consultationReason = value),
-          decoration: InputDecoration(
-            hintText: 'اشرح سبب الزيارة / Describe your reason for visit',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBookButton() {
-    final isComplete = _selectedDoctorId != null &&
-        _selectedDate != null &&
-        _selectedTime != null &&
-        (_consultationReason?.isNotEmpty ?? false);
-
-    return SizedBox(
-      width: double.infinity,
-      height: 48,
-      child: ElevatedButton.icon(
-        onPressed: isComplete ? () => _confirmBooking() : null,
-        icon: const Icon(Icons.check_circle),
-        label: const Text('تأكيد الحجز / Confirm Booking'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: Colors.grey[300],
-        ),
-      ),
-    );
-  }
+  // ===========================================================================
+  // المنطق
+  // ===========================================================================
 
   Future<void> _selectDate(
       BuildContext context, Map<String, dynamic> doctor) async {
@@ -744,8 +596,8 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           break;
         }
       }
-      if (!hasAnyWorkingDay)
-        return true; // Failsafe: if no true days exist, don't block all days.
+      // Failsafe: if no true days exist, don't block all days.
+      if (!hasAnyWorkingDay) return true;
 
       String arabicDay = DateFormat('EEEE', 'ar').format(val);
       for (final entry in workingDays.entries) {
@@ -756,8 +608,8 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       return true;
     }
 
-    // Find the first available day for the initialDate
-    // to prevent the DatePicker from crashing if _selectedDate is not a working day.
+    // Find the first available day for the initialDate to prevent the
+    // DatePicker from crashing if _selectedDate is not a working day.
     DateTime initialDate = _selectedDate ?? DateTime.now();
 
     if (!isDaySelectable(initialDate)) {
@@ -777,12 +629,14 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     }
 
     final picked = await showDatePicker(
-        context: context,
-        initialDate: initialDate,
-        firstDate: DateTime.now(),
-        lastDate: DateTime.now().add(const Duration(days: 90)),
-        locale: const Locale('ar'),
-        selectableDayPredicate: isDaySelectable);
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 90)),
+      locale: const Locale('ar'),
+      helpText: 'اختر تاريخ الزيارة',
+      selectableDayPredicate: isDaySelectable,
+    );
 
     if (picked != null && picked != _selectedDate) {
       if (mounted) setState(() => _selectedDate = picked);
@@ -792,12 +646,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
 
   void _confirmBooking() {
     if (_selectedTime == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('الرجاء اختيار وقت الموعد / Please select a time'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppSnack.error(context, 'الرجاء اختيار وقت الموعد');
       return;
     }
 
@@ -806,145 +655,310 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('تأكيد الحجز / Confirm Booking'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
+      builder: (dialogContext) => _ConfirmSheet(
+        doctor: doctor,
+        date: _selectedDate!,
+        time: _selectedTime!,
+        timeLabel: _formatTime(_selectedTime!),
+        onConfirm: () => _submitBooking(dialogContext, doctor),
+      ),
+    );
+  }
+
+  Future<void> _submitBooking(
+    BuildContext dialogContext,
+    Map<String, dynamic> doctor,
+  ) async {
+    showDialog(
+      context: dialogContext,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final auth = Provider.of<FirebaseAuthService>(context, listen: false);
+    final navigator = Navigator.of(context);
+    // يُلتقط قبل الانتظار: بعد `await` قد يكون `dialogContext` قد أُزيل من
+    // الشجرة، فتصبح قراءته منه خطأ.
+    final dialogNavigator = Navigator.of(dialogContext);
+
+    // نظام المجموعات يسمح بأكثر من مريض في نفس الساعة؛ النظام الفردي سعته
+    // مريض واحد فقط.
+    final int capacity =
+        (doctor['bookingSystemType'] ?? 'Individual') == 'Grouped'
+            ? ((doctor['maxPatientsPerSlot'] as num?)?.toInt() ?? 4)
+            : 1;
+
+    final result = await _bookingService.book(
+      doctorId: doctor['id'].toString(),
+      patientId: auth.userId!,
+      date: _selectedDate!,
+      time: _selectedTime!,
+      capacity: capacity,
+      appointmentData: {
+        'patientName': auth.userName,
+        'patientPhone': auth.userPhone,
+        'doctorName': doctor['name'],
+        'doctorNameEn': doctor['nameEn'],
+        'doctorSpecialization': doctor['specialization'] ?? '',
+        'reason': _consultationReason,
+        'price': doctor['price'],
+      },
+    );
+
+    if (!mounted) return;
+
+    // إغلاق مؤشر التحميل ثم نافذة التأكيد.
+    dialogNavigator.pop();
+    dialogNavigator.pop();
+
+    if (result.isSuccess) {
+      AppSnack.success(context, result.message);
+      navigator.pop();
+    } else {
+      AppSnack.error(context, result.message);
+      // الخانة اتحجزت أثناء التأكيد — نُحدّث القائمة فوراً حتى لا يحاول
+      // المريض على نفس الوقت مرة أخرى.
+      await _fetchBookedSlots();
+    }
+  }
+}
+
+// =============================================================================
+// عناصر الشاشة
+// =============================================================================
+
+/// رأس خطوة مرقّم يتحوّل إلى علامة صح عند اكتمالها.
+class _StepHeader extends StatelessWidget {
+  const _StepHeader({
+    required this.step,
+    required this.title,
+    required this.done,
+  });
+
+  final int step;
+  final String title;
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final color = done ? tokens.success : context.colors.primary;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+              border: Border.all(color: color.withValues(alpha: 0.35)),
+            ),
+            child: done
+                ? Icon(Icons.check_rounded, size: 16, color: color)
+                : Text(
+                    '$step',
+                    style: context.texts.labelMedium?.copyWith(color: color),
+                  ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Text(title, style: context.texts.titleMedium),
+        ],
+      ),
+    );
+  }
+}
+
+class _DoctorCard extends StatelessWidget {
+  const _DoctorCard({
+    required this.doctor,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> doctor;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final location = doctor['clinicLocation']?.toString() ?? '';
+    final bio = doctor['bio']?.toString() ?? '';
+
+    return AppCard(
+      selected: selected,
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              _confirmRow('الطبيب / Doctor', doctor['name']),
-              _confirmRow('التخصص / Specialty',
-                  doctor['specialization'].split(' / ')[0]),
-              _confirmRow(
-                'التاريخ / Date',
-                DateFormat('EEEE, d MMMM yyyy', 'ar').format(_selectedDate!),
+              AppAvatar(
+                name: doctor['name']?.toString(),
+                icon: Icons.medical_services_rounded,
               ),
-              _confirmRow('الوقت / Time', _selectedTime ?? ''),
-              _confirmRow('السعر / Price', '${doctor['price']} جنيه'),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Row(
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.info, color: Colors.blue, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'سيصلك تأكيد عبر البريد الإلكتروني\nYou will receive confirmation via email',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
+                    Text(
+                      doctor['name'].toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.titleSmall,
+                    ),
+                    Text(
+                      doctor['specialization'].toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.bodySmall
+                          ?.copyWith(color: context.colors.primary),
                     ),
                   ],
                 ),
               ),
+              if (selected)
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: context.colors.primary,
+                  size: 22,
+                )
+              else
+                RatingStars(
+                  rating: (doctor['rating'] as num).toDouble(),
+                  reviews: (doctor['reviews'] as num?)?.toInt(),
+                ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء / Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              showDialog(
-                context: dialogContext,
-                barrierDismissible: false,
-                builder: (_) =>
-                    const Center(child: CircularProgressIndicator()),
-              );
-
-              final auth =
-                  Provider.of<FirebaseAuthService>(context, listen: false);
-              final messenger = ScaffoldMessenger.of(context);
-              final navigator = Navigator.of(context);
-
-              // نظام المجموعات يسمح بأكثر من مريض في نفس الساعة؛ النظام
-              // الفردي سعته مريض واحد فقط.
-              final int capacity =
-                  (doctor['bookingSystemType'] ?? 'Individual') == 'Grouped'
-                      ? ((doctor['maxPatientsPerSlot'] as num?)?.toInt() ?? 4)
-                      : 1;
-
-              final result = await _bookingService.book(
-                doctorId: doctor['id'].toString(),
-                patientId: auth.userId!,
-                date: _selectedDate!,
-                time: _selectedTime!,
-                capacity: capacity,
-                appointmentData: {
-                  'patientName': auth.userName,
-                  'patientPhone': auth.userPhone,
-                  'doctorName': doctor['name'],
-                  'doctorNameEn': doctor['nameEn'],
-                  'doctorSpecialization': doctor['specialization'] ?? '',
-                  'reason': _consultationReason,
-                  'price': doctor['price'],
-                },
-              );
-
-              if (!mounted) return;
-
-              // إغلاق مؤشر التحميل ثم نافذة التأكيد.
-              Navigator.pop(dialogContext);
-              Navigator.pop(dialogContext);
-
-              messenger.showSnackBar(SnackBar(
-                content: Text(result.message),
-                backgroundColor:
-                    result.isSuccess ? Colors.green : Colors.red[700],
-              ));
-
-              if (result.isSuccess) {
-                navigator.pop();
-              } else {
-                // الخانة اتحجزت أثناء التأكيد — نُحدّث القائمة فوراً حتى لا
-                // يحاول المريض على نفس الوقت مرة أخرى.
-                await _fetchBookedSlots();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
+          if (bio.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              bio,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: context.texts.bodySmall?.copyWith(color: tokens.textMuted),
             ),
-            child: const Text('تأكيد / Confirm'),
+          ],
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              if (location.isNotEmpty) ...[
+                Icon(
+                  Icons.location_on_outlined,
+                  size: 15,
+                  color: tokens.textMuted,
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    location,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.bodySmall
+                        ?.copyWith(color: tokens.textMuted),
+                  ),
+                ),
+              ] else
+                const Spacer(),
+              const SizedBox(width: AppSpacing.sm),
+              StatusPill(
+                label: '${doctor['price']} جنيه',
+                color: tokens.success,
+                compact: true,
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _confirmRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: Colors.grey[600]),
-          ),
-        ],
+/// نافذة مراجعة الحجز قبل الإرسال.
+class _ConfirmSheet extends StatelessWidget {
+  const _ConfirmSheet({
+    required this.doctor,
+    required this.date,
+    required this.time,
+    required this.timeLabel,
+    required this.onConfirm,
+  });
+
+  final Map<String, dynamic> doctor;
+  final DateTime date;
+  final String time;
+  final String timeLabel;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return AlertDialog(
+      icon: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: context.colors.primary.withValues(alpha: 0.12),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          Icons.event_available_rounded,
+          color: context.colors.primary,
+          size: 26,
+        ),
       ),
+      title: const Text('تأكيد الحجز', textAlign: TextAlign.center),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InfoRow(label: 'الطبيب', value: doctor['name'].toString()),
+            InfoRow(
+              label: 'التخصص',
+              value: doctor['specialization'].toString().split(' / ')[0],
+            ),
+            InfoRow(
+              label: 'التاريخ',
+              value: DateFormat('EEEE، d MMMM yyyy', 'ar').format(date),
+            ),
+            InfoRow(label: 'الوقت', value: timeLabel),
+            InfoRow(
+              label: 'السعر',
+              value: '${doctor['price']} جنيه',
+              valueColor: tokens.success,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            const NoticeBox.info(
+              message: 'ستجد الموعد في صفحة «مواعيدي»، ويمكنك إلغاؤه قبل '
+                  'موعده.',
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('تراجع'),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: FilledButton(
+                onPressed: onConfirm,
+                child: const Text('تأكيد'),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

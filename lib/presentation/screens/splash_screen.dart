@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
+
 /// شاشة البداية — عرض فقط، بلا أي منطق تنقّل.
 ///
 /// كانت هذه الشاشة تنتظر 1500 مللي ثانية ثابتة ثم تستدعي `checkSession()`
@@ -18,98 +20,98 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
+  late AnimationController _controller;
+  late Animation<double> _fade;
+  late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 700),
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _scale = Tween<double>(begin: 0.88, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
 
-    _animationController.forward();
+    _controller.forward();
   }
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    // الشاشة كلها بلون العلامة بدل الأبيض المحايد: هذه أول لحظة يرى فيها
+    // المستخدم التطبيق، وشاشة بيضاء بمؤشّر رمادي لا تقول شيئاً عن هويّته.
     return Scaffold(
-      body: Center(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // الأيقونة الرئيسية
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  image: const DecorationImage(
-                    image: AssetImage('assets/images/logo.png'),
-                    fit: BoxFit.cover,
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: tokens.brandGradient),
+        child: Center(
+          child: FadeTransition(
+            opacity: _fade,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ScaleTransition(
+                  scale: _scale,
+                  child: Container(
+                    width: 116,
+                    height: 116,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(30),
+                      image: const DecorationImage(
+                        image: AssetImage('assets/images/logo.png'),
+                        fit: BoxFit.cover,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.22),
+                          blurRadius: 30,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey[300]!,
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
                 ),
-              ),
-              const SizedBox(height: 32),
-
-              // اسم التطبيق
-              Text(
-                'نظام حجز المواعيد',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
-                      fontSize: 26,
-                    ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // الشعار
-              Text(
-                'Medical Appointment System',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                      fontSize: 13,
-                      letterSpacing: 0.5,
-                    ),
-              ),
-
-              const SizedBox(height: 60),
-
-              // مؤشر التحميل
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation(Colors.grey[400]),
+                const SizedBox(height: AppSpacing.xxl),
+                Text(
+                  'DrD',
+                  style: context.texts.displaySmall?.copyWith(
+                    color: Colors.white,
+                    letterSpacing: 1,
+                  ),
                 ),
-              ),
-
-              const SizedBox(height: 20),
-
-              Text(
-                'جاري التحميل...',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'حجز مواعيد الأطباء',
+                  style: context.texts.titleMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: AppSpacing.xxxl),
+                SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.6,
+                    valueColor: AlwaysStoppedAnimation(
+                      Colors.white.withValues(alpha: 0.9),
+                    ),
+                    backgroundColor: Colors.white.withValues(alpha: 0.22),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  'جارٍ التحميل…',
+                  style: context.texts.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.75),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -118,7 +120,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 }

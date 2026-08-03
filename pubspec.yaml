@@ -35,3 +35,21 @@ flutter:
 
   assets:
     - assets/images/logo.png
+
+  # الخط العربي مُضمَّن مع التطبيق عمداً.
+  #
+  # بدونه ينزّل CanvasKit خط احتياط عربياً من gstatic.com وقت التشغيل: يختلف
+  # شكل النص بين جهاز وآخر، ويظهر التطبيق بخط مكسور خلف الشبكات التي تحجب
+  # gstatic — وهي الحالة نفسها التي بُني لها `--no-web-resources-cdn`.
+  #
+  # ثلاثة أوزان فقط (‏‎265 ك.ب مجتمعة): Flutter يختار أقرب وزن متاح، فتغطّي
+  # هذه الأوزان الثلاثة السُلّم كاملاً دون تضخيم حجم التحميل الأول.
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Cairo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700

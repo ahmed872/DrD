@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/rating_provider.dart';
+
+import '../../core/theme/app_theme.dart';
 import '../providers/firebase_auth_service.dart';
+import '../providers/rating_provider.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/rating_widgets.dart';
 
 /// شاشة تقييم المريض للطبيب - تقييم جودة الخدمة
 class PatientRateDoctorScreen extends StatefulWidget {
@@ -54,16 +58,12 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
 
   Future<void> _submitRating() async {
     if (_selectedRating == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يجب اختيار تقييم من 1 إلى 5')),
-      );
+      AppSnack.error(context, 'يجب اختيار تقييم من 1 إلى 5');
       return;
     }
 
     if (_commentController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يجب إدخال ملاحظتك عن الخدمة')),
-      );
+      AppSnack.error(context, 'يجب إدخال ملاحظتك عن الخدمة');
       return;
     }
 
@@ -78,165 +78,88 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
           serviceComment: _commentController.text.trim(),
         );
 
+    if (!mounted) return;
     setState(() => _isSubmitting = false);
 
-    if (mounted) {
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ تم حفظ تقييمك بنجاح'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) Navigator.pop(context, true);
-        });
-      } else {
-        final provider = context.read<RatingProvider>();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(provider.errorMessage ?? 'حدث خطأ'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    if (success) {
+      AppSnack.success(context, 'تم حفظ تقييمك بنجاح');
+      Navigator.pop(context, true);
+    } else {
+      final provider = context.read<RatingProvider>();
+      AppSnack.error(context, provider.errorMessage ?? 'حدث خطأ');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('تقييم الطبيب'),
-        centerTitle: true,
-        backgroundColor: Colors.green,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // عنوان
-            Text(
-              'تقييمك للدكتور ${widget.doctorName}',
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-              ),
-            ),
-            const SizedBox(height: 24),
+    final tokens = context.tokens;
 
-            // تقييم النجوم
-            Text(
-              'جودة الخدمة:',
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+    return AppScaffold(
+      title: 'تقييم الطبيب',
+      maxWidth: AppBreakpoints.form,
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: AppAvatar(
+              name: widget.doctorName,
+              icon: Icons.medical_services_rounded,
+              size: 72,
             ),
-            const SizedBox(height: 12),
-            Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: List.generate(5, (index) {
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedRating = index + 1),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Icon(
-                        _selectedRating > index
-                            ? Icons.star
-                            : Icons.star_border,
-                        size: 40,
-                        color: Colors.amber,
-                      ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Text(
+            widget.doctorName,
+            textAlign: TextAlign.center,
+            style: context.texts.headlineSmall,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'كيف كانت تجربتك؟ تقييمك يساعد باقي المرضى.',
+            textAlign: TextAlign.center,
+            style: context.texts.bodyMedium?.copyWith(color: tokens.textMuted),
+          ),
+          const SizedBox(height: AppSpacing.xxl),
+          AppCard(
+            padding: const EdgeInsets.symmetric(
+              vertical: AppSpacing.xl,
+              horizontal: AppSpacing.lg,
+            ),
+            child: InteractiveRatingSelector(
+              initialRating: _selectedRating,
+              onRatingChanged: (value) =>
+                  setState(() => _selectedRating = value),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          const SectionTitle(
+            title: 'ملاحظاتك عن الخدمة',
+            icon: Icons.rate_review_outlined,
+          ),
+          TextField(
+            controller: _commentController,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              hintText: 'شارك تجربتك: الخدمة، التعامل، الاحترافية…',
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          FilledButton(
+            onPressed: _isSubmitting ? null : _submitRating,
+            child: _isSubmitting
+                ? const SizedBox(
+                    height: 21,
+                    width: 21,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      valueColor: AlwaysStoppedAnimation(Colors.white),
                     ),
-                  );
-                }),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: Text(
-                _selectedRating > 0 ? 'التقييم: $_selectedRating / 5' : '',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // ملاحظات المريض
-            Text(
-              'ملاحظاتك عن الخدمة:',
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _commentController,
-              maxLines: 5,
-              textAlign: TextAlign.right,
-              textDirection: TextDirection.rtl,
-              decoration: InputDecoration(
-                hintText: 'شارك تجربتك - الخدمة، التعامل، الاحترافية، ...',
-                hintTextDirection: TextDirection.rtl,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: Colors.green,
-                    width: 2,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // زر الحفظ
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _submitRating,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isSubmitting
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : const Text(
-                        'حفظ التقييم',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-              ),
-            ),
-          ],
-        ),
+                  )
+                : const Text('حفظ التقييم'),
+          ),
+        ],
       ),
     );
   }

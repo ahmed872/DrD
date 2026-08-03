@@ -15,8 +15,8 @@
   <title>DrD — حجز مواعيد الأطباء</title>
 
   <!-- لون شريط المتصفح، بنسختين حتى لا يبدو التطبيق غريباً في الوضع الليلي -->
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0097A7">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#00363D">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0A8C9B">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0A424A">
 
   <!-- تثبيت التطبيق على iOS: سفاري يتجاهل manifest.json ويعتمد على هذه الوسوم -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -41,6 +41,27 @@
 
   <style>
     /*
+      الخط العربي نفسه الذي يستخدمه التطبيق، مُحمَّل من أصول المشروع لا من
+      شبكة خارجية. `font-display: swap` يمنع اختفاء نص شاشة الإقلاع أثناء
+      تحميله على الشبكات البطيئة.
+    */
+    @font-face {
+      font-family: "Cairo";
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url("assets/assets/fonts/Cairo-Regular.ttf") format("truetype");
+    }
+
+    @font-face {
+      font-family: "Cairo";
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+      src: url("assets/assets/fonts/Cairo-Bold.ttf") format("truetype");
+    }
+
+    /*
       شاشة إقلاع مؤقتة.
 
       بدونها يرى المستخدم صفحة بيضاء فارغة لثوانٍ بينما يُحمَّل محرّك Flutter —
@@ -51,14 +72,14 @@
       margin: 0;
       padding: 0;
       height: 100%;
-      background-color: #F5F7FA;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Tahoma",
-                   "Cairo", "Noto Naskh Arabic", sans-serif;
+      background-color: #F4F8F9;
+      font-family: "Cairo", -apple-system, BlinkMacSystemFont, "Segoe UI",
+                   "Tahoma", "Noto Naskh Arabic", sans-serif;
       overscroll-behavior: none;
     }
 
     @media (prefers-color-scheme: dark) {
-      html, body { background-color: #0E1416; }
+      html, body { background-color: #091316; }
     }
 
     #boot-screen {
@@ -78,28 +99,28 @@
     #boot-logo {
       width: 88px;
       height: 88px;
-      border-radius: 22px;
-      box-shadow: 0 8px 28px rgba(0, 151, 167, 0.28);
+      border-radius: 26px;
+      box-shadow: 0 8px 28px rgba(10, 140, 155, 0.30);
     }
 
     #boot-title {
       font-size: 19px;
       font-weight: 700;
-      color: #0097A7;
+      color: #0A8C9B;
       letter-spacing: 0.2px;
     }
 
     #boot-hint {
       font-size: 13px;
-      color: #7A8A93;
+      color: #85999F;
       margin-top: -12px;
     }
 
     #boot-spinner {
       width: 30px;
       height: 30px;
-      border: 3px solid rgba(0, 151, 167, 0.2);
-      border-top-color: #0097A7;
+      border: 3px solid rgba(10, 140, 155, 0.18);
+      border-top-color: #0A8C9B;
       border-radius: 50%;
       animation: spin 800ms linear infinite;
     }
@@ -122,7 +143,7 @@
       justify-content: space-between;
       gap: 12px;
       padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-      background: #0097A7;
+      background: #0A8C9B;
       color: #fff;
       font-size: 14px;
       z-index: 10000;
@@ -130,11 +151,11 @@
     }
 
     #app-banner.visible { display: flex; }
-    #app-banner.offline { background: #B3261E; }
+    #app-banner.offline { background: #D03A3A; }
 
     #app-banner button {
       background: #fff;
-      color: #0097A7;
+      color: #0A8C9B;
       border: 0;
       border-radius: 8px;
       padding: 8px 16px;
@@ -156,7 +177,7 @@
       padding: 14px;
       border-radius: 16px;
       background: #fff;
-      color: #1B2A30;
+      color: #0B1F24;
       box-shadow: 0 6px 28px rgba(0, 0, 0, 0.22);
       z-index: 10001;
       max-width: 520px;
@@ -176,9 +197,9 @@
     }
 
     @media (prefers-color-scheme: dark) {
-      #install-card { background: #1A2226; color: #E1E7E9; }
-      #install-text small { color: #A5B3B8 !important; }
-      #ios-sheet-inner { background: #1A2226 !important; color: #E1E7E9 !important; }
+      #install-card { background: #101F23; color: #EAF2F4; }
+      #install-text small { color: #93A9AF !important; }
+      #ios-sheet-inner { background: #101F23 !important; color: #EAF2F4 !important; }
     }
 
     #install-card img {
@@ -187,16 +208,16 @@
 
     #install-text { flex: 1; min-width: 0; }
     #install-text strong { display: block; font-size: 15px; margin-bottom: 3px; }
-    #install-text small { font-size: 12.5px; line-height: 1.5; color: #5C6D75; }
+    #install-text small { font-size: 12.5px; line-height: 1.5; color: #5F777E; }
 
     #install-yes {
-      background: #0097A7; color: #fff; border: 0; border-radius: 10px;
+      background: #0A8C9B; color: #fff; border: 0; border-radius: 10px;
       padding: 11px 18px; font-size: 14px; font-weight: 700;
       font-family: inherit; cursor: pointer; flex: 0 0 auto;
     }
 
     #install-no {
-      background: transparent; border: 0; color: #93A1A8;
+      background: transparent; border: 0; color: #85999F;
       font-size: 22px; line-height: 1; padding: 4px 6px;
       cursor: pointer; flex: 0 0 auto; font-family: inherit;
     }
@@ -211,13 +232,13 @@
     #ios-sheet.visible { display: flex; }
 
     #ios-sheet-inner {
-      background: #fff; color: #1B2A30; border-radius: 18px; padding: 22px;
+      background: #fff; color: #0B1F24; border-radius: 18px; padding: 22px;
       max-width: 420px; width: 100%;
       margin-bottom: calc(8px + env(safe-area-inset-bottom));
     }
 
     #ios-sheet h2 {
-      font-size: 17px; margin: 0 0 16px; color: #0097A7; text-align: center;
+      font-size: 17px; margin: 0 0 16px; color: #0A8C9B; text-align: center;
     }
 
     .ios-step {
@@ -227,12 +248,12 @@
 
     .ios-num {
       flex: 0 0 auto; width: 25px; height: 25px; border-radius: 50%;
-      background: #0097A7; color: #fff; font-size: 13px; font-weight: 700;
+      background: #0A8C9B; color: #fff; font-size: 13px; font-weight: 700;
       display: flex; align-items: center; justify-content: center;
     }
 
     #ios-sheet button {
-      margin-top: 6px; width: 100%; background: #0097A7; color: #fff;
+      margin-top: 6px; width: 100%; background: #0A8C9B; color: #fff;
       border: 0; border-radius: 11px; padding: 13px; font-size: 15px;
       font-weight: 700; font-family: inherit; cursor: pointer;
     }

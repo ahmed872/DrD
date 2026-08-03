@@ -1,326 +1,82 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_logger.dart';
+import '../widgets/app_widgets.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
 
   static const String whatsappPhone = '201093033884'; // رقم الواتس
+  static const String whatsappDisplay = '+20 109 303 3884';
   static const String whatsappUrl =
       'https://wa.me/$whatsappPhone?text=مرحبا، أريد الحصول على الدعم الفني';
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text('الدعم الفني'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 20),
+    final tokens = context.tokens;
 
-              // رسالة ترحيب
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0097A7).withOpacity(0.1),
-                  border: Border.all(
-                      color: const Color(0xFF0097A7).withOpacity(0.3)),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.help_outline,
-                      size: 40,
-                      color: Color(0xFF0097A7),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'هل تحتاج إلى مساعدة؟',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF0097A7),
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'نحن هنا لمساعدتك في أي استفسار أو مشكلة تواجهك في التطبيق',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: const Color(0xFF0097A7).withOpacity(0.8),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // الخدمات المتاحة
-              Text(
-                'فيم يمكننا مساعدتك؟',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
-                    ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // البطاقات
-              Column(
-                children: [
-                  _buildSupportCard(
-                    icon: Icons.person_add,
-                    title: 'إضافة طبيب جديد',
-                    description: 'اطلب إضافة طبيب جديد للنظام',
-                    color: Colors.green[50]!,
-                    borderColor: Colors.green[200]!,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSupportCard(
-                    icon: Icons.bug_report,
-                    title: 'إبلاغ عن مشكلة',
-                    description: 'أخبرنا عن أي مشكلة تواجهك',
-                    color: Colors.orange[50]!,
-                    borderColor: Colors.orange[200]!,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSupportCard(
-                    icon: Icons.feedback,
-                    title: 'تقديم اقتراح',
-                    description: 'شارك اقتراحك لتحسين التطبيق',
-                    color: Colors.purple[50]!,
-                    borderColor: Colors.purple[200]!,
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 40),
-
-              // معلومات التواصل
-              Text(
-                'تواصل معنا',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
-                    ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // زر الواتس الرئيسي - الأكثر وضوحاً
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _launchWhatsApp(context),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.green.shade400,
-                          Colors.green.shade600,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.green.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.message,
-                          size: 40,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'اضغط للتواصل عبر WhatsApp',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '+20 109 303 3884',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // بطاقة إضافية قابلة للنقر
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _launchWhatsApp(context),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.1),
-                      border: Border.all(
-                        color: const Color(0xFF0097A7),
-                        width: 2,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.chat,
-                          size: 32,
-                          color: Color(0xFF0097A7),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'هل تحتاج مساعدة؟',
-                                style: TextStyle(
-                                  color: Color(0xFF0097A7),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'نحن متاحون الآن',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.arrow_forward_ios,
-                          size: 16,
-                          color: Color(0xFF0097A7),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // معلومات إضافية
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ملاحظات مهمة:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildBulletPoint(
-                        'وقت الرد: من الأحد للخميس من 8 صباحاً إلى 5 مساءً'),
-                    const SizedBox(height: 8),
-                    _buildBulletPoint(
-                        'لإضافة طبيب: أرسل المعلومات الكاملة عبر الواتس'),
-                    const SizedBox(height: 8),
-                    _buildBulletPoint(
-                        'للاستفسارات العاجلة: تواصل معنا مباشرة عبر الواتس'),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 40),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSupportCard({
-    required IconData icon,
-    required String title,
-    required String description,
-    required Color color,
-    required Color borderColor,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color,
-        border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
+    return AppScaffold(
+      title: 'الدعم الفني',
+      subtitle: 'إحنا معاك في أي وقت',
+      maxWidth: AppBreakpoints.content,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            icon,
-            color: borderColor,
-            size: 28,
+          _WhatsAppCta(onTap: () => _launchWhatsApp(context)),
+          const SizedBox(height: AppSpacing.xxl),
+          const SectionTitle(
+            title: 'فيمَ يمكننا مساعدتك؟',
+            subtitle: 'اضغط على أي بند لتبدأ محادثة جاهزة',
+            icon: Icons.help_outline_rounded,
           ),
-          const SizedBox(width: 16),
-          Expanded(
+          _TopicTile(
+            icon: Icons.person_add_alt_1_rounded,
+            title: 'إضافة طبيب جديد',
+            description: 'اطلب إضافة طبيب جديد للنظام',
+            color: tokens.success,
+            onTap: () => _launchWhatsApp(
+              context,
+              message: 'مرحبا، أريد إضافة طبيب جديد للنظام',
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _TopicTile(
+            icon: Icons.bug_report_outlined,
+            title: 'إبلاغ عن مشكلة',
+            description: 'أخبرنا عن أي مشكلة تواجهك',
+            color: tokens.warning,
+            onTap: () => _launchWhatsApp(
+              context,
+              message: 'مرحبا، عندي مشكلة في التطبيق:',
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _TopicTile(
+            icon: Icons.lightbulb_outline_rounded,
+            title: 'تقديم اقتراح',
+            description: 'شارك اقتراحك لتحسين التطبيق',
+            color: tokens.info,
+            onTap: () => _launchWhatsApp(
+              context,
+              message: 'مرحبا، عندي اقتراح لتحسين التطبيق:',
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xxl),
+          const SectionTitle(
+            title: 'ملاحظات مهمة',
+            icon: Icons.info_outline_rounded,
+          ),
+          AppCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
+              children: const [
+                _Bullet('وقت الرد: من الأحد للخميس، 8 صباحاً حتى 5 مساءً'),
+                SizedBox(height: AppSpacing.md),
+                _Bullet('لإضافة طبيب: أرسل المعلومات الكاملة عبر الواتساب'),
+                SizedBox(height: AppSpacing.md),
+                _Bullet('للاستفسارات العاجلة: تواصل معنا مباشرة عبر الواتساب'),
               ],
             ),
           ),
@@ -329,55 +85,196 @@ class SupportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBulletPoint(String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.grey[600],
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[700],
-            ),
-          ),
-        ),
-      ],
+  Future<void> _launchWhatsApp(BuildContext context, {String? message}) async {
+    final text = Uri.encodeComponent(
+      message ?? 'مرحبا، أريد الحصول على الدعم الفني',
     );
-  }
+    final Uri url = Uri.parse('https://wa.me/$whatsappPhone?text=$text');
 
-  void _launchWhatsApp(BuildContext context) async {
-    final Uri url = Uri.parse(whatsappUrl);
     try {
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       } else {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('الرجاء التأكد من تثبيت تطبيق واتساب على جهازك')),
+          AppSnack.error(
+            context,
+            'الرجاء التأكد من تثبيت تطبيق واتساب على جهازك',
           );
         }
       }
     } catch (e) {
       AppLogger.info('Error launching WhatsApp: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('حدث خطأ أثناء محاولة فتح واتساب')),
-        );
+        AppSnack.error(context, 'حدث خطأ أثناء محاولة فتح واتساب');
       }
     }
+  }
+}
+
+/// الزر الرئيسي للتواصل.
+///
+/// كان في الشاشة السابقة زرّان يفتحان نفس الرابط، فوق بطاقة ترحيب ثالثة تقول
+/// نفس الكلام. واحد واضح أفضل من ثلاثة متكرّرة.
+class _WhatsAppCta extends StatelessWidget {
+  const _WhatsAppCta({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.rLg,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topRight,
+              end: Alignment.bottomLeft,
+              colors: [Color(0xFF25D366), Color(0xFF128C7E)],
+            ),
+            borderRadius: AppRadius.rLg,
+            boxShadow: tokens.shadowMd,
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.chat_bubble_rounded,
+                  color: Colors.white,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'تواصل عبر واتساب',
+                      style: context.texts.titleMedium
+                          ?.copyWith(color: Colors.white),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      SupportScreen.whatsappDisplay,
+                      textDirection: TextDirection.ltr,
+                      style: context.texts.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Colors.white.withValues(alpha: 0.8),
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TopicTile extends StatelessWidget {
+  const _TopicTile({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return AppCard(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: AppRadius.rMd,
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: context.texts.titleSmall),
+                Text(
+                  description,
+                  style: context.texts.bodySmall
+                      ?.copyWith(color: tokens.textMuted),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.arrow_back_ios_new_rounded,
+            size: 14,
+            color: tokens.textFaint,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Bullet extends StatelessWidget {
+  const _Bullet(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 7),
+          child: Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: context.colors.primary,
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Text(
+            text,
+            style: context.texts.bodyMedium?.copyWith(color: tokens.textBody),
+          ),
+        ),
+      ],
+    );
   }
 }

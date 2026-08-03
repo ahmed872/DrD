@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:async';
+
+import '../../core/theme/app_theme.dart';
 import '../providers/firebase_auth_service.dart';
+import '../widgets/app_widgets.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
   const EmailVerificationScreen({super.key});
@@ -13,6 +17,7 @@ class EmailVerificationScreen extends StatefulWidget {
 
 class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   Timer? _timer;
+  Timer? _resendTimer;
   int _resendCountdown = 0;
   bool _isChecking = false;
 
@@ -26,6 +31,9 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    // مؤقّت العدّ التنازلي كان يُنشأ بلا مرجع، فيستمر بعد إغلاق الشاشة
+    // ويستدعي `setState` على حالة مُتخلَّص منها.
+    _resendTimer?.cancel();
     super.dispose();
   }
 
@@ -47,6 +55,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     if (mounted && isVerified) {
       _timer?.cancel();
       Navigator.of(context).pushReplacementNamed('/home');
+      return;
     }
 
     if (mounted) {
@@ -58,282 +67,207 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     final auth = Provider.of<FirebaseAuthService>(context, listen: false);
     final success = await auth.resendEmailVerification();
 
-    if (mounted) {
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم إعادة إرسال الرسالة بنجاح ✅'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
+    if (!mounted) return;
 
-        // تعطيل الزر لمدة 60 ثانية
-        setState(() => _resendCountdown = 60);
-        Timer.periodic(const Duration(seconds: 1), (timer) {
-          if (mounted) {
-            setState(() {
-              _resendCountdown--;
-              if (_resendCountdown <= 0) {
-                timer.cancel();
-              }
-            });
-          }
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(auth.errorMessage ?? 'حدث خطأ'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    if (!success) {
+      AppSnack.error(context, auth.errorMessage ?? 'حدث خطأ');
+      return;
     }
+
+    AppSnack.success(context, 'تم إعادة إرسال الرسالة بنجاح');
+
+    // تعطيل الزر لمدة 60 ثانية
+    setState(() => _resendCountdown = 60);
+    _resendTimer?.cancel();
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _resendCountdown--;
+        if (_resendCountdown <= 0) timer.cancel();
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async => false, // منع الرجوع للخلف
-      child: Scaffold(
-        backgroundColor: Colors.grey[50],
-        body: SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+    final tokens = context.tokens;
+
+    // `WillPopScope` مهجور منذ Flutter 3.12؛ `PopScope` بديله الذي يعمل مع
+    // زر الرجوع في المتصفح أيضاً.
+    return PopScope(
+      canPop: false,
+      child: AppScaffold(
+        title: 'تفعيل البريد الإلكتروني',
+        showBack: false,
+        maxWidth: AppBreakpoints.form,
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: AppSpacing.md),
+            Center(
+              child: Container(
+                width: 104,
+                height: 104,
+                decoration: BoxDecoration(
+                  color: context.colors.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.mark_email_unread_outlined,
+                  size: 48,
+                  color: context.colors.primary,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              'فعّل بريدك للمتابعة',
+              textAlign: TextAlign.center,
+              style: context.texts.headlineSmall,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Consumer<FirebaseAuthService>(
+              builder: (context, auth, _) {
+                return Text(
+                  'أرسلنا رسالة تفعيل إلى\n'
+                  '${auth.userData?['email'] ?? "بريدك الإلكتروني"}',
+                  textAlign: TextAlign.center,
+                  style: context.texts.bodyMedium
+                      ?.copyWith(color: tokens.textMuted),
+                );
+              },
+            ),
+            const SizedBox(height: AppSpacing.xl),
+
+            AppCard(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 40),
-
-                  // أيقونة البريد
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.mail_outline,
-                      size: 70,
-                      color: Color(0xFF0097A7),
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // العنوان
-                  Text(
-                    'تفعيل البريد الإلكتروني',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[900],
-                        ),
-                    textAlign: TextAlign.center,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // الوصف
-                  Consumer<FirebaseAuthService>(
-                    builder: (context, auth, _) {
-                      return Text(
-                        'تم إرسال رسالة تفعيل إلى:\n${auth.userData?['email'] ?? "بريدك الإلكتروني"}',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 15,
-                          height: 1.5,
-                        ),
-                        textAlign: TextAlign.center,
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // رسالة التعليمات
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFF0097A7).withOpacity(0.2),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.checklist_rounded,
+                        size: 19,
+                        color: context.colors.primary,
                       ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              color: const Color(0xFF0097A7),
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'خطوات التفعيل:',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF0097A7),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '1. افتح بريدك الإلكتروني\n2. ابحث عن رسالة من HEL DOC\n3. انقر على رابط التفعيل\n4. ستتم إعادة توجيهك تلقائياً',
-                          style: TextStyle(
-                            color: Colors.grey[700],
-                            fontSize: 14,
-                            height: 1.8,
-                          ),
-                        ),
-                      ],
-                    ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Text('خطوات التفعيل', style: context.texts.titleSmall),
+                    ],
                   ),
-
-                  const SizedBox(height: 40),
-
-                  // حالة الفحص
-                  if (_isChecking)
-                    Column(
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation(
-                            const Color(0xFF0097A7).withOpacity(0.7),
-                          ),
-                          strokeWidth: 2.5,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'جاري التحقق من التفعيل...',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    Column(
-                      children: [
-                        Icon(
-                          Icons.check_circle_outline,
-                          color: Colors.grey[400],
-                          size: 40,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'يتم البحث عن التفعيل...',
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                  const SizedBox(height: 40),
-
-                  // زر تفعيل يدوي
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isChecking ? null : _checkEmailVerification,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0097A7),
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        disabledBackgroundColor: Colors.grey[300],
-                      ),
-                      child: _isChecking
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation(Colors.white),
-                              ),
-                            )
-                          : const Text(
-                              'تم التفعيل، ادخل الآن',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // زر إعادة الإرسال
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: _resendCountdown > 0 ? null : _resendEmail,
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: _resendCountdown > 0
-                              ? Colors.grey[300]!
-                              : const Color(0xFF0097A7),
-                          width: 2,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        _resendCountdown > 0
-                            ? 'أعد الإرسال بعد $_resendCountdown ثانية'
-                            : 'إعادة إرسال الرسالة',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: _resendCountdown > 0
-                              ? Colors.grey[500]
-                              : const Color(0xFF0097A7),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // زر الخروج
-                  TextButton(
-                    onPressed: () async {
-                      final auth = Provider.of<FirebaseAuthService>(context,
-                          listen: false);
-                      await auth.logout();
-                      if (mounted) {
-                        Navigator.of(context).pushReplacementNamed('/');
-                      }
-                    },
-                    child: const Text(
-                      'الخروج',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  const _Step(1, 'افتح بريدك الإلكتروني'),
+                  const _Step(2, 'ابحث عن رسالة التفعيل من DrD'),
+                  const _Step(3, 'اضغط على رابط التفعيل داخل الرسالة'),
+                  const _Step(4, 'ستُفتح لك الصفحة الرئيسية تلقائياً'),
                 ],
               ),
             ),
-          ),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            // مؤشّر حيّ يوضّح أن التطبيق يفحص التفعيل بنفسه، فلا يظن المستخدم
+            // أن عليه الانتظار بلا نهاية.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(
+                      _isChecking ? context.colors.primary : tokens.textFaint,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Text(
+                  _isChecking
+                      ? 'جارٍ التحقق من التفعيل…'
+                      : 'نتابع التفعيل تلقائياً كل ٣ ثوانٍ',
+                  style: context.texts.bodySmall
+                      ?.copyWith(color: tokens.textMuted),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            FilledButton(
+              onPressed: _isChecking ? null : _checkEmailVerification,
+              child: const Text('فعّلت بريدي — ادخل الآن'),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            OutlinedButton(
+              onPressed: _resendCountdown > 0 ? null : _resendEmail,
+              child: Text(
+                _resendCountdown > 0
+                    ? 'أعد الإرسال بعد $_resendCountdown ثانية'
+                    : 'إعادة إرسال الرسالة',
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextButton(
+              onPressed: _logout,
+              style: TextButton.styleFrom(foregroundColor: tokens.textMuted),
+              child: const Text('تسجيل الخروج'),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _logout() async {
+    final auth = Provider.of<FirebaseAuthService>(context, listen: false);
+    final navigator = Navigator.of(context);
+    await auth.logout();
+    if (!mounted) return;
+    navigator.pushReplacementNamed('/');
+  }
+}
+
+class _Step extends StatelessWidget {
+  const _Step(this.number, this.text);
+
+  final int number;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: context.colors.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '$number',
+              style: context.texts.labelSmall
+                  ?.copyWith(color: context.colors.primary),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              text,
+              style: context.texts.bodyMedium?.copyWith(color: tokens.textBody),
+            ),
+          ),
+        ],
       ),
     );
   }
