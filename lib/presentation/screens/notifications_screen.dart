@@ -81,7 +81,7 @@ class _NotificationTile extends StatelessWidget {
     final type = data['type']?.toString() ?? '';
 
     final isWarning = type == 'appointment_missed';
-    final color = isWarning ? AppColors.warning : AppColors.primary;
+    final color = isWarning ? AppColors.warning : AppColors.brand;
 
     return Card(
       // غير المقروء يُميَّز بلون خفيف بدل نقطة صغيرة — أوضح للقراءة السريعة.

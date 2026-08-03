@@ -149,8 +149,7 @@ class _StartupErrorApp extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.cloud_off,
-                      size: 64, color: AppColors.primary),
+                  const Icon(Icons.cloud_off, size: 64, color: AppColors.brand),
                   const SizedBox(height: 20),
                   Text(
                     title,
@@ -158,7 +157,7 @@ class _StartupErrorApp extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
+                      color: AppColors.brand,
                     ),
                   ),
                   const SizedBox(height: 12),

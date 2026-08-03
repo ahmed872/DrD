@@ -35,3 +35,18 @@ flutter:
 
   assets:
     - assets/images/logo.png
+
+  fonts:
+    # IBM Plex Sans Arabic — رخصة SIL OFL، حرة للاستخدام التجاري.
+    # Flutter بيقص الخط تلقائياً للمحارف المستخدمة فعلاً في التطبيق،
+    # فالحجم النهائي أصغر بكثير من حجم الملفات الأصلية.
+    - family: IBMPlexSansArabic
+      fonts:
+        - asset: assets/fonts/IBMPlexSansArabic-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/IBMPlexSansArabic-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexSansArabic-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/IBMPlexSansArabic-Bold.ttf
+          weight: 700
