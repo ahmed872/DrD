@@ -4,7 +4,7 @@
 #   Settings → Secrets and variables → Actions
 #
 #   FIREBASE_SERVICE_ACCOUNT  — محتوى ملف JSON لحساب خدمة له دور
-#                               «Firebase Hosting Admin» على مشروع drd-clinic
+#                               «Firebase Hosting Admin» على مشروع heldoc-68abf
 #   FIREBASE_WEB_API_KEY      — نفس القيمة المستخدمة في بناء CI
 #   FIREBASE_WEB_APP_ID       — نفس القيمة المستخدمة في بناء CI
 #
@@ -56,9 +56,20 @@ jobs:
           grep -q "register('sw.js')" build/web/index.html
           echo "✅ جاهز للنشر"
 
+      # الموقعان معرَّفان كأهداف في .firebaserc: `app` هو drd-eg و`legacy`
+      # هو drd-clinic، فيبقى الرابط القديم شغّالاً بعد تغيير الاسم.
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           channelId: live
-          projectId: drd-clinic
+          projectId: heldoc-68abf
+          target: app
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: heldoc-68abf
+          target: legacy

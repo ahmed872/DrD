@@ -1,5 +1,13 @@
 {
   "projects": {
-    "default": "drd-clinic"
+    "default": "heldoc-68abf"
+  },
+  "targets": {
+    "heldoc-68abf": {
+      "hosting": {
+        "app": ["drd-eg"],
+        "legacy": ["drd-clinic"]
+      }
+    }
   }
 }

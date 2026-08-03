@@ -7,57 +7,188 @@
     {
       "source": "functions",
       "codebase": "default",
-      "ignore": ["node_modules", ".git", "*.local"]
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.local"
+      ]
     }
   ],
-  "hosting": {
-    "public": "build/web",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ],
-    "headers": [
-      {
-        "//": "عامل الخدمة و index.html يجب ألا يُخزَّنا مؤقتاً، وإلا بقي المستخدم على نسخة قديمة من التطبيق إلى الأبد.",
-        "source": "/@(index.html|flutter_service_worker.js|service_worker_extras.js)",
-        "headers": [
-          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
-        ]
-      },
-      {
-        "//": "ملفات البناء تحمل بصمة في اسمها، فتخزينها لسنة كاملة آمن ويجعل الإقلاع فورياً.",
-        "source": "**/*.@(js|wasm|css|png|jpg|jpeg|svg|webp|woff2|ttf|otf|json)",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-        ]
-      },
-      {
-        "//": "manifest.json مستثنى من القاعدة السابقة لأنه يتغير مع كل تحديث لبيانات التطبيق.",
-        "source": "/manifest.json",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=3600" }
-        ]
-      },
-      {
-        "//": "رؤوس أمان أساسية.",
-        "source": "**",
-        "headers": [
-          { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-          { "key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()" }
-        ]
-      }
-    ]
-  },
+  "hosting": [
+    {
+      "target": "app",
+      "public": "build/web",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "//": "نقاط دخول التطبيق. لا تحمل بصمة في أسمائها، فتخزينها طويلاً يعني أن أي إصدار جديد لا يصل لمن زار الموقع من قبل. `no-cache` يعني: خزّنها لكن تحقّق قبل كل استخدام — والتحقّق يرد 304 بحجم بضع مئات من البايتات.",
+          "source": "/@(index.html|sw.js|offline.html|manifest.json|version.json|flutter_bootstrap.js|flutter.js|flutter_service_worker.js)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, must-revalidate"
+            }
+          ]
+        },
+        {
+          "//": "حزمة التطبيق نفسها. اسمها ثابت ومحتواها يتغيّر مع كل إصدار، فلا يجوز اعتبارها immutable: عامل الخدمة يجلبها عبر ذاكرة المتصفح، فتخزينها سنة كاملة يُجمّد المستخدم على نسخة قديمة إلى الأبد.",
+          "source": "**/*.@(dart.js|dart.wasm|dart.mjs)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, must-revalidate"
+            }
+          ]
+        },
+        {
+          "//": "محرّك CanvasKit مربوط بإصدار Flutter لا بكود التطبيق، ويزن عدة ميجابايت. شهر كامل مع إعادة تحقق.",
+          "source": "/canvaskit/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=2592000, must-revalidate"
+            }
+          ]
+        },
+        {
+          "//": "الخطوط والأيقونات والصور: تتغيّر نادراً، ويوم واحد يكفي لوصول أي تحديث دون إبطاء الإقلاع.",
+          "source": "**/*.@(png|jpg|jpeg|svg|webp|woff2|ttf|otf|ico)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=86400, must-revalidate"
+            }
+          ]
+        },
+        {
+          "//": "رؤوس أمان أساسية.",
+          "source": "**",
+          "headers": [
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "SAMEORIGIN"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "geolocation=(), microphone=(), camera=()"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "legacy",
+      "public": "build/web",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "//": "نقاط دخول التطبيق. لا تحمل بصمة في أسمائها، فتخزينها طويلاً يعني أن أي إصدار جديد لا يصل لمن زار الموقع من قبل. `no-cache` يعني: خزّنها لكن تحقّق قبل كل استخدام — والتحقّق يرد 304 بحجم بضع مئات من البايتات.",
+          "source": "/@(index.html|sw.js|offline.html|manifest.json|version.json|flutter_bootstrap.js|flutter.js|flutter_service_worker.js)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, must-revalidate"
+            }
+          ]
+        },
+        {
+          "//": "حزمة التطبيق نفسها. اسمها ثابت ومحتواها يتغيّر مع كل إصدار، فلا يجوز اعتبارها immutable: عامل الخدمة يجلبها عبر ذاكرة المتصفح، فتخزينها سنة كاملة يُجمّد المستخدم على نسخة قديمة إلى الأبد.",
+          "source": "**/*.@(dart.js|dart.wasm|dart.mjs)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, must-revalidate"
+            }
+          ]
+        },
+        {
+          "//": "محرّك CanvasKit مربوط بإصدار Flutter لا بكود التطبيق، ويزن عدة ميجابايت. شهر كامل مع إعادة تحقق.",
+          "source": "/canvaskit/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=2592000, must-revalidate"
+            }
+          ]
+        },
+        {
+          "//": "الخطوط والأيقونات والصور: تتغيّر نادراً، ويوم واحد يكفي لوصول أي تحديث دون إبطاء الإقلاع.",
+          "source": "**/*.@(png|jpg|jpeg|svg|webp|woff2|ttf|otf|ico)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=86400, must-revalidate"
+            }
+          ]
+        },
+        {
+          "//": "رؤوس أمان أساسية.",
+          "source": "**",
+          "headers": [
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "SAMEORIGIN"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "geolocation=(), microphone=(), camera=()"
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "emulators": {
-    "auth": { "port": 9099 },
-    "firestore": { "port": 8080 },
-    "functions": { "port": 5001 },
-    "hosting": { "port": 5000 },
-    "ui": { "enabled": true }
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "functions": {
+      "port": 5001
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "ui": {
+      "enabled": true
+    }
   }
 }
