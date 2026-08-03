@@ -326,6 +326,70 @@
 
       function hideBanner() { banner.classList.remove('visible'); }
 
+
+      // ===================================================================
+      // ترحيل لمرة واحدة: تنظيف ذاكرة النسخ القديمة
+      // ===================================================================
+      //
+      // النسخ المنشورة قبل إصلاح رؤوس الكاش وصلت للمتصفحات بـ
+      // `Cache-Control: immutable, max-age=31536000` على `main.dart.js`.
+      // نتيجتها أن المستخدم يظل على حزمة قديمة لسنة كاملة: عامل الخدمة يطلب
+      // الملف، فيردّ المتصفح من ذاكرته دون أن يصل الطلب للخادم أصلاً.
+      //
+      // إصلاح الرؤوس يمنع تكرار المشكلة لكنه لا يشفي المتصفحات المصابة
+      // بالفعل. هذا الجزء يفعل ذلك مرة واحدة: لو وُجد تسجيل سابق لعامل خدمة
+      // ولم تتطابق بصمة البناء المحفوظة، تُمسح كل الذاكرة ويُعاد التحميل.
+      //
+      // الحارسان ضروريان: `sessionStorage` يمنع حلقة إعادة تحميل لا تنتهي،
+      // ووجود تسجيل سابق يمنع تشغيل الترحيل على زائر جديد تماماً.
+      var BUILD_ID = '2026-08-03-ui-rebuild';
+      var PURGE_FLAG = 'drd_purged_once';
+
+      function migrateStaleCaches() {
+        if (!('serviceWorker' in navigator) || !navigator.serviceWorker.getRegistrations) {
+          return Promise.resolve(false);
+        }
+
+        var storedBuild = null;
+        var alreadyPurged = false;
+        try {
+          storedBuild = localStorage.getItem('drd_build');
+          alreadyPurged = sessionStorage.getItem(PURGE_FLAG) === '1';
+        } catch (e) {
+          // الوضع الخاص يمنع التخزين — نتخطى الترحيل بدل تعطيل الإقلاع.
+          return Promise.resolve(false);
+        }
+
+        if (storedBuild === BUILD_ID || alreadyPurged) {
+          try { localStorage.setItem('drd_build', BUILD_ID); } catch (e) {}
+          return Promise.resolve(false);
+        }
+
+        return navigator.serviceWorker.getRegistrations().then(function (regs) {
+          if (!regs || regs.length === 0) {
+            // زائر جديد: لا ذاكرة قديمة، نسجّل البصمة ونكمل بلا إعادة تحميل.
+            try { localStorage.setItem('drd_build', BUILD_ID); } catch (e) {}
+            return false;
+          }
+
+          try {
+            sessionStorage.setItem(PURGE_FLAG, '1');
+            localStorage.setItem('drd_build', BUILD_ID);
+          } catch (e) {}
+
+          var jobs = regs.map(function (r) { return r.unregister().catch(function () {}); });
+          if (window.caches && caches.keys) {
+            jobs.push(
+              caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+              }).catch(function () {})
+            );
+          }
+
+          return Promise.all(jobs).then(function () { return true; });
+        }).catch(function () { return false; });
+      }
+
       // ===== إخفاء شاشة الإقلاع بعد أول إطار من Flutter =====
       var bootDone = false;
 
@@ -372,6 +436,19 @@
       // يمسح ذاكرة المتصفح بنفسه — وهو ما لن يفعله.
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {
+          migrateStaleCaches().then(function (purged) {
+            if (purged) {
+              // الذاكرة القديمة مُسحت — إعادة التحميل تجلب الحزمة الجديدة.
+              window.location.reload();
+              return;
+            }
+            registerServiceWorker();
+          });
+        });
+      }
+
+      function registerServiceWorker() {
+        {
           navigator.serviceWorker.register('sw.js').then(function (registration) {
             function watch(worker) {
               if (!worker) return;
@@ -400,9 +477,20 @@
             // فشل التسجيل ليس خطأً قاتلاً — التطبيق يعمل بدون دعم بلا اتصال.
             console.warn('تعذّر تسجيل عامل الخدمة:', error);
           });
-        });
+        }
+      }
+
+      if ('serviceWorker' in navigator) {
+        // هل كان هناك عامل خدمة مسيطر وقت تحميل الصفحة؟
+        //
+        // `clients.claim()` في العامل يُطلق `controllerchange` عند أول تثبيت
+        // أيضاً، لا عند الترقية فقط. بدون هذا الفحص يدفع كل زائر جديد ثمن
+        // تحميل كامل للصفحة مرتين — وهو ثمن ثقيل على الشبكات الضعيفة التي
+        // بُني هذا التطبيق لها أصلاً.
+        var hadController = !!navigator.serviceWorker.controller;
 
         navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (!hadController) return;
           // النسخة الجديدة تولّت السيطرة؛ نعيد التحميل مرة واحدة فقط.
           if (window.__drdReloading) return;
           window.__drdReloading = true;
@@ -527,6 +615,6 @@
     })();
   </script>
 
-  <script src="flutter_bootstrap.js" async></script>
+  <script src="flutter_bootstrap.js?v=3" async></script>
 </body>
 </html>

@@ -24,7 +24,7 @@
  */
 
 // ⚠️ ارفع هذا الرقم مع كل إصدار جديد. تغييره يُبطل كل الذاكرة المؤقتة القديمة.
-const VERSION = 'v2';
+const VERSION = 'v3';
 
 const SHELL_CACHE = `drd-shell-${VERSION}`;
 const ASSETS_CACHE = `drd-assets-${VERSION}`;
@@ -134,7 +134,10 @@ async function handleNavigation(event) {
       return preloaded;
     }
 
-    const network = await fetch(event.request);
+    // `cache: 'no-cache'` وليس الافتراضي: النسخ التي نُشرت قبل إصلاح رؤوس
+    // الكاش وصلت للمتصفحات بـ `immutable, max-age=سنة`، فالجلب العادي يعيد
+    // الملف القديم من ذاكرة المتصفح ولا يصل للخادم أصلاً.
+    const network = await fetch(event.request, { cache: 'no-cache' });
     void updateShell(network.clone());
     return network;
   } catch (error) {
@@ -170,7 +173,10 @@ async function staleWhileRevalidate(request) {
   const cache = await caches.open(ASSETS_CACHE);
   const cached = await cache.match(request);
 
-  const network = fetch(request)
+  // `no-cache` يفرض التحقّق من الخادم قبل استخدام أي نسخة مخزَّنة، لكنه
+  // يسمح بردّ 304 — فالتحديث مضمون وتكلفته بضع مئات من البايتات، على عكس
+  // `reload` الذي يعيد تنزيل الحزمة كاملة في كل مرة.
+  const network = fetch(request, { cache: 'no-cache' })
     .then((response) => {
       // `status === 200` فقط: الردود الجزئية (206) والمبهمة لا تصلح للتخزين.
       if (response && response.status === 200) {
