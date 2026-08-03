@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/theme/app_theme.dart';
 
 class PatientSettingsScreen extends StatefulWidget {
   const PatientSettingsScreen({super.key});
@@ -32,7 +33,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
       appBar: AppBar(
         title: const Text('إعداداتي'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: AppColors.brand,
         elevation: 1,
       ),
       body: Consumer<FirebaseAuthService>(
@@ -56,7 +57,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                         icon: const Icon(Icons.edit),
                         label: const Text('تعديل البيانات'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0097A7),
+                          backgroundColor: AppColors.brand,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -98,7 +99,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                                   )
                                 : const Text('حفظ'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0097A7),
+                              backgroundColor: AppColors.brand,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -223,7 +224,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           controller: controller,
           enabled: enabled,
           decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: const Color(0xFF0097A7)),
+            prefixIcon: Icon(icon, color: AppColors.brand),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(color: Colors.grey[200]!),
@@ -235,7 +236,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(
-                color: Color(0xFF0097A7),
+                color: AppColors.brand,
                 width: 2,
               ),
             ),
@@ -300,7 +301,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                   children: [
                     Icon(
                       Icons.calendar_today,
-                      color: const Color(0xFF0097A7),
+                      color: AppColors.brand,
                       size: 20,
                     ),
                     const SizedBox(width: 12),
@@ -366,10 +367,10 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF0097A7) : Colors.white,
+          color: isSelected ? AppColors.brand : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isSelected ? const Color(0xFF0097A7) : Colors.grey[200]!,
+            color: isSelected ? AppColors.brand : Colors.grey[200]!,
             width: 1,
           ),
         ),
@@ -390,8 +391,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        border: Border.all(color: Colors.red.shade200),
+        color: AppColors.danger,
+        border: Border.all(color: AppColors.danger),
         borderRadius: BorderRadius.circular(12),
       ),
       child: SizedBox(
@@ -401,7 +402,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           icon: const Icon(Icons.logout),
           label: const Text('تسجيل الخروج'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.shade600,
+            backgroundColor: AppColors.danger,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
@@ -468,17 +469,15 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context);
+              // يُلتقط قبل `await` — بعده قد تكون الشاشة أُزيلت.
+              final navigator = Navigator.of(context);
+              navigator.pop();
               await auth.logout();
-              if (mounted) {
-                Navigator.of(context).pushNamedAndRemoveUntil(
-                  '/',
-                  (route) => false,
-                );
-              }
+              if (!mounted) return;
+              navigator.pushNamedAndRemoveUntil('/', (route) => false);
             },
-            child:
-                const Text('تسجيل الخروج', style: TextStyle(color: Colors.red)),
+            child: const Text('تسجيل الخروج',
+                style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -489,7 +488,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: isError ? AppColors.danger : AppColors.success,
         duration: const Duration(seconds: 2),
       ),
     );

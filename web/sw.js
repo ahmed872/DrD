@@ -10,8 +10,10 @@
  * مجرّد بذرة تُلغي تسجيل نفسها ولا تخزّن شيئاً. أي أن بناء الويب الافتراضي
  * **لا يعمل بلا اتصال إطلاقاً** ولا يستوفي شروط تثبيت PWA الكاملة.
  *
- * لذلك يُبنى المشروع بـ `--service-worker-strategy=none` (حتى لا تتعارض بذرة
- * Flutter مع هذا الملف) ويُسجَّل هذا العامل يدوياً من `index.html`.
+ * ولمنع تعارض بذرة Flutter مع هذا الملف (الاثنان يُسجَّلان على النطاق الجذر
+ * `/`، فالأخير يستبدل الأول ثم يُلغي نفسه) يستدعي `web/flutter_bootstrap.js`
+ * الدالة `_flutter.loader.load()` بلا وسائط، فلا يسجّل Flutter عامله أصلاً.
+ * هذا العامل يُسجَّل يدوياً من `index.html`.
  *
  * ## الاستراتيجية
  *
@@ -24,7 +26,7 @@
  */
 
 // ⚠️ ارفع هذا الرقم مع كل إصدار جديد. تغييره يُبطل كل الذاكرة المؤقتة القديمة.
-const VERSION = 'v1';
+const VERSION = 'v3';
 
 const SHELL_CACHE = `drd-shell-${VERSION}`;
 const ASSETS_CACHE = `drd-assets-${VERSION}`;
@@ -41,9 +43,11 @@ const SHELL_ASSETS = [
   'index.html',
   'manifest.json',
   OFFLINE_URL,
+  'privacy.html',
   'favicon.png',
   'icons/Icon-192.png',
   'icons/Icon-512.png',
+  'icons/apple-touch-icon.png',
 ];
 
 /** نطاقات لا يجوز تخزين ردودها مطلقاً. */
@@ -120,8 +124,53 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // ملفات التطبيق نفسها تُجلب من الشبكة أولاً.
+  //
+  // السبب مهم: Flutter بيبني `main.dart.js` بنفس الاسم في كل مرة، بلا أي
+  // بصمة محتوى في اسم الملف. فلو عُرض من الذاكرة أولاً، المستخدم يفضل
+  // شايف **النسخة القديمة من التطبيق بعد كل نشر** — والتحديث ميوصلش إلا
+  // في الفتحة اللي بعدها. ده حصل فعلاً: نُشر تصميم جديد والمستخدم فضل
+  // شايف القديم.
+  //
+  // باقي الأصول (canvaskit، الخطوط، الأيقونات) مسارها بيتغيّر مع كل إصدار
+  // من Flutter، فتخزينها أولاً آمن وبيخلّي الإقلاع فورياً.
+  if (isAppShellAsset(url.pathname)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
   event.respondWith(staleWhileRevalidate(request));
 });
+
+/** هل الملف من ملفات التطبيق اللي اسمها ثابت بين الإصدارات؟ */
+function isAppShellAsset(pathname) {
+  return (
+    /\/(main\.dart\.js|flutter_bootstrap\.js|flutter\.js|version\.json|manifest\.json)$/
+      .test(pathname) ||
+    pathname.startsWith('/assets/')
+  );
+}
+
+/**
+ * الشبكة أولاً مع رجوع للذاكرة عند انقطاع الاتصال.
+ *
+ * بكده المستخدم دايماً على آخر نسخة وهو متصل، ولسه التطبيق بيفتح بلا
+ * إنترنت من آخر نسخة اتخزّنت.
+ */
+async function networkFirst(request) {
+  const cache = await caches.open(ASSETS_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response && response.status === 200) {
+      cache.put(request, response.clone()).catch(() => {});
+    }
+    return response;
+  } catch (error) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw error;
+  }
+}
 
 /**
  * التنقّل: الشبكة أولاً مع رجوع إلى النسخة المخزَّنة ثم صفحة بلا اتصال.

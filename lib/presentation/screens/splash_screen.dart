@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_theme.dart';
 
 /// شاشة البداية — عرض فقط، بلا أي منطق تنقّل.
 ///
@@ -71,7 +72,7 @@ class _SplashScreenState extends State<SplashScreen>
                 'نظام حجز المواعيد',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
+                      color: AppColors.brand,
                       fontSize: 26,
                     ),
               ),

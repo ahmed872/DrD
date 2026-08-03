@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import '../../core/utils/app_logger.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/theme/app_theme.dart';
 
 class DoctorSettingsScreen extends StatefulWidget {
   const DoctorSettingsScreen({super.key});
@@ -166,10 +168,16 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           }
         }
       } catch (e) {
-        debugPrint('Error loading doctor profile: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load profile: $e')),
-        );
+        AppLogger.error('تعذّر تحميل بيانات الطبيب', e);
+        if (mounted) {
+          // الرسالة السابقة كانت تعرض نص الاستثناء بالإنجليزية للمستخدم.
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تعذّر تحميل بياناتك، تأكد من اتصالك بالإنترنت'),
+              backgroundColor: AppColors.danger,
+            ),
+          );
+        }
       }
     }
 
@@ -190,7 +198,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       appBar: AppBar(
         title: const Text('إعدادات العيادة'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: AppColors.brand,
         elevation: 1,
         actions: [
           IconButton(
@@ -225,7 +233,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 12),
 
               _buildTextField(
-                label: 'موقع العيادة / Clinic Location',
+                label: 'موقع العيادة',
                 controller: _clinicLocationController,
                 icon: Icons.location_on,
               ),
@@ -234,9 +242,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               DropdownButtonFormField<String>(
                 value: _selectedSpecialtyAr,
                 decoration: InputDecoration(
-                  labelText: 'التخصص / Specialization',
-                  prefixIcon:
-                      const Icon(Icons.medical_services, color: Colors.blue),
+                  labelText: 'التخصص',
+                  prefixIcon: const Icon(Icons.medical_services,
+                      color: AppColors.brand),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -246,7 +254,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.blue, width: 2),
+                    borderSide:
+                        const BorderSide(color: AppColors.brand, width: 2),
                   ),
                 ),
                 items: _specialties.map((spec) {
@@ -268,7 +277,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 12),
 
               _buildTextField(
-                label: 'رقم الهاتف / Phone',
+                label: 'رقم الهاتف',
                 controller: _phoneController,
                 icon: Icons.phone,
                 keyboardType: TextInputType.phone,
@@ -368,9 +377,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: AppColors.brandTint,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200),
+                  border: Border.all(color: AppColors.brandTint),
                 ),
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -380,12 +389,12 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         _buildTimePickerButton(
-                          'وقت النهاية / End',
+                          'وقت النهاية',
                           _endTime,
                           (time) => setState(() => _endTime = time),
                         ),
                         _buildTimePickerButton(
-                          'وقت البداية / Start',
+                          'وقت البداية',
                           _startTime,
                           (time) => setState(() => _startTime = time),
                         ),
@@ -401,14 +410,14 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue),
+                          border: Border.all(color: AppColors.brand),
                         ),
                         child: Text(
                           '${_startTime.format(context)} - ${_endTime.format(context)}',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+                            color: AppColors.brand,
                           ),
                         ),
                       ),
@@ -425,9 +434,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: AppColors.success,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
+                  border: Border.all(color: AppColors.success),
                 ),
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -451,7 +460,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                                   _workingDays[entry.key] = value;
                                 });
                               },
-                              activeColor: Colors.green,
+                              activeColor: AppColors.success,
                             ),
                           ],
                         ),
@@ -472,11 +481,11 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   onPressed: _saveSetting,
                   icon: const Icon(Icons.save),
                   label: const Text(
-                    'حفظ الإعدادات / Save Settings',
+                    'حفظ الإعدادات',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor: AppColors.success,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -494,7 +503,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   onPressed: _showPreview,
                   icon: const Icon(Icons.visibility),
                   label: const Text(
-                    'معاينة / Preview',
+                    'معاينة',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -512,10 +521,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.blue.shade100,
+        color: AppColors.brandTint,
         borderRadius: BorderRadius.circular(8),
         border: Border(
-          right: BorderSide(color: Colors.blue.shade700, width: 4),
+          right: BorderSide(color: AppColors.brand, width: 4),
         ),
       ),
       child: Text(
@@ -523,7 +532,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Colors.blue.shade900,
+          color: AppColors.brandDeep,
         ),
       ),
     );
@@ -542,7 +551,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blue),
+        prefixIcon: Icon(icon, color: AppColors.brand),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
         ),
@@ -552,7 +561,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.blue, width: 2),
+          borderSide: const BorderSide(color: AppColors.brand, width: 2),
         ),
       ),
     );
@@ -592,7 +601,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.blue,
+              color: AppColors.brand,
             ),
           ),
         ),
@@ -627,7 +636,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('يرجى التأكد من أن السعر ومدة الجلسة أكبر من صفر'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.danger,
         ),
       );
       return;
@@ -668,7 +677,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   ),
                 ],
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: AppColors.success,
               duration: const Duration(seconds: 2),
             ),
           );
@@ -678,7 +687,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Error saving settings: $e'),
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.danger,
             ),
           );
         }
@@ -732,7 +741,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('إغلاق / Close'),
+            child: const Text('إغلاق'),
           ),
         ],
       ),

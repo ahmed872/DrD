@@ -11,6 +11,8 @@
     }
   ],
   "hosting": {
+    "//site": "اسم موقع الاستضافة — يحدّد الرابط: https://<site>.web.app. عند حذفه يُستخدم اسم المشروع (heldoc-68abf.web.app). لتغيير الرابط: أنشئ الموقع أولاً بـ `firebase hosting:sites:create <اسم>` ثم اكتب الاسم في المفتاح `site` أسفله. الاسم فريد عالمياً عبر كل مشاريع Firebase.",
+    "site": "drd-clinic",
     "public": "build/web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [

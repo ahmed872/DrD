@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/theme/app_theme.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
@@ -9,6 +10,15 @@ class SupportScreen extends StatelessWidget {
   static const String whatsappUrl =
       'https://wa.me/$whatsappPhone?text=مرحبا، أريد الحصول على الدعم الفني';
 
+  /// عنوان استضافة نسخة الويب — تُبنى منه روابط الصفحات الثابتة.
+  ///
+  /// يُمرَّر وقت البناء لتبديل النطاق دون تعديل الكود:
+  /// `--dart-define=APP_BASE_URL=https://your-domain.com`
+  static const String appBaseUrl = String.fromEnvironment(
+    'APP_BASE_URL',
+    defaultValue: 'https://heldoc-68abf.web.app',
+  );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -16,7 +26,7 @@ class SupportScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('الدعم الفني'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: AppColors.brand,
         elevation: 1,
       ),
       body: SingleChildScrollView(
@@ -31,9 +41,8 @@ class SupportScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0097A7).withOpacity(0.1),
-                  border: Border.all(
-                      color: const Color(0xFF0097A7).withOpacity(0.3)),
+                  color: AppColors.brand.withOpacity(0.1),
+                  border: Border.all(color: AppColors.brand.withOpacity(0.3)),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -41,14 +50,14 @@ class SupportScreen extends StatelessWidget {
                     const Icon(
                       Icons.help_outline,
                       size: 40,
-                      color: Color(0xFF0097A7),
+                      color: AppColors.brand,
                     ),
                     const SizedBox(height: 12),
                     Text(
                       'هل تحتاج إلى مساعدة؟',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: const Color(0xFF0097A7),
+                            color: AppColors.brand,
                           ),
                     ),
                     const SizedBox(height: 8),
@@ -56,7 +65,7 @@ class SupportScreen extends StatelessWidget {
                       'نحن هنا لمساعدتك في أي استفسار أو مشكلة تواجهك في التطبيق',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: const Color(0xFF0097A7).withOpacity(0.8),
+                        color: AppColors.brand.withOpacity(0.8),
                         fontSize: 13,
                       ),
                     ),
@@ -131,8 +140,8 @@ class SupportScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Colors.green.shade400,
-                          Colors.green.shade600,
+                          AppColors.success,
+                          AppColors.success,
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -140,7 +149,7 @@ class SupportScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.green.withOpacity(0.3),
+                          color: AppColors.success.withOpacity(0.3),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -189,9 +198,9 @@ class SupportScreen extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.1),
+                      color: AppColors.brand.withOpacity(0.1),
                       border: Border.all(
-                        color: const Color(0xFF0097A7),
+                        color: AppColors.brand,
                         width: 2,
                       ),
                       borderRadius: BorderRadius.circular(12),
@@ -201,7 +210,7 @@ class SupportScreen extends StatelessWidget {
                         const Icon(
                           Icons.chat,
                           size: 32,
-                          color: Color(0xFF0097A7),
+                          color: AppColors.brand,
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -211,7 +220,7 @@ class SupportScreen extends StatelessWidget {
                               const Text(
                                 'هل تحتاج مساعدة؟',
                                 style: TextStyle(
-                                  color: Color(0xFF0097A7),
+                                  color: AppColors.brand,
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -230,7 +239,7 @@ class SupportScreen extends StatelessWidget {
                         const Icon(
                           Icons.arrow_forward_ios,
                           size: 16,
-                          color: Color(0xFF0097A7),
+                          color: AppColors.brand,
                         ),
                       ],
                     ),
@@ -238,7 +247,20 @@ class SupportScreen extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
+
+              // سياسة الخصوصية — إتاحتها للمستخدم شرط عملي لأي تطبيق يجمع
+              // بيانات صحية، وشرط صريح في متجري آبل وجوجل عند النشر لاحقاً.
+              TextButton.icon(
+                onPressed: () => _launchPrivacyPolicy(context),
+                icon: const Icon(Icons.privacy_tip_outlined, size: 20),
+                label: const Text('سياسة الخصوصية'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.brand,
+                ),
+              ),
+
+              const SizedBox(height: 16),
 
               // معلومات إضافية
               Container(
@@ -356,6 +378,24 @@ class SupportScreen extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// فتح صفحة سياسة الخصوصية.
+  ///
+  /// الصفحة مستضافة مع نسخة الويب نفسها (`web/privacy.html`)، فلا تحتاج
+  /// خدمة خارجية ولا تتوقّف عن العمل لو تغيّر النطاق.
+  void _launchPrivacyPolicy(BuildContext context) async {
+    final Uri url = Uri.parse('$appBaseUrl/privacy.html');
+    try {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      AppLogger.error('تعذّر فتح سياسة الخصوصية', e);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذّر فتح الصفحة، حاول مرة أخرى')),
+        );
+      }
+    }
   }
 
   void _launchWhatsApp(BuildContext context) async {

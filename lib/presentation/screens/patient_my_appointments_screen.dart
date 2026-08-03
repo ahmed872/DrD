@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/theme/app_theme.dart';
 
 class PatientMyAppointmentsScreen extends StatefulWidget {
   const PatientMyAppointmentsScreen({super.key});
@@ -83,7 +84,7 @@ class _PatientMyAppointmentsScreenState
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('حدث خطأ أثناء تحميل المواعيد: $e'),
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.danger,
             ),
           );
         }
@@ -107,7 +108,7 @@ class _PatientMyAppointmentsScreenState
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('تأكيد الإلغاء',
-                style: TextStyle(color: Colors.red)),
+                style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -126,7 +127,7 @@ class _PatientMyAppointmentsScreenState
               content: Text(ok
                   ? 'تم إلغاء الموعد بنجاح'
                   : 'تعذّر إلغاء الموعد، حاول مرة أخرى'),
-              backgroundColor: ok ? Colors.green : Colors.red,
+              backgroundColor: ok ? AppColors.success : AppColors.danger,
             ),
           );
           _fetchMyAppointments();
@@ -136,7 +137,7 @@ class _PatientMyAppointmentsScreenState
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('حدث خطأ أثناء الإلغاء: $e'),
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.danger,
             ),
           );
         }
@@ -156,13 +157,13 @@ class _PatientMyAppointmentsScreenState
     };
 
     final statusColorMap = {
-      'upcoming': Colors.blue,
-      'Scheduled': Colors.blue,
-      'Booked': Colors.blue,
-      'pending': Colors.orange,
-      'Completed': Colors.green,
-      'Cancelled': Colors.red,
-      'Rejected': Colors.red,
+      'upcoming': AppColors.brand,
+      'Scheduled': AppColors.brand,
+      'Booked': AppColors.brand,
+      'pending': AppColors.warning,
+      'Completed': AppColors.success,
+      'Cancelled': AppColors.danger,
+      'Rejected': AppColors.danger,
     };
 
     final currentStatusText = appointment['status'] as String;
@@ -186,7 +187,7 @@ class _PatientMyAppointmentsScreenState
       builder: (ctx) => AlertDialog(
         title: const Text('تفاصيل الموعد', textAlign: TextAlign.right),
         titleTextStyle: const TextStyle(
-          color: Color(0xFF0097A7),
+          color: AppColors.brand,
           fontSize: 20,
           fontWeight: FontWeight.bold,
         ),
@@ -220,7 +221,7 @@ class _PatientMyAppointmentsScreenState
                 'معلومات الطبيب',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
+                      color: AppColors.brand,
                     ),
                 textAlign: TextAlign.right,
               ),
@@ -236,7 +237,7 @@ class _PatientMyAppointmentsScreenState
                 'موعد الزيارة',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
+                      color: AppColors.brand,
                     ),
                 textAlign: TextAlign.right,
               ),
@@ -254,7 +255,7 @@ class _PatientMyAppointmentsScreenState
                 'تفاصيل الموعد',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
+                      color: AppColors.brand,
                     ),
                 textAlign: TextAlign.right,
               ),
@@ -270,7 +271,7 @@ class _PatientMyAppointmentsScreenState
                   'معلومات العيادة',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: const Color(0xFF0097A7),
+                        color: AppColors.brand,
                       ),
                   textAlign: TextAlign.right,
                 ),
@@ -287,7 +288,7 @@ class _PatientMyAppointmentsScreenState
                   child: Text(
                     'الحمد لله على السلامة، نتمنى لك دوام الصحة والعافية',
                     style: TextStyle(
-                      color: Colors.green,
+                      color: AppColors.success,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -304,7 +305,7 @@ class _PatientMyAppointmentsScreenState
                     icon: const Icon(Icons.star_rate),
                     label: const Text('تقييم الطبيب'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber,
+                      backgroundColor: AppColors.accent,
                       foregroundColor: Colors.white,
                     ),
                   ),
@@ -344,7 +345,7 @@ class _PatientMyAppointmentsScreenState
                   return IconButton(
                     icon: Icon(
                       index < rating ? Icons.star : Icons.star_border,
-                      color: Colors.amber,
+                      color: AppColors.accent,
                       size: 32,
                     ),
                     onPressed: () {
@@ -434,7 +435,7 @@ class _PatientMyAppointmentsScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('تم إرسال تقييمك بنجاح!'),
-              backgroundColor: Colors.green),
+              backgroundColor: AppColors.success),
         );
       }
     } catch (e) {
@@ -442,7 +443,7 @@ class _PatientMyAppointmentsScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text('حدث خطأ أثناء إرسال التقييم: $e'),
-              backgroundColor: Colors.red),
+              backgroundColor: AppColors.danger),
         );
       }
     }
@@ -503,7 +504,7 @@ class _PatientMyAppointmentsScreenState
       appBar: AppBar(
         title: const Text('مواعيدي'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: AppColors.brand,
         elevation: 1,
       ),
       body: Column(
@@ -516,7 +517,7 @@ class _PatientMyAppointmentsScreenState
               children: [
                 _buildTab('المواعيد السابقة', 1),
                 const SizedBox(width: 12),
-                _buildTab('المواعيد القادمة', 0),
+                _buildTab('القادمة', 0),
               ],
             ),
           ),
@@ -554,10 +555,10 @@ class _PatientMyAppointmentsScreenState
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF0097A7) : Colors.grey[100],
+            color: isSelected ? AppColors.brand : Colors.grey[100],
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? const Color(0xFF0097A7) : Colors.grey[300]!,
+              color: isSelected ? AppColors.brand : Colors.grey[300]!,
             ),
           ),
           child: Text(
@@ -671,13 +672,13 @@ class _PatientMyAppointmentsScreenState
     };
 
     final statusColorMap = {
-      'upcoming': Colors.blue,
-      'Scheduled': Colors.blue,
-      'Booked': Colors.blue,
-      'pending': Colors.orange,
-      'Completed': Colors.green,
-      'Cancelled': Colors.red,
-      'Rejected': Colors.red,
+      'upcoming': AppColors.brand,
+      'Scheduled': AppColors.brand,
+      'Booked': AppColors.brand,
+      'pending': AppColors.warning,
+      'Completed': AppColors.success,
+      'Cancelled': AppColors.danger,
+      'Rejected': AppColors.danger,
     };
 
     final currentStatusText = appointment['status'] as String;
@@ -698,7 +699,7 @@ class _PatientMyAppointmentsScreenState
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
             color: isUpcoming
-                ? Colors.blue.withOpacity(0.2)
+                ? AppColors.brand.withOpacity(0.2)
                 : Colors.grey.withOpacity(0.2),
           ),
         ),
@@ -778,8 +779,8 @@ class _PatientMyAppointmentsScreenState
                   CircleAvatar(
                     radius: 25,
                     backgroundColor: Colors.blue[50],
-                    child:
-                        const Icon(Icons.person, color: Colors.blue, size: 30),
+                    child: const Icon(Icons.person,
+                        color: AppColors.brand, size: 30),
                   ),
                 ],
               ),
@@ -792,11 +793,11 @@ class _PatientMyAppointmentsScreenState
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: () => _cancelAppointment(appointment['id']),
-                    icon: const Icon(Icons.cancel, color: Colors.red),
+                    icon: const Icon(Icons.cancel, color: AppColors.danger),
                     label: const Text('إلغاء الموعد',
-                        style: TextStyle(color: Colors.red)),
+                        style: TextStyle(color: AppColors.danger)),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.red),
+                      side: const BorderSide(color: AppColors.danger),
                     ),
                   ),
                 ),
@@ -807,19 +808,21 @@ class _PatientMyAppointmentsScreenState
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
+                    color: AppColors.warning.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                    border:
+                        Border.all(color: AppColors.warning.withOpacity(0.5)),
                   ),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                      Icon(Icons.info_outline,
+                          color: AppColors.warning, size: 18),
                       SizedBox(width: 8),
                       Text(
                         'لا يمكن إلغاء الموعد (انقضى الوقت)',
                         style: TextStyle(
-                          color: Colors.orange,
+                          color: AppColors.warning,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -839,7 +842,7 @@ class _PatientMyAppointmentsScreenState
                             content: Text('سيتم تفعيل التقييم قريباً!')),
                       );
                     },
-                    icon: const Icon(Icons.star_rate, color: Colors.amber),
+                    icon: const Icon(Icons.star_rate, color: AppColors.accent),
                     label: const Text('تقييم الطبيب'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue[50],

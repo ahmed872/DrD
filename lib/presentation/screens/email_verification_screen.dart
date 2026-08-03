@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../providers/firebase_auth_service.dart';
+import '../../core/theme/app_theme.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
   const EmailVerificationScreen({super.key});
@@ -63,7 +64,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('تم إعادة إرسال الرسالة بنجاح ✅'),
-            backgroundColor: Colors.green,
+            backgroundColor: AppColors.success,
             duration: Duration(seconds: 2),
           ),
         );
@@ -84,7 +85,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(auth.errorMessage ?? 'حدث خطأ'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -111,13 +112,13 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     width: 120,
                     height: 120,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.1),
+                      color: AppColors.brand.withOpacity(0.1),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
                       Icons.mail_outline,
                       size: 70,
-                      color: Color(0xFF0097A7),
+                      color: AppColors.brand,
                     ),
                   ),
 
@@ -156,10 +157,10 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.05),
+                      color: AppColors.brand.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: const Color(0xFF0097A7).withOpacity(0.2),
+                        color: AppColors.brand.withOpacity(0.2),
                       ),
                     ),
                     child: Column(
@@ -169,7 +170,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                           children: [
                             Icon(
                               Icons.info_outline,
-                              color: const Color(0xFF0097A7),
+                              color: AppColors.brand,
                               size: 20,
                             ),
                             const SizedBox(width: 8),
@@ -178,7 +179,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                                 'خطوات التفعيل:',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF0097A7),
+                                  color: AppColors.brand,
                                 ),
                               ),
                             ),
@@ -205,7 +206,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                       children: [
                         CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation(
-                            const Color(0xFF0097A7).withOpacity(0.7),
+                            AppColors.brand.withOpacity(0.7),
                           ),
                           strokeWidth: 2.5,
                         ),
@@ -247,7 +248,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     child: ElevatedButton(
                       onPressed: _isChecking ? null : _checkEmailVerification,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0097A7),
+                        backgroundColor: AppColors.brand,
                         foregroundColor: Colors.white,
                         elevation: 2,
                         shape: RoundedRectangleBorder(
@@ -287,7 +288,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                         side: BorderSide(
                           color: _resendCountdown > 0
                               ? Colors.grey[300]!
-                              : const Color(0xFF0097A7),
+                              : AppColors.brand,
                           width: 2,
                         ),
                         shape: RoundedRectangleBorder(
@@ -303,7 +304,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                           fontWeight: FontWeight.w600,
                           color: _resendCountdown > 0
                               ? Colors.grey[500]
-                              : const Color(0xFF0097A7),
+                              : AppColors.brand,
                         ),
                       ),
                     ),
@@ -316,10 +317,10 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     onPressed: () async {
                       final auth = Provider.of<FirebaseAuthService>(context,
                           listen: false);
+                      final navigator = Navigator.of(context);
                       await auth.logout();
-                      if (mounted) {
-                        Navigator.of(context).pushReplacementNamed('/');
-                      }
+                      if (!mounted) return;
+                      navigator.pushReplacementNamed('/');
                     },
                     child: const Text(
                       'الخروج',
