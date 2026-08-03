@@ -23,9 +23,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="DrD">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/Icon-192.png"/>
   <link rel="manifest" href="manifest.json">
 
   <!-- تفضيل الفتح في التطبيق المثبَّت بدل المتصفح عند وجوده -->
@@ -82,6 +83,24 @@
       html, body { background-color: #091316; }
     }
 
+    /*
+      تدرّج العلامة — نفس قيم `tokens.brandGradient` في lib/core/theme.
+
+      شاشة الإقلاع هذه تُرسم بـ HTML قبل تحميل محرّك Flutter، وشاشة البداية
+      بعدها تُرسم بـ Flutter. لو اختلف شكلهما رأى المستخدم قفزة لونية كاملة
+      بينهما — خلفية داكنة ثم تدرّج فيروزي — وهي أول ثانيتين في التطبيق.
+      توحيدهما يجعل الانتقال غير مرئي.
+    */
+    :root {
+      --brand-gradient: linear-gradient(to bottom left, #077180, #31B8C6);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --brand-gradient: linear-gradient(to bottom left, #0A424A, #077180);
+      }
+    }
+
     #boot-screen {
       position: fixed;
       inset: 0;
@@ -89,38 +108,49 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 20px;
+      background: var(--brand-gradient);
       z-index: 9999;
       transition: opacity 280ms ease-out;
+
+      /*
+        توسيط بصري لا هندسي.
+
+        الكتلة الموسَّطة رياضياً تبدو للعين واقعة تحت المنتصف، لأن العين
+        تقيس من أعلى الشكل لا من مركزه. رفعها بنسبة صغيرة من ارتفاع الشاشة
+        هو ما يجعلها تبدو «في النص» فعلاً.
+      */
+      padding-bottom: 7vh;
+      box-sizing: border-box;
     }
 
     #boot-screen.hidden { opacity: 0; pointer-events: none; }
 
     #boot-logo {
-      width: 88px;
-      height: 88px;
+      width: 96px;
+      height: 96px;
       border-radius: 26px;
-      box-shadow: 0 8px 28px rgba(10, 140, 155, 0.30);
+      margin-bottom: 22px;
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
     }
 
     #boot-title {
-      font-size: 19px;
+      font-size: 20px;
       font-weight: 700;
-      color: #0A8C9B;
-      letter-spacing: 0.2px;
+      color: #FFFFFF;
+      margin-bottom: 6px;
     }
 
     #boot-hint {
       font-size: 13px;
-      color: #85999F;
-      margin-top: -12px;
+      color: rgba(255, 255, 255, 0.75);
+      margin-bottom: 30px;
     }
 
     #boot-spinner {
-      width: 30px;
-      height: 30px;
-      border: 3px solid rgba(10, 140, 155, 0.18);
-      border-top-color: #0A8C9B;
+      width: 26px;
+      height: 26px;
+      border: 2.6px solid rgba(255, 255, 255, 0.24);
+      border-top-color: #FFFFFF;
       border-radius: 50%;
       animation: spin 800ms linear infinite;
     }
@@ -342,7 +372,7 @@
       //
       // الحارسان ضروريان: `sessionStorage` يمنع حلقة إعادة تحميل لا تنتهي،
       // ووجود تسجيل سابق يمنع تشغيل الترحيل على زائر جديد تماماً.
-      var BUILD_ID = '2026-08-03-ui-rebuild';
+      var BUILD_ID = '2026-08-03-ui-rebuild-icons';
       var PURGE_FLAG = 'drd_purged_once';
 
       function migrateStaleCaches() {

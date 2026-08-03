@@ -24,7 +24,7 @@
  */
 
 // ⚠️ ارفع هذا الرقم مع كل إصدار جديد. تغييره يُبطل كل الذاكرة المؤقتة القديمة.
-const VERSION = 'v3';
+const VERSION = 'v4';
 
 const SHELL_CACHE = `drd-shell-${VERSION}`;
 const ASSETS_CACHE = `drd-assets-${VERSION}`;

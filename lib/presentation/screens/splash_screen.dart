@@ -44,73 +44,79 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     final tokens = context.tokens;
 
-    // الشاشة كلها بلون العلامة بدل الأبيض المحايد: هذه أول لحظة يرى فيها
-    // المستخدم التطبيق، وشاشة بيضاء بمؤشّر رمادي لا تقول شيئاً عن هويّته.
+    // هذه الشاشة نسخة طبق الأصل من شاشة الإقلاع المكتوبة بـ HTML في
+    // `web/index.html`: نفس التدرّج، ونفس مقاسات الشعار والنص والمسافات.
+    //
+    // السبب أن المستخدم يرى الاثنتين متتاليتين — الأولى قبل تحميل محرّك
+    // Flutter والثانية بعده. أي فرق بينهما يظهر كقفزة بصرية في أول ثانيتين
+    // من عمر التطبيق. التطابق يجعل التسليم بينهما غير مرئي.
     return Scaffold(
       body: DecoratedBox(
         decoration: BoxDecoration(gradient: tokens.brandGradient),
-        child: Center(
-          child: FadeTransition(
-            opacity: _fade,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ScaleTransition(
-                  scale: _scale,
-                  child: Container(
-                    width: 116,
-                    height: 116,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(30),
-                      image: const DecorationImage(
-                        image: AssetImage('assets/images/logo.png'),
-                        fit: BoxFit.cover,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.22),
-                          blurRadius: 30,
-                          offset: const Offset(0, 12),
+        child: SafeArea(
+          child: Center(
+            child: Padding(
+              // توسيط بصري لا هندسي: الكتلة الموسَّطة رياضياً تبدو للعين
+              // واقعة تحت المنتصف، فتُرفع بنسبة صغيرة من ارتفاع الشاشة.
+              // النسبة نفسها المستخدمة في `#boot-screen`.
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.sizeOf(context).height * 0.07,
+              ),
+              child: FadeTransition(
+                opacity: _fade,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ScaleTransition(
+                      scale: _scale,
+                      child: Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(26),
+                          image: const DecorationImage(
+                            image: AssetImage('assets/images/logo.png'),
+                            fit: BoxFit.cover,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.22),
+                              blurRadius: 34,
+                              offset: const Offset(0, 12),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xxl),
-                Text(
-                  'DrD',
-                  style: context.texts.displaySmall?.copyWith(
-                    color: Colors.white,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  'حجز مواعيد الأطباء',
-                  style: context.texts.titleMedium?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.9),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xxxl),
-                SizedBox(
-                  width: 26,
-                  height: 26,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.6,
-                    valueColor: AlwaysStoppedAnimation(
-                      Colors.white.withValues(alpha: 0.9),
+                    const SizedBox(height: 22),
+                    Text(
+                      'DrD — حجز مواعيد الأطباء',
+                      textAlign: TextAlign.center,
+                      style: context.texts.titleLarge?.copyWith(
+                        color: Colors.white,
+                        fontSize: 20,
+                      ),
                     ),
-                    backgroundColor: Colors.white.withValues(alpha: 0.22),
-                  ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'جارٍ التحميل…',
+                      style: context.texts.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.75),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    SizedBox(
+                      width: 26,
+                      height: 26,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.6,
+                        valueColor: const AlwaysStoppedAnimation(Colors.white),
+                        backgroundColor: Colors.white.withValues(alpha: 0.24),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  'جارٍ التحميل…',
-                  style: context.texts.bodySmall?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.75),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
