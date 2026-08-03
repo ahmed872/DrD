@@ -37,6 +37,80 @@ class _Service {
 
 enum _Tone { brand, success, warning, info }
 
+const List<_Service> _doctorServices = [
+  _Service(
+    icon: Icons.event_note_rounded,
+    title: 'المواعيد',
+    subtitle: 'جدول اليوم',
+    tone: _Tone.brand,
+    builder: _buildSchedule,
+  ),
+  _Service(
+    icon: Icons.groups_rounded,
+    title: 'المرضى',
+    subtitle: 'قائمة المرضى',
+    tone: _Tone.info,
+    builder: _buildPatients,
+  ),
+  _Service(
+    icon: Icons.insights_rounded,
+    title: 'الإحصائيات',
+    subtitle: 'الأداء والتقارير',
+    tone: _Tone.success,
+    builder: _buildAnalytics,
+  ),
+  _Service(
+    icon: Icons.tune_rounded,
+    title: 'الإعدادات',
+    subtitle: 'إعدادات العيادة',
+    tone: _Tone.warning,
+    builder: _buildDoctorSettings,
+  ),
+];
+
+const List<_Service> _patientServices = [
+  _Service(
+    icon: Icons.add_circle_outline_rounded,
+    title: 'حجز موعد',
+    subtitle: 'احجز عند طبيب',
+    tone: _Tone.brand,
+    builder: _buildBooking,
+  ),
+  _Service(
+    icon: Icons.event_available_rounded,
+    title: 'مواعيدي',
+    subtitle: 'القادمة والسابقة',
+    tone: _Tone.success,
+    builder: _buildMyAppointments,
+  ),
+  _Service(
+    icon: Icons.search_rounded,
+    title: 'البحث عن طبيب',
+    subtitle: 'حسب التخصص',
+    tone: _Tone.info,
+    builder: _buildSearch,
+  ),
+  _Service(
+    icon: Icons.folder_shared_rounded,
+    title: 'السجل الطبي',
+    subtitle: 'زياراتك السابقة',
+    tone: _Tone.warning,
+    builder: _buildHistory,
+  ),
+];
+
+// دوال بناء منفصلة حتى تبقى قوائم الخدمات `const`.
+Widget _buildSchedule(BuildContext _) => const DoctorScheduleScreen();
+Widget _buildPatients(BuildContext _) => const DoctorPatientsScreen();
+Widget _buildAnalytics(BuildContext _) => const DoctorAnalyticsScreen();
+Widget _buildDoctorSettings(BuildContext _) => const DoctorSettingsScreen();
+Widget _buildBooking(BuildContext _) => const PatientBookingScreen();
+Widget _buildMyAppointments(BuildContext _) =>
+    const PatientMyAppointmentsScreen();
+Widget _buildSearch(BuildContext _) => const PatientSearchDoctorScreen();
+Widget _buildHistory(BuildContext _) => const PatientMedicalHistoryScreen();
+
+/// الصفحة الرئيسية — تقرأ المستخدم الحالي وتمرّره إلى [HomeBody].
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -44,128 +118,97 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<FirebaseAuthService>(
       builder: (context, auth, _) {
-        final isDoctor = auth.userRole == 'doctor';
-        final services = isDoctor ? _doctorServices : _patientServices;
-
-        return Scaffold(
-          body: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(child: _Hero(auth: auth, isDoctor: isDoctor)),
-              SliverToBoxAdapter(
-                child: PageBody(
-                  maxWidth: AppBreakpoints.wide,
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    0,
-                    AppSpacing.lg,
-                    AppSpacing.xxxl,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // بطاقة الملف تتداخل مع الرأس المتدرّج عمداً — تربط
-                      // الرأس بالمحتوى بدل أن يبدوا طبقتين منفصلتين.
-                      Transform.translate(
-                        offset: const Offset(0, -28),
-                        child: _ProfileCard(auth: auth, isDoctor: isDoctor),
-                      ),
-                      SectionTitle(
-                        title: isDoctor ? 'لوحة الطبيب' : 'الخدمات المتاحة',
-                        subtitle: isDoctor
-                            ? 'كل ما تحتاجه لإدارة عيادتك'
-                            : 'اختر الخدمة التي تريدها',
-                        icon: Icons.grid_view_rounded,
-                      ),
-                      _ServiceGrid(services: services),
-                      const SizedBox(height: AppSpacing.xl),
-                      _SupportBanner(),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+        return HomeBody(
+          userName: auth.userName,
+          userPhone: auth.userData?['phone']?.toString(),
+          isDoctor: auth.userRole == 'doctor',
+          onLogout: auth.logout,
         );
       },
     );
   }
+}
 
-  static const List<_Service> _doctorServices = [
-    _Service(
-      icon: Icons.event_note_rounded,
-      title: 'المواعيد',
-      subtitle: 'جدول اليوم',
-      tone: _Tone.brand,
-      builder: _buildSchedule,
-    ),
-    _Service(
-      icon: Icons.groups_rounded,
-      title: 'المرضى',
-      subtitle: 'قائمة المرضى',
-      tone: _Tone.info,
-      builder: _buildPatients,
-    ),
-    _Service(
-      icon: Icons.insights_rounded,
-      title: 'الإحصائيات',
-      subtitle: 'الأداء والتقارير',
-      tone: _Tone.success,
-      builder: _buildAnalytics,
-    ),
-    _Service(
-      icon: Icons.tune_rounded,
-      title: 'الإعدادات',
-      subtitle: 'إعدادات العيادة',
-      tone: _Tone.warning,
-      builder: _buildDoctorSettings,
-    ),
-  ];
+/// تخطيط الصفحة الرئيسية.
+///
+/// منفصل عن [HomeScreen] ولا يعرف شيئاً عن Firebase: يأخذ اسماً ورقماً ودوراً.
+/// هذا ما يجعله قابلاً للاختبار — وهو ضروري هنا تحديداً لأن أخطاء التخطيط في
+/// هذه الشاشة لا تُنتج رسالة خطأ، بل بطاقة مدفونة تحت الرأس لا يلاحظها إلا
+/// المستخدم.
+class HomeBody extends StatelessWidget {
+  const HomeBody({
+    super.key,
+    required this.userName,
+    required this.userPhone,
+    required this.isDoctor,
+    this.onLogout,
+  });
 
-  static const List<_Service> _patientServices = [
-    _Service(
-      icon: Icons.add_circle_outline_rounded,
-      title: 'حجز موعد',
-      subtitle: 'احجز عند طبيب',
-      tone: _Tone.brand,
-      builder: _buildBooking,
-    ),
-    _Service(
-      icon: Icons.event_available_rounded,
-      title: 'مواعيدي',
-      subtitle: 'القادمة والسابقة',
-      tone: _Tone.success,
-      builder: _buildMyAppointments,
-    ),
-    _Service(
-      icon: Icons.search_rounded,
-      title: 'البحث عن طبيب',
-      subtitle: 'حسب التخصص',
-      tone: _Tone.info,
-      builder: _buildSearch,
-    ),
-    _Service(
-      icon: Icons.folder_shared_rounded,
-      title: 'السجل الطبي',
-      subtitle: 'زياراتك السابقة',
-      tone: _Tone.warning,
-      builder: _buildHistory,
-    ),
-  ];
+  final String? userName;
+  final String? userPhone;
+  final bool isDoctor;
+  final Future<void> Function()? onLogout;
 
-  // دوال بناء منفصلة حتى تبقى قوائم الخدمات `const`.
-  static Widget _buildSchedule(BuildContext _) => const DoctorScheduleScreen();
-  static Widget _buildPatients(BuildContext _) => const DoctorPatientsScreen();
-  static Widget _buildAnalytics(BuildContext _) =>
-      const DoctorAnalyticsScreen();
-  static Widget _buildDoctorSettings(BuildContext _) =>
-      const DoctorSettingsScreen();
-  static Widget _buildBooking(BuildContext _) => const PatientBookingScreen();
-  static Widget _buildMyAppointments(BuildContext _) =>
-      const PatientMyAppointmentsScreen();
-  static Widget _buildSearch(BuildContext _) =>
-      const PatientSearchDoctorScreen();
-  static Widget _buildHistory(BuildContext _) =>
-      const PatientMedicalHistoryScreen();
+  @override
+  Widget build(BuildContext context) {
+    final services = isDoctor ? _doctorServices : _patientServices;
+
+    // عمود واحد داخل `SingleChildScrollView`، لا شريحتان في
+    // `CustomScrollView`.
+    //
+    // `RenderViewport` يرسم الشرائح بترتيب معكوس: الشريحة الأولى تُرسم فوق
+    // التي تليها (وهو ما يجعل الرؤوس المثبَّتة تعلو المحتوى). فكان الرأس
+    // يُرسم فوق بطاقة الملف المرفوعة للتداخل معه فيدفن حافتها العليا. داخل
+    // `Column` الترتيب طبيعي: اللاحق فوق السابق، فيظهر التداخل كما قُصد.
+    return Scaffold(
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _Hero(
+              userName: userName,
+              isDoctor: isDoctor,
+              onLogout: onLogout,
+            ),
+            PageBody(
+              maxWidth: AppBreakpoints.wide,
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.xxxl,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // بطاقة الملف تتداخل مع الرأس المتدرّج عمداً — تربط الرأس
+                  // بالمحتوى بدل أن يبدوا طبقتين منفصلتين.
+                  Transform.translate(
+                    offset: const Offset(0, -28),
+                    child: _ProfileCard(
+                      userName: userName,
+                      userPhone: userPhone,
+                      isDoctor: isDoctor,
+                    ),
+                  ),
+                  SectionTitle(
+                    title: isDoctor ? 'لوحة الطبيب' : 'الخدمات المتاحة',
+                    subtitle: isDoctor
+                        ? 'كل ما تحتاجه لإدارة عيادتك'
+                        : 'اختر الخدمة التي تريدها',
+                    icon: Icons.grid_view_rounded,
+                  ),
+                  _ServiceGrid(services: services),
+                  const SizedBox(height: AppSpacing.xl),
+                  const _SupportBanner(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // =============================================================================
@@ -173,10 +216,15 @@ class HomeScreen extends StatelessWidget {
 // =============================================================================
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.auth, required this.isDoctor});
+  const _Hero({
+    required this.userName,
+    required this.isDoctor,
+    required this.onLogout,
+  });
 
-  final FirebaseAuthService auth;
+  final String? userName;
   final bool isDoctor;
+  final Future<void> Function()? onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -200,50 +248,46 @@ class _Hero extends StatelessWidget {
             AppSpacing.lg,
             0,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _greeting(),
-                          style: context.texts.bodySmall?.copyWith(
-                            color: Colors.white.withValues(alpha: 0.82),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          auth.userName ?? 'المستخدم',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.texts.headlineSmall
-                              ?.copyWith(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isDoctor)
-                    _HeaderAction(
-                      icon: Icons.settings_outlined,
-                      tooltip: 'الإعدادات',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const PatientSettingsScreen(),
-                        ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _greeting(),
+                      style: context.texts.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.82),
                       ),
                     ),
-                  const SizedBox(width: AppSpacing.sm),
-                  _HeaderAction(
-                    icon: Icons.logout_rounded,
-                    tooltip: 'تسجيل الخروج',
-                    onTap: () => _confirmLogout(context),
+                    const SizedBox(height: 2),
+                    Text(
+                      userName ?? 'المستخدم',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.texts.headlineSmall
+                          ?.copyWith(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              if (!isDoctor) ...[
+                _HeaderAction(
+                  icon: Icons.settings_outlined,
+                  tooltip: 'الإعدادات',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PatientSettingsScreen(),
+                    ),
                   ),
-                ],
+                ),
+                const SizedBox(width: AppSpacing.sm),
+              ],
+              _HeaderAction(
+                icon: Icons.logout_rounded,
+                tooltip: 'تسجيل الخروج',
+                onTap: () => _confirmLogout(context),
               ),
             ],
           ),
@@ -257,12 +301,10 @@ class _Hero extends StatelessWidget {
   String _greeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'صباح الخير';
-    if (hour < 17) return 'مساء الخير';
     return 'مساء الخير';
   }
 
   Future<void> _confirmLogout(BuildContext context) async {
-    final auth = context.read<FirebaseAuthService>();
     final ok = await showConfirmDialog(
       context,
       title: 'تسجيل الخروج',
@@ -271,7 +313,7 @@ class _Hero extends StatelessWidget {
       destructive: true,
       icon: Icons.logout_rounded,
     );
-    if (ok) auth.logout();
+    if (ok) await onLogout?.call();
   }
 }
 
@@ -311,27 +353,31 @@ class _HeaderAction extends StatelessWidget {
 // =============================================================================
 
 class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({required this.auth, required this.isDoctor});
+  const _ProfileCard({
+    required this.userName,
+    required this.userPhone,
+    required this.isDoctor,
+  });
 
-  final FirebaseAuthService auth;
+  final String? userName;
+  final String? userPhone;
   final bool isDoctor;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final phone = auth.userData?['phone']?.toString();
 
     return AppCard(
       child: Row(
         children: [
-          AppAvatar(name: auth.userName, size: 52),
+          AppAvatar(name: userName, size: 52),
           const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  auth.userName ?? 'المستخدم',
+                  userName ?? 'المستخدم',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: context.texts.titleMedium,
@@ -347,7 +393,9 @@ class _ProfileCard extends StatelessWidget {
                     const SizedBox(width: AppSpacing.xs),
                     Flexible(
                       child: Text(
-                        (phone == null || phone.isEmpty) ? 'بدون رقم' : phone,
+                        (userPhone == null || userPhone!.isEmpty)
+                            ? 'بدون رقم'
+                            : userPhone!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.texts.bodySmall
@@ -386,13 +434,18 @@ class _ServiceGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // عمودان على الهاتف، أربعة على المتصفح. الشبكة الثابتة بعمودين كانت
-        // تترك نصف شاشة سطح المكتب فارغاً.
-        final columns = constraints.maxWidth >= 760
+        // عمودان على الهاتف، ثلاثة على اللوحي، أربعة على المتصفح.
+        //
+        // كان الحدّ الأدنى للعمودين 420 بكسل، وهو أعرض من معظم الهواتف
+        // (‏360–412 بعد طرح هوامش الصفحة). فكان الهاتف — وهو الجهاز الأساسي
+        // لهذا التطبيق — يعرض عموداً واحداً: أربع بطاقات عملاقة تحتاج تمرير
+        // الشاشة كاملة لرؤية أبسط قائمة فيه.
+        final width = constraints.maxWidth;
+        final columns = width >= 760
             ? 4
-            : constraints.maxWidth >= 420
-                ? 2
-                : 1;
+            : width >= 560
+                ? 3
+                : 2;
 
         return GridView.builder(
           shrinkWrap: true,
@@ -475,6 +528,8 @@ class _ServiceCard extends StatelessWidget {
 // =============================================================================
 
 class _SupportBanner extends StatelessWidget {
+  const _SupportBanner();
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
