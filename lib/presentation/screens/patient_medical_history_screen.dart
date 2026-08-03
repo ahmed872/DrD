@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../core/theme/app_theme.dart';
 
 class PatientMedicalHistoryScreen extends StatefulWidget {
   const PatientMedicalHistoryScreen({super.key});
@@ -54,7 +55,7 @@ class _PatientMedicalHistoryScreenState
           'notes': data['notes'] ?? 'No additional notes',
           'notesAr': data['notesAr'] ?? 'لا توجد ملاحظات إضافية',
           'icon': '🩺',
-          'color': Colors.blue,
+          'color': AppColors.brand,
         });
       }
 
@@ -80,9 +81,9 @@ class _PatientMedicalHistoryScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('السجل الطبي / Medical History'),
+        title: const Text('السجل الطبي'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: AppColors.brand,
         elevation: 1,
       ),
       body: _isLoading
@@ -113,9 +114,9 @@ class _PatientMedicalHistoryScreenState
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          _filterChip('الكل / All', 0),
+          _filterChip('الكل', 0),
           const SizedBox(width: 8),
-          _filterChip('زيارات / Visits', 1),
+          _filterChip('زيارات', 1),
         ],
       ),
     );
@@ -130,7 +131,7 @@ class _PatientMedicalHistoryScreenState
         setState(() => _selectedFilter = index);
       },
       backgroundColor: Colors.grey[200],
-      selectedColor: const Color(0xFF0097A7),
+      selectedColor: AppColors.brand,
       labelStyle: TextStyle(
         color: isSelected ? Colors.white : Colors.black87,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -189,18 +190,19 @@ class _PatientMedicalHistoryScreenState
                 Text(
                   record['doctor'],
                   style: const TextStyle(
-                    color: Color(0xFF0097A7),
+                    color: AppColors.brand,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
             const Divider(height: 24),
-            _buildInfoRow('السبب', record['reasonAr'], Colors.blue),
+            _buildInfoRow('السبب', record['reasonAr'], AppColors.brand),
             const SizedBox(height: 8),
-            _buildInfoRow('التشخيص', record['diagnosisAr'], Colors.orange),
+            _buildInfoRow('التشخيص', record['diagnosisAr'], AppColors.warning),
             const SizedBox(height: 8),
-            _buildInfoRow('الوصفة', record['prescriptionAr'], Colors.green),
+            _buildInfoRow(
+                'الوصفة', record['prescriptionAr'], AppColors.success),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -220,7 +222,7 @@ class _PatientMedicalHistoryScreenState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'ملاحظات / Notes',
+                          'ملاحظات',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,

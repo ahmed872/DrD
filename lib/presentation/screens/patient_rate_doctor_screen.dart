@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/rating_provider.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/theme/app_theme.dart';
 
 /// شاشة تقييم المريض للطبيب - تقييم جودة الخدمة
 class PatientRateDoctorScreen extends StatefulWidget {
@@ -85,7 +86,7 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ تم حفظ تقييمك بنجاح'),
-            backgroundColor: Colors.green,
+            backgroundColor: AppColors.success,
           ),
         );
         Future.delayed(const Duration(seconds: 1), () {
@@ -96,7 +97,7 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(provider.errorMessage ?? 'حدث خطأ'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -109,7 +110,7 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
       appBar: AppBar(
         title: const Text('تقييم الطبيب'),
         centerTitle: true,
-        backgroundColor: Colors.green,
+        backgroundColor: AppColors.success,
         elevation: 0,
       ),
       body: SingleChildScrollView(
@@ -124,7 +125,7 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Colors.green,
+                color: AppColors.success,
               ),
             ),
             const SizedBox(height: 24),
@@ -152,7 +153,7 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
                             ? Icons.star
                             : Icons.star_border,
                         size: 40,
-                        color: Colors.amber,
+                        color: AppColors.accent,
                       ),
                     ),
                   );
@@ -195,7 +196,7 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(
-                    color: Colors.green,
+                    color: AppColors.success,
                     width: 2,
                   ),
                 ),
@@ -209,7 +210,7 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
               child: ElevatedButton(
                 onPressed: _isSubmitting ? null : _submitRating,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: AppColors.success,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),

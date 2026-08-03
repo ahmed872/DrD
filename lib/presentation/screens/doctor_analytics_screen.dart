@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../../core/theme/app_theme.dart';
 
 class DoctorAnalyticsScreen extends StatefulWidget {
   const DoctorAnalyticsScreen({super.key});
@@ -157,10 +158,10 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
 
       List<Color> reasonColors = [
         Colors.blueAccent,
-        Colors.teal,
+        AppColors.brand,
         Colors.deepPurple,
         Colors.pink,
-        Colors.orange
+        AppColors.warning
       ];
       List<Map<String, dynamic>> topR = [];
       for (int i = 0; i < sortedReasons.length && i < 4; i++) {
@@ -215,7 +216,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         appBar: AppBar(
           title: const Text('الإحصائيات'),
           centerTitle: true,
-          backgroundColor: const Color(0xFF0097A7),
+          backgroundColor: AppColors.brand,
           elevation: 1,
         ),
         body: const Center(child: CircularProgressIndicator()),
@@ -226,7 +227,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
       appBar: AppBar(
         title: const Text('الإحصائيات'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: AppColors.brand,
         elevation: 1,
       ),
       body: SingleChildScrollView(
@@ -279,7 +280,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         _fetchRealAnalytics();
       },
       backgroundColor: Colors.grey[100],
-      selectedColor: Colors.blue.shade700,
+      selectedColor: AppColors.brand,
       labelStyle: TextStyle(
         color: isSelected ? Colors.white : Colors.black87,
         fontWeight: FontWeight.w600,
@@ -298,13 +299,13 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         _metricCard(
           'المواعيد',
           '${_analyticsData["totalAppointments"]}',
-          Colors.blue.shade700,
+          AppColors.brand,
           '📅',
         ),
         _metricCard(
           'مكتملة',
           '${_analyticsData["completedAppointments"]}',
-          Colors.green.shade600,
+          AppColors.success,
           '✅',
         ),
         _metricCard(
@@ -316,7 +317,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         _metricCard(
           'التقييم',
           '${_analyticsData["avgRating"]} ⭐',
-          Colors.amber.shade700,
+          AppColors.accent,
           '⭐',
         ),
       ],
@@ -386,7 +387,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.green,
+                    color: AppColors.success,
                   ),
                 ),
                 const Text('نسبة الإتمام',
@@ -400,7 +401,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
                 value: compRateValue,
                 minHeight: 12,
                 backgroundColor: Colors.grey[200],
-                valueColor: const AlwaysStoppedAnimation(Colors.green),
+                valueColor: const AlwaysStoppedAnimation(AppColors.success),
               ),
             ),
             const SizedBox(height: 16),
@@ -412,7 +413,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.red,
+                    color: AppColors.danger,
                   ),
                 ),
                 const Text('عدم الحضور', style: TextStyle(color: Colors.grey)),
@@ -425,7 +426,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
                 value: noShowRate / 100,
                 minHeight: 12,
                 backgroundColor: Colors.grey[200],
-                valueColor: const AlwaysStoppedAnimation(Colors.red),
+                valueColor: const AlwaysStoppedAnimation(AppColors.danger),
               ),
             ),
           ],
@@ -489,8 +490,8 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
                               colors: [
-                                Colors.blue.shade700,
-                                Colors.blue.shade400,
+                                AppColors.brand,
+                                AppColors.brandBright,
                               ],
                             ),
                             borderRadius: const BorderRadius.vertical(
@@ -599,13 +600,13 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
           '🕐',
           'متوسط المدة',
           '${_analyticsData["avgSessionDuration"]} دقيقة',
-          Colors.blue.shade700,
+          AppColors.brand,
         ),
         _quickStatCard(
           '💰',
           'الإيرادات',
           '${_analyticsData["totalRevenue"]} جنيه',
-          Colors.green.shade600,
+          AppColors.success,
         ),
         _quickStatCard(
           '👤',
@@ -617,7 +618,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
           '📅',
           'أفضل يوم',
           '${_analyticsData["peakDay"]}',
-          Colors.amber.shade700,
+          AppColors.accent,
         ),
       ],
     );

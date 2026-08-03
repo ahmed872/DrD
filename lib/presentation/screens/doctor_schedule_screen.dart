@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/theme/app_theme.dart';
 
 class DoctorScheduleScreen extends StatefulWidget {
   const DoctorScheduleScreen({super.key});
@@ -121,7 +122,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
         _scaffoldMessenger?.showSnackBar(
           SnackBar(
             content: Text(errorMsg),
-            backgroundColor: Colors.red.shade700,
+            backgroundColor: AppColors.danger,
             duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: 'أعد المحاولة',
@@ -136,7 +137,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ فصل المواعيد القادمة عن المكتملة
+    // ✅ فصل القادمة عن المكتملة
     final pendingAppointments = _appointments
         .where((apt) =>
             apt['status'] == 'pending' ||
@@ -156,7 +157,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
       appBar: AppBar(
         title: const Text('جدول المواعيد'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: AppColors.brand,
         elevation: 1,
       ),
       body: _isLoading
@@ -171,8 +172,8 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                       padding: const EdgeInsets.all(12),
                       margin: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        border: Border.all(color: Colors.red.shade200),
+                        color: AppColors.danger,
+                        border: Border.all(color: AppColors.danger),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -185,7 +186,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                                 Text(
                                   _errorMessage!,
                                   style: TextStyle(
-                                    color: Colors.red.shade700,
+                                    color: AppColors.danger,
                                     fontWeight: FontWeight.bold,
                                   ),
                                   maxLines: 2,
@@ -198,9 +199,9 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                                     padding:
                                         const EdgeInsets.symmetric(vertical: 4),
                                     child: Text(
-                                      'أعد المحاولة / Retry',
+                                      'أعد المحاولة',
                                       style: TextStyle(
-                                        color: Colors.blue.shade700,
+                                        color: AppColors.brand,
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
                                       ),
@@ -219,7 +220,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         ],
                       ),
                     ),
-                  // ✅ Tabs للفصل بين المواعيد القادمة والمكتملة
+                  // ✅ Tabs للفصل بين القادمة والمكتملة
                   Container(
                     padding: const EdgeInsets.all(16),
                     color: Colors.white,
@@ -227,14 +228,14 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                       children: [
                         Expanded(
                           child: _buildTab(
-                            'المواعيد المكتملة (${completedAppointments.length})',
+                            'المكتملة (${completedAppointments.length})',
                             1,
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: _buildTab(
-                            'المواعيد القادمة (${pendingAppointments.length})',
+                            'القادمة (${pendingAppointments.length})',
                             0,
                           ),
                         ),
@@ -278,7 +279,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: isSelected ? Colors.blue : Colors.grey,
+              color: isSelected ? AppColors.brand : Colors.grey,
               width: isSelected ? 3 : 1,
             ),
           ),
@@ -288,7 +289,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           textAlign: TextAlign.center,
           style: TextStyle(
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? Colors.blue : Colors.grey,
+            color: isSelected ? AppColors.brand : Colors.grey,
             fontSize: 14,
           ),
         ),
@@ -306,7 +307,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              'اختر التاريخ / Select Date',
+              'اختر اليوم',
               style: Theme.of(
                 context,
               ).textTheme.titleSmall?.copyWith(color: Colors.grey[600]),
@@ -371,13 +372,13 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.blue.shade200),
+                  border: Border.all(color: AppColors.brandTint),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(Icons.calendar_today, color: Colors.blue),
+                    Icon(Icons.calendar_today, color: AppColors.brand),
                     Text(
                       _selectedFilterIndex == 2
                           ? 'مواعيد هذا الأسبوع'
@@ -418,7 +419,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'No appointments',
+                '',
                 style: TextStyle(fontSize: 14, color: Colors.grey[400]),
               ),
             ],
@@ -455,7 +456,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
         appointment['status'] == 'Booked' ||
         appointment['status'] == 'Scheduled' ||
         appointment['status'] == 'upcoming');
-    final statusColor = isPending ? Colors.orange : Colors.green;
+    final statusColor = isPending ? AppColors.warning : AppColors.success;
     final statusLabel = isPending ? 'قيد الانتظار' : 'مكتملة';
 
     return InkWell(
@@ -516,7 +517,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         style:
                             Theme.of(context).textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.blue.shade900,
+                                  color: AppColors.brandDeep,
                                 ),
                       ),
                     ],
@@ -528,20 +529,20 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
               const SizedBox(height: 12),
               _infoRow(
                 icon: Icons.person,
-                label: 'المريض / Patient',
+                label: 'المريض',
                 value: appointment['patientName'],
                 valueEn: appointment['patientNameEn'],
               ),
               const SizedBox(height: 12),
               _infoRow(
                 icon: Icons.phone,
-                label: 'الهاتف / Phone',
+                label: 'الهاتف',
                 value: appointment['phone'],
               ),
               const SizedBox(height: 12),
               _infoRow(
                 icon: Icons.medical_services,
-                label: 'السبب / Reason',
+                label: 'السبب',
                 value: appointment['reason'],
               ),
               const SizedBox(height: 12),
@@ -549,7 +550,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   appointment['notes'].isNotEmpty)
                 _infoRow(
                   icon: Icons.note_alt,
-                  label: 'ملاحظات / Notes',
+                  label: 'ملاحظات',
                   value: appointment['notes'],
                 ),
               const SizedBox(height: 16),
@@ -595,7 +596,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           ),
         ),
         const SizedBox(width: 12),
-        Icon(icon, color: Colors.blue, size: 20),
+        Icon(icon, color: AppColors.brand, size: 20),
       ],
     );
   }
@@ -610,8 +611,8 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
               appointment['doctorNote'] ?? appointment['notes'] ?? '',
             ),
             icon: const Icon(Icons.edit_note),
-            label: const Text('إضافة ملاحظة طبيب / Add Note'),
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.blue),
+            label: const Text('إضافة ملاحظة طبيب'),
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.brand),
           ),
         ),
       ],
@@ -630,7 +631,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
       builder: (context) {
         return AlertDialog(
           title: const Text(
-            'ملاحظة طبية / Medical Note',
+            'ملاحظة طبية',
             textAlign: TextAlign.right,
           ),
           content: TextField(
@@ -645,7 +646,8 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء', style: TextStyle(color: Colors.red)),
+              child: const Text('إلغاء',
+                  style: TextStyle(color: AppColors.danger)),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -663,7 +665,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   messenger.showSnackBar(
                     const SnackBar(
                       content: Text('تم حفظ الملاحظة بنجاح'),
-                      backgroundColor: Colors.green,
+                      backgroundColor: AppColors.success,
                     ),
                   );
                 } catch (e) {
@@ -673,12 +675,12 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   messenger.showSnackBar(
                     const SnackBar(
                       content: Text('تعذّر حفظ الملاحظة، حاول مرة أخرى'),
-                      backgroundColor: Colors.red,
+                      backgroundColor: AppColors.danger,
                     ),
                   );
                 }
               },
-              child: const Text('حفظ / Save'),
+              child: const Text('حفظ'),
             ),
           ],
         );
@@ -714,9 +716,9 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           child: ElevatedButton.icon(
             onPressed: () => _completeAppointment(appointment['id']),
             icon: const Icon(Icons.check),
-            label: const Text('إنهاء / Complete'),
+            label: const Text('إنهاء'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
+              backgroundColor: AppColors.success,
               foregroundColor: Colors.white,
             ),
           ),
@@ -727,9 +729,9 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
             onPressed:
                 canCancel ? () => _cancelAppointment(appointment['id']) : null,
             icon: const Icon(Icons.close),
-            label: const Text('إلغاء / Cancel'),
+            label: const Text('إلغاء'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: canCancel ? Colors.red : Colors.grey,
+              foregroundColor: canCancel ? AppColors.danger : Colors.grey,
             ),
           ),
         ),
@@ -788,7 +790,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white),
             ),
-            backgroundColor: Colors.green,
+            backgroundColor: AppColors.success,
             duration: Duration(seconds: 2),
           ),
         );
@@ -796,7 +798,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('خطأ: $e'), backgroundColor: AppColors.danger),
         );
       }
     }
@@ -821,7 +823,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                 Text('✅ تم إلغاء الموعد / Cancelled'),
               ],
             ),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
             duration: const Duration(seconds: 2),
           ),
         );
@@ -829,7 +831,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('خطأ: $e'), backgroundColor: AppColors.danger),
         );
       }
     }
@@ -856,10 +858,10 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                       onPressed: () => Navigator.pop(context),
                     ),
                     Text(
-                      'تفاصيل الموعد / Details',
+                      'تفاصيل الموعد',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue.shade900,
+                            color: AppColors.brandDeep,
                           ),
                     ),
                   ],
@@ -873,7 +875,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   icon: Icons.person,
                   label: 'المريض',
                   value: appointment['patientName'] ?? 'غير محدد',
-                  valueColor: Colors.blue.shade700,
+                  valueColor: AppColors.brand,
                 ),
                 const SizedBox(height: 12),
 
@@ -882,7 +884,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   icon: Icons.phone,
                   label: 'الهاتف',
                   value: appointment['phone'] ?? 'غير محدد',
-                  valueColor: Colors.teal.shade700,
+                  valueColor: AppColors.brand,
                 ),
                 const SizedBox(height: 12),
 
@@ -893,7 +895,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   value: appointment['appointmentDate'] ??
                       appointment['date'] ??
                       'غير محدد',
-                  valueColor: Colors.orange.shade700,
+                  valueColor: AppColors.warning,
                 ),
                 const SizedBox(height: 12),
 
@@ -901,7 +903,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   icon: Icons.access_time,
                   label: 'الوقت',
                   value: appointment['time'] ?? 'غير محدد',
-                  valueColor: Colors.red.shade700,
+                  valueColor: AppColors.danger,
                 ),
                 const SizedBox(height: 12),
 
@@ -916,7 +918,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            'السبب / Reason',
+                            'السبب',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Colors.grey[700],
@@ -956,7 +958,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            'ملاحظات الطبيب / Notes',
+                            'ملاحظات الطبيب',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Colors.grey[700],
@@ -971,13 +973,13 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
+                          color: AppColors.brandTint,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue.shade200),
+                          border: Border.all(color: AppColors.brandTint),
                         ),
                         child: Text(
                           appointment['notes'].toString(),
-                          style: TextStyle(color: Colors.blue.shade900),
+                          style: TextStyle(color: AppColors.brandDeep),
                           textAlign: TextAlign.right,
                         ),
                       ),
@@ -999,7 +1001,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade700,
+                      backgroundColor: AppColors.brand,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1007,7 +1009,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                     ),
                     onPressed: () => Navigator.pop(context),
                     child: const Text(
-                      'إغلاق / Close',
+                      'إغلاق',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -1087,11 +1089,11 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
       case 'Booked':
       case 'Scheduled':
       case 'upcoming':
-        return Colors.orange;
+        return AppColors.warning;
       case 'Completed':
-        return Colors.green;
+        return AppColors.success;
       case 'Cancelled':
-        return Colors.red;
+        return AppColors.danger;
       case 'Rejected':
         return Colors.redAccent;
       default:

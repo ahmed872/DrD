@@ -26,7 +26,7 @@
  */
 
 // ⚠️ ارفع هذا الرقم مع كل إصدار جديد. تغييره يُبطل كل الذاكرة المؤقتة القديمة.
-const VERSION = 'v2';
+const VERSION = 'v3';
 
 const SHELL_CACHE = `drd-shell-${VERSION}`;
 const ASSETS_CACHE = `drd-assets-${VERSION}`;
@@ -124,8 +124,53 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // ملفات التطبيق نفسها تُجلب من الشبكة أولاً.
+  //
+  // السبب مهم: Flutter بيبني `main.dart.js` بنفس الاسم في كل مرة، بلا أي
+  // بصمة محتوى في اسم الملف. فلو عُرض من الذاكرة أولاً، المستخدم يفضل
+  // شايف **النسخة القديمة من التطبيق بعد كل نشر** — والتحديث ميوصلش إلا
+  // في الفتحة اللي بعدها. ده حصل فعلاً: نُشر تصميم جديد والمستخدم فضل
+  // شايف القديم.
+  //
+  // باقي الأصول (canvaskit، الخطوط، الأيقونات) مسارها بيتغيّر مع كل إصدار
+  // من Flutter، فتخزينها أولاً آمن وبيخلّي الإقلاع فورياً.
+  if (isAppShellAsset(url.pathname)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
   event.respondWith(staleWhileRevalidate(request));
 });
+
+/** هل الملف من ملفات التطبيق اللي اسمها ثابت بين الإصدارات؟ */
+function isAppShellAsset(pathname) {
+  return (
+    /\/(main\.dart\.js|flutter_bootstrap\.js|flutter\.js|version\.json|manifest\.json)$/
+      .test(pathname) ||
+    pathname.startsWith('/assets/')
+  );
+}
+
+/**
+ * الشبكة أولاً مع رجوع للذاكرة عند انقطاع الاتصال.
+ *
+ * بكده المستخدم دايماً على آخر نسخة وهو متصل، ولسه التطبيق بيفتح بلا
+ * إنترنت من آخر نسخة اتخزّنت.
+ */
+async function networkFirst(request) {
+  const cache = await caches.open(ASSETS_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response && response.status === 200) {
+      cache.put(request, response.clone()).catch(() => {});
+    }
+    return response;
+  } catch (error) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw error;
+  }
+}
 
 /**
  * التنقّل: الشبكة أولاً مع رجوع إلى النسخة المخزَّنة ثم صفحة بلا اتصال.

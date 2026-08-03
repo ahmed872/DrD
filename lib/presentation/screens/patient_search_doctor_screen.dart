@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'patient_booking_screen.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/theme/app_theme.dart';
 
 class PatientSearchDoctorScreen extends StatefulWidget {
   const PatientSearchDoctorScreen({super.key});
@@ -86,7 +87,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('حدث خطأ في تحميل الأطباء'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -105,7 +106,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
       appBar: AppBar(
         title: const Text('البحث عن طبيب'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: AppColors.brand,
         elevation: 1,
       ),
       body: Column(
@@ -195,7 +196,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                     setState(() => _selectedSpecialty = index);
                   },
                   backgroundColor: Colors.grey[100],
-                  selectedColor: Colors.blue.shade700,
+                  selectedColor: AppColors.brand,
                   labelStyle: TextStyle(
                     color: isSelected ? Colors.white : Colors.black87,
                     fontWeight: FontWeight.w600,
@@ -296,7 +297,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             onChanged: (value) {
               setState(() => _availableNow = value ?? false);
             },
-            activeColor: Colors.blue.shade700,
+            activeColor: AppColors.brand,
           ),
         ),
       ],
@@ -435,7 +436,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                       Text(
                         doctor['specialization'],
                         style: TextStyle(
-                          color: Colors.blue.shade700,
+                          color: AppColors.brand,
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
@@ -467,7 +468,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                     i < doctor['rating'].toInt()
                         ? Icons.star
                         : Icons.star_border,
-                    color: Colors.amber,
+                    color: AppColors.accent,
                     size: 18,
                   ),
                 ),
@@ -529,11 +530,12 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _infoChip('💰 ${doctor['price'].toInt()} جنيه', Colors.green),
-                _infoChip('👥 ${doctor['patients']} مريض', Colors.blue),
+                _infoChip(
+                    '💰 ${doctor['price'].toInt()} جنيه', AppColors.success),
+                _infoChip('👥 ${doctor['patients']} مريض', AppColors.brand),
                 _infoChip(
                   doctor['available'] ? '✅ متاح الآن' : '⏳ غير متاح',
-                  doctor['available'] ? Colors.green : Colors.orange,
+                  doctor['available'] ? AppColors.success : AppColors.warning,
                 ),
               ],
             ),
@@ -542,7 +544,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade700,
+                  backgroundColor: AppColors.brand,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
