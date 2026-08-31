@@ -31,6 +31,8 @@ const {
 } = require('firebase/firestore');
 
 let testEnv;
+/** نفس القواعد بعد قلب مفتاح إقفال الحجز المباشر — راجع describe الأخير. */
+let lockedEnv;
 
 const DOCTOR = 'doctor_1';
 const GROUP_DOCTOR = 'doctor_grouped';
@@ -51,22 +53,42 @@ const BOOKED_SLOT = slotId(DOCTOR, '2030-01-01', '09:00');
 const BOOKED_APPT = apptId(DOCTOR, '2030-01-01', '09:00', PATIENT);
 const DONE_APPT = apptId(DOCTOR, '2029-01-01', '09:00', PATIENT);
 
+const RULES = fs.readFileSync(
+  path.resolve(__dirname, '../../firestore.rules'),
+  'utf8'
+);
+
+/**
+ * نفس ملف القواعد بعد إقفال الحجز المباشر من العميل.
+ *
+ * الإقفال خطوة نشر مستقلة (لا تُنفَّذ قبل أن يستخدم العميل المنشور الدالة)،
+ * لكن سلوكه يجب أن يكون مُثبَتاً قبل ذلك لا بعده. لذلك يُشغَّل نفس الملف
+ * مرتين بدل الاحتفاظ بنسختين تتباعدان.
+ */
+const LOCKED_RULES = RULES.replace(
+  'function clientDirectBookingEnabled() { return true; }',
+  'function clientDirectBookingEnabled() { return false; }'
+);
+
 beforeAll(async () => {
+  if (LOCKED_RULES === RULES) {
+    throw new Error('تعذّر قلب مفتاح clientDirectBookingEnabled — تغيّرت صيغته؟');
+  }
+
   testEnv = await initializeTestEnvironment({
     projectId: 'drd-rules-test',
-    firestore: {
-      host: '127.0.0.1',
-      port: 8080,
-      rules: fs.readFileSync(
-        path.resolve(__dirname, '../../firestore.rules'),
-        'utf8'
-      ),
-    },
+    firestore: { host: '127.0.0.1', port: 8080, rules: RULES },
+  });
+
+  lockedEnv = await initializeTestEnvironment({
+    projectId: 'drd-rules-locked',
+    firestore: { host: '127.0.0.1', port: 8080, rules: LOCKED_RULES },
   });
 });
 
 afterAll(async () => {
   if (testEnv) await testEnv.cleanup();
+  if (lockedEnv) await lockedEnv.cleanup();
 });
 
 beforeEach(async () => {
@@ -675,6 +697,132 @@ describe('notifications', () => {
     await assertFails(setDoc(doc(asOther(), 'notifications', 'n1'), {
       userId: PATIENT, title: 'رسالة مزيّفة', body: 'احضر الآن', read: false,
     }));
+  });
+});
+
+describe('بعد إقفال الحجز المباشر (المرحلة 1أ)', () => {
+  // الحالة النهائية بعد نشر الدالة والتحقق منها: الحجز من الخادم وحده.
+  // Admin SDK يتجاوز القواعد، فالدالة تعمل بينما يُمنع العميل.
+
+  const lockedAs = (uid, email) =>
+    lockedEnv.authenticatedContext(uid, email ? { email } : {}).firestore();
+
+  beforeEach(async () => {
+    await lockedEnv.clearFirestore();
+    await lockedEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'users', DOCTOR), {
+        role: 'doctor', name: 'د. أحمد', isVerified: true,
+        bookingSystemType: 'Individual', price: 200,
+      });
+      await setDoc(doc(db, 'users', PATIENT), {
+        role: 'patient', name: 'مريض', email: PATIENT_EMAIL,
+      });
+      await setDoc(doc(db, 'slots', BOOKED_SLOT), {
+        doctorId: DOCTOR, appointmentDate: '2030-01-01', startTime: '09:00',
+        capacity: 4, bookedCount: 1, patientIds: [PATIENT],
+      });
+      await setDoc(doc(db, 'appointments', BOOKED_APPT), {
+        doctorId: DOCTOR, patientId: PATIENT, slotId: BOOKED_SLOT,
+        appointmentDate: '2030-01-01', startTime: '09:00', status: 'Booked',
+        price: 200, notes: '',
+      });
+    });
+  });
+
+  test('العميل لا يستطيع إنشاء موعد مباشرة — ولو بقفل صحيح', async () => {
+    const db = lockedAs(OTHER, OTHER_EMAIL);
+    const sid = slotId(DOCTOR, '2030-08-08', '09:00');
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'slots', sid), {
+      doctorId: DOCTOR, appointmentDate: '2030-08-08', startTime: '09:00',
+      capacity: 1, bookedCount: 1, patientIds: [OTHER],
+    });
+    batch.set(doc(db, 'appointments', `${sid}__${OTHER}`), {
+      doctorId: DOCTOR, patientId: OTHER, slotId: sid,
+      appointmentDate: '2030-08-08', startTime: '09:00', status: 'Booked',
+    });
+    await assertFails(batch.commit());
+  });
+
+  test('العميل لا يستطيع إنشاء قفل خانة', async () => {
+    await assertFails(setDoc(
+      doc(lockedAs(OTHER), 'slots', slotId(DOCTOR, '2030-08-09', '09:00')), {
+        doctorId: DOCTOR, appointmentDate: '2030-08-09', startTime: '09:00',
+        capacity: 1, bookedCount: 1, patientIds: [OTHER],
+      }));
+  });
+
+  test('العميل لا يستطيع زيادة عدّاد خانة', async () => {
+    await assertFails(updateDoc(doc(lockedAs(OTHER), 'slots', BOOKED_SLOT), {
+      bookedCount: 2, patientIds: arrayUnion(OTHER),
+    }));
+  });
+
+  test('العميل لا يستطيع الحجز عبر خانة شخص آخر', async () => {
+    await assertFails(setDoc(
+      doc(lockedAs(OTHER), 'appointments', `${BOOKED_SLOT}__${OTHER}`), {
+        doctorId: DOCTOR, patientId: OTHER, slotId: BOOKED_SLOT,
+        appointmentDate: '2030-01-01', startTime: '09:00', status: 'Booked',
+      }));
+  });
+
+  test('العميل لا يستطيع تجاوز التوثيق بأي حال', async () => {
+    const db = lockedAs(PATIENT, PATIENT_EMAIL);
+    // ترقية ذاتية كاملة.
+    await assertFails(updateDoc(doc(db, 'users', PATIENT), {
+      role: 'doctor', isVerified: true,
+    }));
+    // ثم توثيق ذاتي وحده.
+    await assertFails(updateDoc(doc(db, 'users', PATIENT), {
+      isVerified: true,
+    }));
+    // ولا حتى بإنشاء مستند جديد بدور طبيب.
+    await assertFails(setDoc(doc(db, 'users', 'brand_new_doctor'), {
+      role: 'doctor', isVerified: true, name: 'منتحل',
+    }));
+  });
+
+  test('الحقول المحمية في الموعد تبقى مقفلة', async () => {
+    const db = lockedAs(PATIENT, PATIENT_EMAIL);
+    await assertFails(updateDoc(doc(db, 'appointments', BOOKED_APPT), {
+      price: 0,
+    }));
+    await assertFails(updateDoc(doc(db, 'appointments', BOOKED_APPT), {
+      status: 'Completed',
+    }));
+    await assertFails(updateDoc(doc(db, 'appointments', BOOKED_APPT), {
+      notes: 'تزوير',
+    }));
+  });
+
+  // الإقفال يجب ألا يكسر ما لم ينتقل للخادم بعد.
+
+  test('الإلغاء من المريض يبقى يعمل', async () => {
+    const db = lockedAs(PATIENT, PATIENT_EMAIL);
+    await assertSucceeds(updateDoc(doc(db, 'appointments', BOOKED_APPT), {
+      status: 'Cancelled',
+    }));
+    await assertSucceeds(updateDoc(doc(db, 'slots', BOOKED_SLOT), {
+      bookedCount: 0, patientIds: arrayRemove(PATIENT),
+    }));
+  });
+
+  test('الطبيب يُنهي الموعد ويدير خاناته', async () => {
+    const db = lockedAs(DOCTOR);
+    await assertSucceeds(updateDoc(doc(db, 'appointments', BOOKED_APPT), {
+      status: 'Completed',
+    }));
+    await assertSucceeds(updateDoc(doc(db, 'slots', BOOKED_SLOT), {
+      bookedCount: 0, patientIds: [],
+    }));
+  });
+
+  test('قراءة المواعيد القائمة تبقى متاحة لصاحبها', async () => {
+    await assertSucceeds(
+      getDoc(doc(lockedAs(PATIENT, PATIENT_EMAIL), 'appointments', BOOKED_APPT)));
+    await assertSucceeds(
+      getDoc(doc(lockedAs(DOCTOR), 'appointments', BOOKED_APPT)));
   });
 });
 

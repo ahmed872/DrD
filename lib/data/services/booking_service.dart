@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../core/constants/appointment_status.dart';
 import '../../core/utils/app_logger.dart';
@@ -15,198 +16,162 @@ enum BookingFailure {
   /// المريض عنده موعد آخر عند نفس الطبيب في نفس اليوم.
   duplicateSameDay,
 
-  /// الوقت المطلوب مضى بالفعل.
+  /// الوقت المطلوب مضى بالفعل، أو خارج المدى المسموح.
   slotInThePast,
 
-  /// خطأ شبكة أو صلاحيات.
+  /// الطبيب غير متاح: غير موثَّق، أو موقوف، أو لا يعمل في هذا الوقت.
+  doctorUnavailable,
+
+  /// الجلسة انتهت — يحتاج المستخدم لتسجيل الدخول من جديد.
+  notSignedIn,
+
+  /// طلب غير صالح — لا يحدث في الاستخدام الطبيعي.
+  invalidRequest,
+
+  /// خطأ شبكة أو خطأ غير متوقع.
   unknown,
 }
 
+/// ترجمة رمز السبب القادم من الخادم إلى تصنيف تعرفه الواجهة.
+///
+/// الرموز مُعرَّفة في `functions/index.js`، والرسالة العربية تأتي من الخادم
+/// أيضاً؛ هذه الخريطة للتصنيف وللرسالة الاحتياطية عند انقطاع غير متوقع.
+const Map<String, BookingFailure> _failureByReason = {
+  'unauthenticated': BookingFailure.notSignedIn,
+  'permission-denied': BookingFailure.invalidRequest,
+  'invalid-argument': BookingFailure.invalidRequest,
+  'doctor-not-found': BookingFailure.doctorUnavailable,
+  'doctor-not-verified': BookingFailure.doctorUnavailable,
+  'doctor-disabled': BookingFailure.doctorUnavailable,
+  'doctor-not-working': BookingFailure.doctorUnavailable,
+  'slot-not-found': BookingFailure.doctorUnavailable,
+  'slot-closed': BookingFailure.doctorUnavailable,
+  'slot-conflict': BookingFailure.unknown,
+  'slot-expired': BookingFailure.slotInThePast,
+  'slot-out-of-range': BookingFailure.slotInThePast,
+  'slot-unavailable': BookingFailure.slotTaken,
+  'already-booked-same-day': BookingFailure.duplicateSameDay,
+  'patient-not-found': BookingFailure.invalidRequest,
+};
+
+const Map<BookingFailure, String> _fallbackMessages = {
+  BookingFailure.slotTaken: 'للأسف تم حجز هذا الموعد للتو، اختر وقتاً آخر',
+  BookingFailure.alreadyBookedBySamePatient: 'أنت حاجز هذا الموعد بالفعل',
+  BookingFailure.duplicateSameDay:
+      'لديك موعد محجوز مسبقاً عند هذا الطبيب في نفس اليوم',
+  BookingFailure.slotInThePast: 'لا يمكن الحجز في هذا الوقت، اختر موعداً آخر',
+  BookingFailure.doctorUnavailable: 'هذا الطبيب غير متاح للحجز حالياً',
+  BookingFailure.notSignedIn: 'انتهت الجلسة، سجّل الدخول ثم حاول مرة أخرى',
+  BookingFailure.invalidRequest: 'تعذّر إتمام الحجز، حدّث التطبيق وحاول مجدداً',
+  BookingFailure.unknown:
+      'تعذّر إتمام الحجز، تأكد من اتصالك بالإنترنت وحاول مرة أخرى',
+};
+
 /// نتيجة محاولة الحجز.
 class BookingResult {
-  const BookingResult.success(this.appointmentId)
+  BookingResult.success(this.appointmentId, {this.duplicate = false})
       : failure = null,
-        message = 'تم حجز الموعد بنجاح، ألف سلامة عليك';
+        message = duplicate
+            ? 'هذا الموعد محجوز لك بالفعل'
+            : 'تم حجز الموعد بنجاح، ألف سلامة عليك';
 
-  const BookingResult.failed(this.failure, this.message) : appointmentId = null;
+  const BookingResult.failed(this.failure, this.message)
+      : appointmentId = null,
+        duplicate = false;
 
   final String? appointmentId;
   final BookingFailure? failure;
   final String message;
 
+  /// الطلب وصل الخادم مرتين (ضغطة مزدوجة أو إعادة محاولة) وأُعيد نفس الموعد.
+  final bool duplicate;
+
   bool get isSuccess => failure == null;
 }
 
-/// حجز المواعيد بشكل ذرّي (atomic).
+/// إرسال طلبات الحجز إلى الخادم.
 ///
-/// ## المشكلة التي يحلّها هذا الملف
+/// ## أين صار قرار الحجز
 ///
-/// الكود السابق كان يحجز هكذا:
+/// كان هذا الملف يتّخذ القرار كاملاً: يقرأ عدّاد الخانة، ويقارنه بسعة أرسلها
+/// العميل، ويكتب مستند الموعد بحقول أرسلها العميل أيضاً — بما فيها السعر
+/// واسم الطبيب واسم المريض ورقمه. القواعد كانت تحرس ما تستطيع (السعة،
+/// التوثيق، ربط الموعد بقفل) لكنها لا تعرف كم يساوي الكشف، ولا أن الساعة
+/// الثالثة فجراً ليست ضمن دوام الطبيب.
 ///
-/// ```dart
-/// await FirebaseFirestore.instance.collection('appointments').add({...});
-/// ```
+/// الآن القرار كله في `bookAppointment` (راجع `functions/booking.js`):
+/// العميل يرسل **طلباً** — أي طبيب، أي يوم، أي ساعة، ولماذا — والخادم يستخرج
+/// الباقي من Firestore وينفّذ نفس المعاملة الذرّية التي كانت هنا.
 ///
-/// `add()` تُنشئ مستنداً بمعرّف عشوائي وتنجح **دائماً**. فحص "هل الخانة
-/// محجوزة؟" كان يحدث في الواجهة قبل ذلك بثوانٍ. النتيجة: لو ضغط مريضان
-/// "تأكيد" في نفس اللحظة، ينجح الاثنان ويصل الاثنان للعيادة في نفس التوقيت —
-/// وهو بالضبط الانتظار الذي بُني التطبيق لتفاديه.
-///
-/// ## الحل
-///
-/// كل خانة زمنية صار لها مستند واحد في `slots/{doctorId}_{date}_{time}` يعمل
-/// كقفل. الحجز يمرّ داخل [FirebaseFirestore.runTransaction]، فيقرأ عدّاد
-/// الخانة ويزيده في عملية واحدة غير قابلة للتجزئة. لو حاول اثنان في نفس
-/// الميلي ثانية، Firestore يُعيد تشغيل إحدى المعاملتين ويراها العدّاد ممتلئاً
-/// فتفشل بوضوح. القاعدة نفسها مكتوبة أيضاً في `firestore.rules` حتى لا يستطيع
-/// عميل معدَّل تجاوزها.
+/// ما بقي في هذا الملف: الإلغاء، وقراءات العرض التي تحتاجها شاشة الحجز.
 class BookingService {
-  BookingService({FirebaseFirestore? firestore})
-      : _db = firestore ?? FirebaseFirestore.instance;
+  BookingService({FirebaseFirestore? firestore, FirebaseFunctions? functions})
+      : _db = firestore ?? FirebaseFirestore.instance,
+        _functions = functions ?? FirebaseFunctions.instance;
 
   final FirebaseFirestore _db;
+  final FirebaseFunctions _functions;
 
   CollectionReference<Map<String, dynamic>> get _slots =>
       _db.collection('slots');
   CollectionReference<Map<String, dynamic>> get _appointments =>
       _db.collection('appointments');
 
-  /// حجز خانة زمنية.
+  /// طلب حجز خانة زمنية.
   ///
-  /// [capacity] عدد المرضى المسموح بهم في الخانة: 1 لنظام الحجز الفردي،
-  /// و`maxPatientsPerSlot` لنظام المجموعات.
+  /// لا تُرسَل هنا سعة ولا سعر ولا أسماء: الخادم يستخرجها من مستند الطبيب
+  /// ومستند المريض. [time] يُقبل بأي صيغة تعرضها الواجهة ويُوحَّد قبل الإرسال.
+  ///
+  /// إعادة إرسال نفس الطلب (ضغطة مزدوجة أو إعادة محاولة من الشبكة) تُرجع نفس
+  /// الموعد بـ [BookingResult.duplicate] بدل إنشاء حجز ثانٍ.
   Future<BookingResult> book({
     required String doctorId,
-    required String patientId,
     required DateTime date,
     required String time,
-    required int capacity,
-    required Map<String, dynamic> appointmentData,
+    String? reason,
   }) async {
-    final normalizedTime = SlotId.normalizeTime(time);
-    final dateStr = SlotId.formatDate(date);
-    final slotId = SlotId.forSlot(
-      doctorId: doctorId,
-      date: date,
-      time: normalizedTime,
-    );
-    final appointmentId = SlotId.forAppointment(
-      doctorId: doctorId,
-      date: date,
-      time: normalizedTime,
-      patientId: patientId,
-    );
-
-    // حارس زمني: لا يُسمح بحجز وقت مضى. يُفحص هنا وفي firestore.rules معاً.
-    if (_isInThePast(date, normalizedTime)) {
-      return const BookingResult.failed(
-        BookingFailure.slotInThePast,
-        'لا يمكن الحجز في وقت مضى، اختر موعداً لاحقاً',
-      );
-    }
-
-    // فحص مسبق للمواعيد القديمة التي أُنشئت قبل نظام الأقفال، فهي لا تملك
-    // مستند خانة يحميها. هذا الفحص غير ذرّي بطبيعته — المعاملة أدناه هي التي
-    // تتكفّل بحالة التزامن الحقيقية — لكنه يمنع التصادم مع البيانات القديمة.
-    final legacyConflict = await _findLegacyConflict(
-      doctorId: doctorId,
-      dateStr: dateStr,
-      time: normalizedTime,
-      patientId: patientId,
-      capacity: capacity,
-    );
-    if (legacyConflict != null) return legacyConflict;
-
     try {
-      await _db.runTransaction<void>((transaction) async {
-        final slotRef = _slots.doc(slotId);
-        final slotSnapshot = await transaction.get(slotRef);
-
-        if (!slotSnapshot.exists) {
-          // أول حجز في هذه الخانة — نُنشئ القفل ونحجز مكاناً واحداً.
-          transaction.set(slotRef, {
-            'doctorId': doctorId,
-            'appointmentDate': dateStr,
-            'startTime': normalizedTime,
-            'capacity': capacity,
-            'bookedCount': 1,
-            'patientIds': [patientId],
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        } else {
-          final data = slotSnapshot.data()!;
-          final patientIds = List<String>.from(
-            (data['patientIds'] as List<dynamic>? ?? const <dynamic>[])
-                .map((e) => e.toString()),
-          );
-
-          if (patientIds.contains(patientId)) {
-            throw const _BookingException(
-              BookingFailure.alreadyBookedBySamePatient,
-              'أنت حاجز هذا الموعد بالفعل',
-            );
-          }
-
-          final bookedCount = (data['bookedCount'] as num?)?.toInt() ?? 0;
-          // سعة الخانة المسجّلة وقت إنشائها هي المرجع، حتى لا يغيّر الطبيب
-          // إعداداته فيُفسد حجوزات قائمة.
-          final slotCapacity = (data['capacity'] as num?)?.toInt() ?? capacity;
-
-          if (bookedCount >= slotCapacity) {
-            throw const _BookingException(
-              BookingFailure.slotTaken,
-              'للأسف تم حجز هذا الموعد للتو، اختر وقتاً آخر',
-            );
-          }
-
-          transaction.update(slotRef, {
-            'bookedCount': bookedCount + 1,
-            'patientIds': FieldValue.arrayUnion([patientId]),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        }
-
-        // الموعد يُكتب داخل نفس المعاملة: إمّا ينجح القفل والموعد معاً، أو
-        // لا يُكتب أي منهما. لا توجد حالة وسطى تترك عدّاداً مرفوعاً بلا موعد.
-        transaction.set(_appointments.doc(appointmentId), {
-          ...appointmentData,
-          'doctorId': doctorId,
-          'patientId': patientId,
-          'appointmentDate': dateStr,
-          'startTime': normalizedTime,
-          'slotId': slotId,
-          'status': AppointmentStatus.booked.wireValue,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+      final callable = _functions.httpsCallable('bookAppointment');
+      final response = await callable.call<Object?>({
+        'doctorId': doctorId,
+        'date': SlotId.formatDate(date),
+        'time': SlotId.normalizeTime(time),
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
       });
 
+      final data = Map<String, dynamic>.from(response.data as Map);
+      final appointmentId = (data['appointmentId'] ?? '').toString();
+      final duplicate = data['duplicate'] == true;
+
       AppLogger.success('تم الحجز: $appointmentId');
-      return BookingResult.success(appointmentId);
-    } on _BookingException catch (e) {
-      AppLogger.warning('فشل الحجز (${e.failure.name}): ${e.message}');
-      return BookingResult.failed(e.failure, e.message);
-    } on FirebaseException catch (e) {
-      AppLogger.error('خطأ Firestore أثناء الحجز', e);
-      // `permission-denied` هنا غالباً يعني أن قاعدة الأمان رفضت تجاوز السعة،
-      // أي أن الخانة امتلأت فعلاً.
-      if (e.code == 'permission-denied') {
-        return const BookingResult.failed(
-          BookingFailure.slotTaken,
-          'للأسف تم حجز هذا الموعد للتو، اختر وقتاً آخر',
-        );
-      }
-      return const BookingResult.failed(
-        BookingFailure.unknown,
-        'تعذّر إتمام الحجز، تأكد من اتصالك بالإنترنت وحاول مرة أخرى',
-      );
+      return BookingResult.success(appointmentId, duplicate: duplicate);
+    } on FirebaseFunctionsException catch (e) {
+      final reasonCode = _reasonOf(e);
+      final failure = _failureByReason[reasonCode] ?? BookingFailure.unknown;
+      // رسالة الخادم عربية وجاهزة للعرض؛ الاحتياطية لانقطاع غير متوقع.
+      final serverMessage = (e.message ?? '').trim();
+      final message = serverMessage.isNotEmpty
+          ? serverMessage
+          : _fallbackMessages[failure]!;
+
+      AppLogger.warning('فشل الحجز ($reasonCode): $message');
+      return BookingResult.failed(failure, message);
     } catch (e, s) {
       AppLogger.error('خطأ غير متوقع أثناء الحجز', e, s);
-      return const BookingResult.failed(
+      return BookingResult.failed(
         BookingFailure.unknown,
-        'حدث خطأ غير متوقع، حاول مرة أخرى',
+        _fallbackMessages[BookingFailure.unknown]!,
       );
     }
+  }
+
+  /// رمز السبب الذي يرسله الخادم في `details.reason`.
+  String _reasonOf(FirebaseFunctionsException e) {
+    final details = e.details;
+    if (details is Map && details['reason'] != null) {
+      return details['reason'].toString();
+    }
+    return e.code;
   }
 
   /// إلغاء موعد وتحرير مكانه في الخانة، في معاملة واحدة.
@@ -303,72 +268,4 @@ class BookingService {
       (doc) => AppointmentStatus.parse(doc.data()['status']).isActive,
     );
   }
-
-  Future<BookingResult?> _findLegacyConflict({
-    required String doctorId,
-    required String dateStr,
-    required String time,
-    required String patientId,
-    required int capacity,
-  }) async {
-    try {
-      final snapshot = await _appointments
-          .where('doctorId', isEqualTo: doctorId)
-          .where('appointmentDate', isEqualTo: dateStr)
-          .get();
-
-      var sameSlotCount = 0;
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final status = AppointmentStatus.parse(data['status']);
-        if (!AppointmentStatus.occupying.contains(status)) continue;
-
-        final raw = data['startTime'] ?? data['time'];
-        if (raw == null) continue;
-        if (SlotId.normalizeTime(raw.toString()) != time) continue;
-
-        if (data['patientId'] == patientId) {
-          return const BookingResult.failed(
-            BookingFailure.alreadyBookedBySamePatient,
-            'أنت حاجز هذا الموعد بالفعل',
-          );
-        }
-        sameSlotCount++;
-      }
-
-      if (sameSlotCount >= capacity) {
-        return const BookingResult.failed(
-          BookingFailure.slotTaken,
-          'للأسف تم حجز هذا الموعد للتو، اختر وقتاً آخر',
-        );
-      }
-      return null;
-    } catch (e) {
-      // فشل الفحص المسبق ليس سبباً لإيقاف الحجز — المعاملة أدناه هي خط
-      // الدفاع الحقيقي، وهي التي تحسم النتيجة.
-      AppLogger.warning('تعذّر الفحص المسبق للمواعيد القديمة: $e');
-      return null;
-    }
-  }
-
-  bool _isInThePast(DateTime date, String time) {
-    final parts = time.split(':');
-    if (parts.length < 2) return false;
-    final slotStart = DateTime(
-      date.year,
-      date.month,
-      date.day,
-      int.tryParse(parts[0]) ?? 0,
-      int.tryParse(parts[1]) ?? 0,
-    );
-    return slotStart.isBefore(DateTime.now());
-  }
-}
-
-/// استثناء داخلي لإخراج سبب الفشل من داخل المعاملة.
-class _BookingException implements Exception {
-  const _BookingException(this.failure, this.message);
-
-  final BookingFailure failure;
-  final String message;
 }

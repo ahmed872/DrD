@@ -59,6 +59,34 @@ jobs:
           firebase emulators:exec --only firestore --project drd-rules-test \
             "npm --prefix test/firestore_rules test"
 
+  functions:
+    name: اختبار محرّك الحجز على الخادم
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # محاكي Firestore مكتوب بلغة Java.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - run: npm install -g firebase-tools
+
+      - run: npm --prefix functions install
+
+      - name: تشغيل الاختبارات على المحاكي
+        # تُثبت على قاعدة بيانات حقيقية: أن الخادم يتجاهل السعر والسعة
+        # المرسلين من العميل، وأن آخر مكان لا يُحجز مرتين عند التزامن، وأن
+        # الطلب المكرَّر لا ينتج حجزين.
+        run: |
+          firebase emulators:exec --only firestore --project drd-functions-test \
+            "npm --prefix functions test"
+
   build-web:
     name: بناء نسخة الويب
     runs-on: ubuntu-latest

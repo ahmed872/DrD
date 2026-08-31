@@ -49,6 +49,23 @@ service cloud.firestore {
       return request.resource.data[field] == resource.data[field];
     }
 
+    // ===================== مفتاح إقفال الحجز المباشر =====================
+
+    // المرحلة 1أ نقلت قرار الحجز إلى الدالة `bookAppointment`، والدوال
+    // السحابية تعمل بـ Admin SDK فتتجاوز هذه القواعد. لكن **لا يجوز** إقفال
+    // المسار القديم قبل أن يصبح العميل المنشور فعلاً يستخدم الدالة: كل نسخة
+    // قديمة مثبَّتة على هاتف مريض ستفقد القدرة على الحجز لحظة الإقفال.
+    //
+    // ولذلك الإقفال خطوة نشر مستقلة: اقلب هذه القيمة إلى `false` بعد التحقق
+    // (راجع `scripts/README.md` — ترتيب نشر المرحلة 1أ).
+    //
+    // ما يتأثر بها: إنشاء خانة، وزيادة عدّادها، وإنشاء موعد. الإلغاء وإدارة
+    // الطبيب لخاناته تبقى من العميل في هذه المرحلة.
+    //
+    // الحالتان مغطّاتان بالاختبارات: `rules.test.js` يشغّل نفس الملف مرتين،
+    // مرة كما هو ومرة بالقيمة مقلوبة.
+    function clientDirectBookingEnabled() { return true; }
+
     // ===================== الطبيب القابل للحجز =====================
 
     // الحجز لا يُقبل إلا عند طبيب **موثَّق**.
@@ -225,7 +242,8 @@ service cloud.firestore {
 
       allow read: if isSignedIn();
 
-      allow create: if isSignedIn()
+      allow create: if clientDirectBookingEnabled()
+                    && isSignedIn()
                     && request.resource.data.bookedCount == 1
                     && request.resource.data.patientIds.size() == 1
                     && request.resource.data.patientIds[0] == request.auth.uid
@@ -248,7 +266,8 @@ service cloud.firestore {
                       // حجز: زيادة بواحد دون تجاوز السعة، ويضيف صاحب الطلب
                       // نفسه فقط — لا يحذف غيره ولا يضيف أحداً سواه.
                       (
-                        request.resource.data.bookedCount == resource.data.bookedCount + 1
+                        clientDirectBookingEnabled()
+                        && request.resource.data.bookedCount == resource.data.bookedCount + 1
                         && request.resource.data.bookedCount <= resource.data.capacity
                         && !(request.auth.uid in resource.data.patientIds)
                         && request.resource.data.patientIds.hasAll([request.auth.uid])
@@ -326,7 +345,8 @@ service cloud.firestore {
       // معرّف المستند مقيَّد بـ `{slotId}__{patientId}` (مطابق لـ
       // `SlotId.forAppointment`) حتى لا يستطيع مريض تعليق عدة مستندات مواعيد
       // على قفل واحد بمعرّفات عشوائية.
-      allow create: if isUser(request.resource.data.patientId)
+      allow create: if clientDirectBookingEnabled()
+                    && isUser(request.resource.data.patientId)
                     && request.resource.data.status == 'Booked'
                     && request.resource.data.doctorId is string
                     && request.resource.data.appointmentDate is string

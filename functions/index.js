@@ -1,7 +1,80 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
+const { bookAppointmentCore, BookingError } = require("./booking");
+
 admin.initializeApp();
+
+/**
+ * حجز موعد — نقطة الدخول الوحيدة للحجز.
+ *
+ * العميل يرسل **طلباً** لا قراراً: أي طبيب، أي يوم، أي ساعة، ولماذا. كل ما
+ * عداه — السعر، السعة، مدة الكشف، اسم الطبيب، اسم المريض ورقمه، حالة الموعد،
+ * ومعرّفات المستندات — يستخرجه الخادم من Firestore.
+ *
+ * ```
+ * الطلب:  { doctorId, date: 'yyyy-MM-dd', time: 'HH:mm', reason? }
+ * الرد:   { ok, appointmentId, slotId, appointmentDate, startTime,
+ *           endTime, price, status, duplicate }
+ * ```
+ *
+ * الأخطاء تُرجَع بأكواد HttpsError القياسية (وهي مجموعة مغلقة لا تقبل أسماء
+ * مخصّصة)، مع `details.reason` رمزاً ثابتاً يترجمه التطبيق لرسالة عربية:
+ *
+ * | reason | code | المعنى |
+ * |---|---|---|
+ * | `unauthenticated` | unauthenticated | بلا تسجيل دخول |
+ * | `permission-denied` | permission-denied | حجز نيابة عن غيره |
+ * | `invalid-argument` | invalid-argument | مدخلات غير صالحة |
+ * | `doctor-not-found` | not-found | لا طبيب بهذا المعرّف |
+ * | `doctor-not-verified` | failed-precondition | طبيب غير موثَّق |
+ * | `doctor-disabled` | failed-precondition | حساب موقوف |
+ * | `doctor-not-working` | failed-precondition | ليس يوم عمل |
+ * | `slot-not-found` | not-found | وقت خارج جدول الطبيب |
+ * | `slot-expired` | failed-precondition | وقت مضى |
+ * | `slot-out-of-range` | out-of-range | أبعد من أفق الحجز |
+ * | `slot-closed` | failed-precondition | خانة مغلقة |
+ * | `slot-unavailable` | aborted | امتلأت الخانة |
+ * | `already-booked-same-day` | already-exists | موعد قائم نفس اليوم |
+ * | `patient-not-found` | failed-precondition | ملف المريض ناقص |
+ * | `internal` | internal | خطأ غير متوقع |
+ *
+ * الرسائل عربية وعامة عمداً: لا تكشف اسم مريض آخر ولا سبب رفض داخلياً.
+ */
+exports.bookAppointment = functions.https.onCall(async (data, context) => {
+  if (!context.auth || !context.auth.uid) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "يجب تسجيل الدخول أولاً",
+      { reason: "unauthenticated" }
+    );
+  }
+
+  try {
+    const result = await bookAppointmentCore({
+      db: admin.firestore(),
+      uid: context.auth.uid,
+      data,
+    });
+    return { ok: true, ...result };
+  } catch (error) {
+    if (error instanceof BookingError) {
+      throw new functions.https.HttpsError(error.code, error.message, {
+        reason: error.reason,
+      });
+    }
+    // لا تُسرَّب تفاصيل الخطأ الداخلي للعميل — تُسجَّل فقط.
+    functions.logger.error("bookAppointment فشل", {
+      uid: context.auth.uid,
+      error: error && error.message,
+    });
+    throw new functions.https.HttpsError(
+      "internal",
+      "تعذّر إتمام الحجز، حاول مرة أخرى",
+      { reason: "internal" }
+    );
+  }
+});
 
 // ملاحظة أمنية (المرحلة صفر):
 //

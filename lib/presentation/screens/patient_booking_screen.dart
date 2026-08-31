@@ -863,33 +863,17 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                     const Center(child: CircularProgressIndicator()),
               );
 
-              final auth =
-                  Provider.of<FirebaseAuthService>(context, listen: false);
               final messenger = ScaffoldMessenger.of(context);
               final navigator = Navigator.of(context);
 
-              // نظام المجموعات يسمح بأكثر من مريض في نفس الساعة؛ النظام
-              // الفردي سعته مريض واحد فقط.
-              final int capacity =
-                  (doctor['bookingSystemType'] ?? 'Individual') == 'Grouped'
-                      ? ((doctor['maxPatientsPerSlot'] as num?)?.toInt() ?? 4)
-                      : 1;
-
+              // الطلب يحمل الاختيار وحده: أي طبيب، أي يوم، أي ساعة، ولماذا.
+              // السعة والسعر واسم الطبيب واسم المريض ورقمه كانت تُرسل من هنا
+              // وتُكتب كما هي؛ صار الخادم يستخرجها من Firestore بنفسه.
               final result = await _bookingService.book(
                 doctorId: doctor['id'].toString(),
-                patientId: auth.userId!,
                 date: _selectedDate!,
                 time: _selectedTime!,
-                capacity: capacity,
-                appointmentData: {
-                  'patientName': auth.userName,
-                  'patientPhone': auth.userPhone,
-                  'doctorName': doctor['name'],
-                  'doctorNameEn': doctor['nameEn'],
-                  'doctorSpecialization': doctor['specialization'] ?? '',
-                  'reason': _consultationReason,
-                  'price': doctor['price'],
-                },
+                reason: _consultationReason,
               );
 
               if (!mounted) return;
