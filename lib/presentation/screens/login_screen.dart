@@ -12,10 +12,16 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // مفتاح التحكم بنسخة التطبيق:
-  // true = النسخة الخاصة بك لتسجيل الأطباء
-  // false = النسخة التي سيتم نشرها للمرضى فقط
-  static const bool isDoctorRegistrationEnabled = true;
+  // التسجيل الذاتي كطبيب مغلق.
+  //
+  // كان هذا المفتاح `true`، فتظهر أزرار «مريض / طبيب» لكل من يفتح شاشة
+  // التسجيل — أي أن أي شخص يصنع لنفسه حساب طبيب بضغطة، فيظهر في قائمة
+  // الأطباء ويستقبل حجوزات حقيقية ويقرأ أعراض المرضى وأرقامهم.
+  //
+  // إعادته إلى `true` لن تُنشئ طبيباً بعد الآن: `firestore.rules` ترفض
+  // إنشاء أي مستند مستخدم بدور غير `patient`. حسابات الأطباء تُنشأ بترقية
+  // إدارية: `node scripts/promote_to_doctor.js --uid=<uid> --apply`.
+  static const bool isDoctorRegistrationEnabled = false;
 
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();

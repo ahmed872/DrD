@@ -1,0 +1,9 @@
+{
+  "name": "drd-admin-scripts",
+  "private": true,
+  "version": "1.0.0",
+  "description": "سكربتات هجرة وإدارة تعمل بـ Firebase Admin SDK",
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+package-lock.json
+
+# مفاتيح حسابات الخدمة — لا تدخل Git إطلاقاً.
+*.json
+!package.json
+service-account*
+*-key.json

@@ -40,9 +40,12 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
   Future<void> _fetchRealDoctors() async {
     setState(() => _isLoadingDoctors = true);
     try {
+      // الأطباء الموثَّقون فقط — مطابق لما تسمح به `firestore.rules` عند
+      // الحجز، حتى لا يظهر في البحث طبيب لا يمكن الحجز عنده.
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: 'doctor')
+          .where('isVerified', isEqualTo: true)
           .get();
 
       final doctors = snapshot.docs.map((doc) {

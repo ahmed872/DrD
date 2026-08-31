@@ -388,14 +388,23 @@ class _PatientMyAppointmentsScreenState
       Map<String, dynamic> appointment, double rating, String comment) async {
     try {
       final doctorId = appointment['doctorId'];
+      final appointmentId = appointment['id'] as String;
       final auth = Provider.of<FirebaseAuthService>(context, listen: false);
 
-      // Add review to 'reviews' collection
-      await FirebaseFirestore.instance.collection('reviews').add({
+      // معرّف المراجعة هو معرّف الموعد نفسه.
+      //
+      // كانت `add()` تُنشئ مستنداً بمعرّف عشوائي، فلا شيء يمنع مريضاً من
+      // إرسال عشر مراجعات لنفس الزيارة — ولا يمنع حساباً بلا أي زيارة من
+      // إغراق طبيب بمراجعات. الآن `firestore.rules` تشترط أن يكون المعرّف
+      // معرّف موعد **مكتمل** يخصّ صاحب الطلب، فتصبح المراجعة واحدة لكل زيارة.
+      await FirebaseFirestore.instance
+          .collection('reviews')
+          .doc(appointmentId)
+          .set({
         'doctorId': doctorId,
         'patientId': auth.userId,
         'patientName': auth.userName ?? 'مريض',
-        'appointmentId': appointment['id'],
+        'appointmentId': appointmentId,
         'rating': rating,
         'comment': comment,
         'createdAt': FieldValue.serverTimestamp(),

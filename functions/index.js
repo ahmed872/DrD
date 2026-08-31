@@ -1,17 +1,20 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const nodemailer = require("nodemailer");
 
 admin.initializeApp();
 
-// إعدادات البريد (استخدم Gmail مع App Password)
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER, // بريد Gmail
-    pass: process.env.EMAIL_PASSWORD, // App Password من Gmail
-  },
-});
+// ملاحظة أمنية (المرحلة صفر):
+//
+// حُذفت من هذا الملف الدالة `sendOTPEmail` التي كانت تراقب مجموعة `otps`
+// وترسل بريداً إلى العنوان المأخوذ من **معرّف المستند**. مع قاعدة
+// `allow create: if true` على تلك المجموعة كان أي شخص على الإنترنت يستطيع
+// كتابة مستند بمعرّف = بريد أي ضحية، فيُرسل بريد من عنوان المشروع إلى من
+// يشاء: مرحّل بريد مفتوح، وطريق سريع لحرق سمعة نطاق الإرسال وللتصيّد باسم
+// العيادة. المسار لم يكن مستخدماً في التطبيق أصلاً — تسجيل الدخول يتم
+// ببريد وكلمة مرور عبر Firebase Auth، وإعادة تعيين كلمة المرور تمر برسائل
+// Firebase نفسها.
+//
+// مجموعة `otps` صارت مغلقة بالكامل في `firestore.rules`.
 
 // إرسال الإشعارات بناءً على مواعيد الحضور وغيرها
 exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(async (context) => {
@@ -25,7 +28,7 @@ exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(a
   for (const doc of appointmentsSnapshot.docs) {
     const data = doc.data();
     if (!data.date || !data.time) continue;
-    
+
     // تجميع تاريخ ووقت الموعد
     const parts = data.date.split("T")[0].split("-");
     const hms = data.time.split(":");
@@ -33,10 +36,10 @@ exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(a
     const minute = parseInt(hms[1].split(" ")[0]);
     if (data.time.includes("PM") && hour !== 12) hour += 12;
     if (data.time.includes("AM") && hour === 12) hour = 0;
-    
+
     const appointmentDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), hour, minute);
     const appointmentMillis = appointmentDate.getTime();
-    
+
     const diffMins = (appointmentMillis - nowMillis) / 60000;
 
     // 1-hour prior reminder (تذكير قبلها بساعة)
@@ -74,70 +77,3 @@ exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(a
   console.log("Appointment checks completed.");
   return null;
 });
-
-// مراقبة collection 'otps' وإرسال إيميل عند إضافة OTP جديد
-exports.sendOTPEmail = functions.firestore
-  .document("otps/{docId}")
-  .onCreate(async (snap, context) => {
-    const data = snap.data();
-    const email = context.params.docId;
-    const otpCode = data.code;
-    const expiryTime = data.expiryTime;
-
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "🔐 رمز التحقق الخاص بك - Medical Appointment App",
-      html: `
-        <div style="font-family: 'Arial', sans-serif; direction: rtl; text-align: right; background-color: #f5f5f5; padding: 20px;">
-          <div style="background-color: white; border-radius: 10px; padding: 30px; max-width: 500px; margin: 0 auto;">
-            <h2 style="color: #2c3e50; margin-bottom: 20px;">مرحباً بك!</h2>
-            
-            <p style="color: #555; font-size: 16px; margin-bottom: 20px;">
-              تم طلب رمز التحقق الخاص بك لتطبيق الحجز الطبي.
-            </p>
-            
-            <div style="background-color: #e8f4f8; border-left: 4px solid #3498db; padding: 20px; margin: 20px 0; border-radius: 5px;">
-              <p style="color: #999; margin: 0; font-size: 14px;">رمز التحقق:</p>
-              <h1 style="color: #3498db; font-size: 40px; letter-spacing: 5px; margin: 10px 0; font-family: 'Courier New', monospace;">
-                ${otpCode}
-              </h1>
-              <p style="color: #999; margin: 10px 0; font-size: 12px;">
-                ⏱️ ينتهي الصلاحية في 10 دقائق
-              </p>
-            </div>
-            
-            <p style="color: #e74c3c; background-color: #fadbd8; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              ⚠️ لا تشارك هذا الرمز مع أحد. نحن لن نطلبه منك عبر البريد الإلكتروني.
-            </p>
-            
-            <p style="color: #555; font-size: 14px; margin-top: 20px;">
-              إذا لم تطلب هذا الرمز، يرجى تجاهل هذا البريد الإلكتروني.
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-            
-            <p style="color: #999; font-size: 12px; text-align: center;">
-              © 2026 Medical Appointment App | جميع الحقوق محفوظة
-            </p>
-          </div>
-        </div>
-      `,
-    };
-
-    try {
-      await transporter.sendMail(mailOptions);
-      console.log(`✅ Email sent to: ${email}`);
-      
-      // تحديث الـ Firestore لتسجيل أن الإيميل تم إرساله
-      await admin.firestore().collection("otps").doc(email).update({
-        emailSent: true,
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      
-      return { success: true, message: "Email sent successfully" };
-    } catch (error) {
-      console.error(`❌ Error sending email to ${email}:`, error);
-      return { success: false, error: error.message };
-    }
-  });

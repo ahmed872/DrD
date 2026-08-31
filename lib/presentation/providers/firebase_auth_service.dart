@@ -110,6 +110,19 @@ class FirebaseAuthService extends ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
 
+      // التسجيل الذاتي للمرضى فقط.
+      //
+      // الفحص هنا وليس بعد إنشاء الحساب: `firestore.rules` ترفض كتابة مستند
+      // بدور غير `patient`، فلو مررنا لأنشأنا حساب مصادقة بلا مستند مقابل —
+      // حساب يتيم لا يستطيع صاحبه الدخول به ولا التسجيل من جديد بنفس البريد.
+      // الأطباء يُرقَّون إدارياً عبر `scripts/promote_to_doctor.js`.
+      if (role != 'patient') {
+        _errorMessage = 'حسابات الأطباء تُنشأ من إدارة التطبيق، تواصل معنا';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
       String cleanedPhone = normalizePhoneNumber(phoneNumber);
       String cleanedEmail = email?.trim().toLowerCase() ?? '';
 
@@ -516,13 +529,17 @@ class FirebaseAuthService extends ChangeNotifier {
 
   /// إيجاد البريد الإلكتروني المرتبط برقم جوال.
   ///
-  /// يجرّب `phone_index` أولاً. الحسابات التي أُنشئت قبل وجود هذا الفهرس ليس
-  /// لها مدخل فيه، فيسقط الكود للطريقة القديمة (الاستعلام على `users`) حتى
-  /// لا يفقد أي مستخدم قائم قدرته على تسجيل الدخول. عند نجاح المسار القديم
-  /// يُكتب المدخل الناقص تلقائياً، فتُهاجَر الحسابات تدريجياً مع الاستخدام.
+  /// المصدر الوحيد هو `phone_index`: مستند واحد معرّفه رقم الجوال، يحوي
+  /// البريد والمعرّف فقط.
   ///
-  /// بعد اكتمال الهجرة (راجع `docs/SECURITY.md`) يمكن حذف المسار الاحتياطي
-  /// وإغلاق القراءة العامة على `users` نهائياً.
+  /// كان هنا مسار احتياطي يستعلم على مجموعة `users` كاملة قبل المصادقة عند
+  /// غياب المدخل. حُذف لسببين: أنه يتطلب فتح قراءة `users` لغير المسجَّلين —
+  /// أي كشف كل الأسماء والأرقام وتواريخ الميلاد — وأن قواعد الأمان الحالية
+  /// ترفضه أصلاً، فهو كود ميت يوحي بأمان هجرة غير موجود.
+  ///
+  /// هجرة الحسابات القديمة صارت خطوة صريحة تُشغَّل مرة واحدة من Admin SDK:
+  ///   node scripts/backfill_phone_index.js --apply
+  /// وهي **شرط** قبل نشر هذه النسخة، وإلا تعذّر على الحسابات القديمة الدخول.
   Future<String?> _resolveEmailForPhone(String cleanedPhone) async {
     try {
       final indexDoc =
@@ -531,38 +548,9 @@ class FirebaseAuthService extends ChangeNotifier {
       if (indexedEmail != null && indexedEmail.isNotEmpty) {
         return indexedEmail;
       }
+      return null;
     } catch (e) {
-      AppLogger.warning('تعذّرت قراءة فهرس الجوال: $e');
-    }
-
-    try {
-      final legacy = await _firestore
-          .collection('users')
-          .where('phone', isEqualTo: cleanedPhone)
-          .limit(1)
-          .get();
-
-      if (legacy.docs.isEmpty) return null;
-
-      final doc = legacy.docs.first;
-      final email = doc.data()['email'] as String?;
-      if (email == null || email.isEmpty) return null;
-
-      // كتابة المدخل الناقص. الفشل هنا غير مهم — تسجيل الدخول ينجح بأي حال
-      // وسيُعاد المحاولة في المرة القادمة.
-      unawaited(
-        _firestore.collection('phone_index').doc(cleanedPhone).set({
-          'uid': doc.id,
-          'email': email,
-          'backfilledAt': FieldValue.serverTimestamp(),
-        }).catchError((Object e) {
-          AppLogger.warning('تعذّرت تعبئة فهرس الجوال: $e');
-        }),
-      );
-
-      return email;
-    } catch (e) {
-      AppLogger.error('تعذّر إيجاد البريد المرتبط بالرقم', e);
+      AppLogger.error('تعذّرت قراءة فهرس الجوال', e);
       return null;
     }
   }

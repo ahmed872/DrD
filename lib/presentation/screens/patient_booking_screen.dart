@@ -25,9 +25,12 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   Future<void> _fetchRealDoctors() async {
     setState(() => _isLoadingDoctors = true);
     try {
+      // الأطباء الموثَّقون فقط. القواعد ترفض الحجز عند غيرهم، فعرضهم في
+      // القائمة كان سيُنتج فشلاً غامضاً عند الضغط على «تأكيد».
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: 'doctor')
+          .where('isVerified', isEqualTo: true)
           .get();
       _allDoctors = snapshot.docs.map((doc) {
         final data = doc.data();
