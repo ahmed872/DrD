@@ -567,6 +567,17 @@ describe('appointments — الحقول المحمية عند التعديل', (
       doc(asDoctor(), 'appointments', BOOKED_APPT), { status: 'Completed' }));
   });
 
+  test('الطبيب يلغي موعد مريضه — نفس الحقول التي تكتبها cancelAsDoctor بالضبط', async () => {
+    // يطابق شكل الكتابة في BookingService.cancelAsDoctor حرفياً — لا مجرّد
+    // status وحدها. كان cancelledBy مفقوداً من القائمة المسموحة فتُرفض هذه
+    // الكتابة بالكامل رغم أن الطبيب يملك حق الإلغاء أصلاً (اكتُشف أثناء
+    // بوابة التحقق قبل النشر، المرحلة 1ب).
+    await assertSucceeds(updateDoc(
+      doc(asDoctor(), 'appointments', BOOKED_APPT), {
+        status: 'Cancelled', cancelledAt: new Date(), cancelledBy: 'doctor',
+      }));
+  });
+
   test('الطبيب يكتب ملاحظة طبية', async () => {
     await assertSucceeds(updateDoc(
       doc(asDoctor(), 'appointments', BOOKED_APPT), { notes: 'ضغط مرتفع' }));

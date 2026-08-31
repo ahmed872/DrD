@@ -387,10 +387,15 @@ service cloud.firestore {
                     && request.resource.data.status == 'Cancelled';
 
       // الطبيب: الحالة والملاحظة الطبية.
+      //
+      // `cancelledBy` مضافة للمرحلة 1ب: `BookingService.cancelAsDoctor`
+      // تكتبها لتمييز إلغاء الطبيب عن إلغاء المريض في السجل (راجع تعليق
+      // تلك الدالة). حقل تصنيف لا بيانات حسّاسة، ولا يفتح شيئاً لم يكن
+      // الطبيب يملكه أصلاً — فهو أصلاً يملك تغيير `status` إلى `Cancelled`.
       allow update: if isDoctorOwner()
                     && changedKeys().hasOnly(
-                         ['status', 'notes', 'cancelledAt', 'completedAt',
-                          'updatedAt'])
+                         ['status', 'notes', 'cancelledAt', 'cancelledBy',
+                          'completedAt', 'updatedAt'])
                     && (
                       !('status' in changedKeys())
                       || request.resource.data.status in
