@@ -54,6 +54,124 @@ const Map<String, BookingFailure> _failureByReason = {
   'patient-not-found': BookingFailure.invalidRequest,
 };
 
+/// سبب فشل الإلغاء أو إعادة الجدولة — يُترجم لرسالة عربية في الواجهة.
+enum LifecycleFailure {
+  /// لا موعد بهذا المعرّف.
+  appointmentNotFound,
+
+  /// الموعد ليس ملكاً لصاحب الطلب.
+  notOwner,
+
+  /// الموعد تم الكشف فيه بالفعل.
+  alreadyCompleted,
+
+  /// حالة الموعد لا تسمح بالعملية (ملغى، لم يحضر، ...).
+  notEligible,
+
+  /// فات وقت الموعد.
+  appointmentPast,
+
+  /// أقرب من المهلة المسموحة قبل الموعد.
+  deadlinePassed,
+
+  /// الوجهة الجديدة (طبيب/وقت) غير متاحة — نفس أسباب فشل الحجز.
+  destinationUnavailable,
+
+  /// موعد آخر قائم لنفس اليوم عند نفس الطبيب.
+  duplicateSameDay,
+
+  /// الجلسة انتهت.
+  notSignedIn,
+
+  /// طلب غير صالح.
+  invalidRequest,
+
+  /// خطأ شبكة أو غير متوقع.
+  unknown,
+}
+
+const Map<String, LifecycleFailure> _lifecycleFailureByReason = {
+  'unauthenticated': LifecycleFailure.notSignedIn,
+  'invalid-argument': LifecycleFailure.invalidRequest,
+  'appointment-not-found': LifecycleFailure.appointmentNotFound,
+  'permission-denied': LifecycleFailure.notOwner,
+  'appointment-completed': LifecycleFailure.alreadyCompleted,
+  'appointment-not-cancellable': LifecycleFailure.notEligible,
+  'appointment-not-reschedulable': LifecycleFailure.notEligible,
+  'appointment-past': LifecycleFailure.appointmentPast,
+  'cancellation-deadline-passed': LifecycleFailure.deadlinePassed,
+  'reschedule-deadline-passed': LifecycleFailure.deadlinePassed,
+  'doctor-not-found': LifecycleFailure.destinationUnavailable,
+  'doctor-not-verified': LifecycleFailure.destinationUnavailable,
+  'doctor-disabled': LifecycleFailure.destinationUnavailable,
+  'doctor-not-working': LifecycleFailure.destinationUnavailable,
+  'slot-not-found': LifecycleFailure.destinationUnavailable,
+  'slot-closed': LifecycleFailure.destinationUnavailable,
+  'slot-expired': LifecycleFailure.destinationUnavailable,
+  'slot-out-of-range': LifecycleFailure.destinationUnavailable,
+  'slot-unavailable': LifecycleFailure.destinationUnavailable,
+  'already-booked-same-day': LifecycleFailure.duplicateSameDay,
+};
+
+const Map<LifecycleFailure, String> _lifecycleFallbackMessages = {
+  LifecycleFailure.appointmentNotFound: 'تعذّر العثور على هذا الموعد',
+  LifecycleFailure.notOwner: 'هذا الموعد ليس لك',
+  LifecycleFailure.alreadyCompleted: 'تم الكشف في هذا الموعد بالفعل',
+  LifecycleFailure.notEligible: 'حالة هذا الموعد لا تسمح بهذا الإجراء',
+  LifecycleFailure.appointmentPast: 'فات وقت هذا الموعد',
+  LifecycleFailure.deadlinePassed: 'الوقت المتبقي على الموعد أقل من المسموح به',
+  LifecycleFailure.destinationUnavailable:
+      'هذا الوقت لم يعد متاحاً، اختر وقتاً آخر',
+  LifecycleFailure.duplicateSameDay:
+      'لديك موعد آخر عند هذا الطبيب في نفس اليوم',
+  LifecycleFailure.notSignedIn: 'انتهت الجلسة، سجّل الدخول ثم حاول مرة أخرى',
+  LifecycleFailure.invalidRequest:
+      'تعذّر إتمام الطلب، حدّث التطبيق وحاول مجدداً',
+  LifecycleFailure.unknown:
+      'تعذّر إتمام الطلب، تأكد من اتصالك بالإنترنت وحاول مرة أخرى',
+};
+
+/// نتيجة محاولة الإلغاء.
+class CancelResult {
+  const CancelResult.success({this.alreadyCancelled = false})
+      : failure = null,
+        message = alreadyCancelled
+            ? 'هذا الموعد ملغى بالفعل'
+            : 'تم إلغاء الموعد بنجاح';
+
+  const CancelResult.failed(this.failure, this.message)
+      : alreadyCancelled = false;
+
+  final LifecycleFailure? failure;
+  final String message;
+  final bool alreadyCancelled;
+
+  bool get isSuccess => failure == null;
+}
+
+/// نتيجة محاولة إعادة الجدولة.
+class RescheduleResult {
+  const RescheduleResult.success(
+    this.appointmentId, {
+    this.unchanged = false,
+    this.duplicate = false,
+  })  : failure = null,
+        message = unchanged ? 'الموعد كما هو بالفعل' : 'تم تعديل موعدك بنجاح';
+
+  const RescheduleResult.failed(this.failure, this.message)
+      : appointmentId = null,
+        unchanged = false,
+        duplicate = false;
+
+  final String? appointmentId;
+  final LifecycleFailure? failure;
+  final String message;
+  final bool unchanged;
+  final bool duplicate;
+
+  bool get isSuccess => failure == null;
+}
+
 const Map<BookingFailure, String> _fallbackMessages = {
   BookingFailure.slotTaken: 'للأسف تم حجز هذا الموعد للتو، اختر وقتاً آخر',
   BookingFailure.alreadyBookedBySamePatient: 'أنت حاجز هذا الموعد بالفعل',
@@ -112,8 +230,6 @@ class BookingService {
   final FirebaseFirestore _db;
   final FirebaseFunctions _functions;
 
-  CollectionReference<Map<String, dynamic>> get _slots =>
-      _db.collection('slots');
   CollectionReference<Map<String, dynamic>> get _appointments =>
       _db.collection('appointments');
 
@@ -174,11 +290,62 @@ class BookingService {
     return e.code;
   }
 
-  /// إلغاء موعد وتحرير مكانه في الخانة، في معاملة واحدة.
+  /// إلغاء موعد وتحرير مكانه في الخانة — عبر الخادم لا بكتابة مباشرة.
   ///
-  /// بدون هذا، الإلغاء كان يترك العدّاد مرفوعاً فتبقى الخانة تبدو ممتلئة
-  /// للأبد رغم أن أحداً لا يستخدمها.
-  Future<bool> cancel({required String appointmentId}) async {
+  /// ## أين صار قرار الإلغاء
+  ///
+  /// كان هذا الملف يكتب الإلغاء وتحرير الخانة مباشرة بمعاملة من العميل. هذا
+  /// يعمل، لكنه يترك قرارين في يد العميل: متى يجوز الإلغاء (حالة الموعد،
+  /// المهلة قبل الكشف)، وهل العدّاد يبقى سليماً عند طلبات متكرّرة أو
+  /// متزامنة. الآن `cancelAppointment` (راجع `functions/lifecycle.js`)
+  /// تتحقق من كل هذا على الخادم، وتنفّذ نفس التحرير الذرّي.
+  ///
+  /// إعادة إرسال نفس الطلب بعد إلغاء ناجح لا تفشل ولا تُنقص العدّاد ثانية —
+  /// تُعاد نتيجة ناجحة بـ [CancelResult.alreadyCancelled].
+  Future<CancelResult> cancel({
+    required String appointmentId,
+    String? reason,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('cancelAppointment');
+      final response = await callable.call<Object?>({
+        'appointmentId': appointmentId,
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      });
+
+      final data = Map<String, dynamic>.from(response.data as Map);
+      final alreadyCancelled = data['alreadyCancelled'] == true;
+
+      AppLogger.success('تم إلغاء الموعد: $appointmentId');
+      return CancelResult.success(alreadyCancelled: alreadyCancelled);
+    } on FirebaseFunctionsException catch (e) {
+      final reasonCode = _reasonOf(e);
+      final failure =
+          _lifecycleFailureByReason[reasonCode] ?? LifecycleFailure.unknown;
+      final serverMessage = (e.message ?? '').trim();
+      final message = serverMessage.isNotEmpty
+          ? serverMessage
+          : _lifecycleFallbackMessages[failure]!;
+
+      AppLogger.warning('فشل إلغاء الموعد ($reasonCode): $message');
+      return CancelResult.failed(failure, message);
+    } catch (e, s) {
+      AppLogger.error('خطأ غير متوقع أثناء إلغاء الموعد', e, s);
+      return CancelResult.failed(
+        LifecycleFailure.unknown,
+        _lifecycleFallbackMessages[LifecycleFailure.unknown]!,
+      );
+    }
+  }
+
+  /// إلغاء الطبيب لموعد أحد مرضاه من شاشة جدوله.
+  ///
+  /// `cancelAppointment` على الخادم (أعلاه) للمريض وحده — راجع توثيقها.
+  /// إلغاء الطبيب يبقى بالمسار المباشر القديم عمداً: قواعد الأمان تمنحه
+  /// حرية إدارة خانات عيادته ومواعيدها أصلاً (`isUser(doctorId)` على
+  /// `slots`، و`isDoctorOwner()` على `appointments`)، بلا حاجة لمهلة أو
+  /// تحقق إضافي كالذي يحتاجه إلغاء المريض. هذا خارج نطاق المرحلة 1ب.
+  Future<bool> cancelAsDoctor({required String appointmentId}) async {
     try {
       await _db.runTransaction<void>((transaction) async {
         final appointmentRef = _appointments.doc(appointmentId);
@@ -188,13 +355,11 @@ class BookingService {
 
         final data = appointmentSnapshot.data()!;
         final slotId = data['slotId'] as String?;
-        // يُقرأ من المستند نفسه بدل تمريره من الواجهة: الطبيب يُلغي مواعيد
-        // مرضاه، ولا يملك معرّف المريض في يده عند الضغط على زر الإلغاء.
         final patientId = (data['patientId'] ?? '').toString();
 
         // المواعيد القديمة لا تحمل `slotId`؛ نلغيها بدون لمس أي قفل.
         if (slotId != null && slotId.isNotEmpty) {
-          final slotRef = _slots.doc(slotId);
+          final slotRef = _db.collection('slots').doc(slotId);
           final slotSnapshot = await transaction.get(slotRef);
           if (slotSnapshot.exists) {
             final bookedCount =
@@ -211,12 +376,65 @@ class BookingService {
         transaction.update(appointmentRef, {
           'status': AppointmentStatus.cancelled.wireValue,
           'cancelledAt': FieldValue.serverTimestamp(),
+          'cancelledBy': 'doctor',
         });
       });
       return true;
     } catch (e, s) {
-      AppLogger.error('فشل إلغاء الموعد', e, s);
+      AppLogger.error('فشل إلغاء الطبيب للموعد', e, s);
       return false;
+    }
+  }
+
+  /// نقل موعد إلى خانة جديدة عند **نفس الطبيب** — عبر الخادم، بمعاملة
+  /// واحدة (تحرير القديمة + حجز الجديدة). راجع `functions/lifecycle.js`.
+  ///
+  /// طلب مكرَّر بنفس المعطيات يُعيد نفس النتيجة الناجحة بـ
+  /// [RescheduleResult.duplicate] بدل تنفيذ نقل ثانٍ. طلب إلى نفس الخانة
+  /// الحالية يُعيد [RescheduleResult.unchanged] بلا أي تعديل.
+  Future<RescheduleResult> reschedule({
+    required String appointmentId,
+    required DateTime newDate,
+    required String newTime,
+    String? reason,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('rescheduleAppointment');
+      final response = await callable.call<Object?>({
+        'appointmentId': appointmentId,
+        'newDate': SlotId.formatDate(newDate),
+        'newTime': SlotId.normalizeTime(newTime),
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      });
+
+      final data = Map<String, dynamic>.from(response.data as Map);
+      final newAppointmentId = (data['appointmentId'] ?? '').toString();
+      final unchanged = data['unchanged'] == true;
+      final duplicate = data['duplicate'] == true;
+
+      AppLogger.success('تم تعديل الموعد: $appointmentId → $newAppointmentId');
+      return RescheduleResult.success(
+        newAppointmentId,
+        unchanged: unchanged,
+        duplicate: duplicate,
+      );
+    } on FirebaseFunctionsException catch (e) {
+      final reasonCode = _reasonOf(e);
+      final failure =
+          _lifecycleFailureByReason[reasonCode] ?? LifecycleFailure.unknown;
+      final serverMessage = (e.message ?? '').trim();
+      final message = serverMessage.isNotEmpty
+          ? serverMessage
+          : _lifecycleFallbackMessages[failure]!;
+
+      AppLogger.warning('فشل تعديل الموعد ($reasonCode): $message');
+      return RescheduleResult.failed(failure, message);
+    } catch (e, s) {
+      AppLogger.error('خطأ غير متوقع أثناء تعديل الموعد', e, s);
+      return RescheduleResult.failed(
+        LifecycleFailure.unknown,
+        _lifecycleFallbackMessages[LifecycleFailure.unknown]!,
+      );
     }
   }
 

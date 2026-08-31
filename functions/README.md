@@ -4,11 +4,42 @@
 
 | الدالة | النوع | ما تفعله |
 |---|---|---|
+| `bookAppointment` | Callable | حجز موعد — المرحلة 1أ. راجع `booking.js`. |
+| `cancelAppointment` | Callable | إلغاء موعد المريض نفسه — المرحلة 1ب. راجع `lifecycle.js`. |
+| `rescheduleAppointment` | Callable | نقل موعد إلى خانة جديدة عند نفس الطبيب — المرحلة 1ب. راجع `lifecycle.js`. |
+| `getAvailability` | Callable | قراءة الخانات المتاحة عند طبيب ضمن مدى تاريخ — المرحلة 1ب. راجع `availability.js`. |
 | `checkAppointments` | مجدولة كل 5 دقائق | تكتب إشعار تذكير قبل الموعد بساعة، وإشعار غياب بعده بـ10 دقائق |
 
 الدوال تعمل بـ Admin SDK، أي أنها **تتجاوز `firestore.rules`**. لهذا تحديداً
 مجموعة `notifications` مغلقة أمام العميل (`allow create: if false`): الإشعار
 يُنشأ من الخادم وحده، وإلا أرسل أي مستخدم إشعاراً باسم العيادة.
+
+---
+
+## البنية: `availability.js` مصدر الحقيقة الوحيد للجدول
+
+المرحلة 1ب أخرجت منطق الجدول (أيام العمل، فترات العمل، الاستراحات،
+الاستثناءات، مدة/سعة الخانة، معرّفات الخانة والموعد) من `booking.js` إلى
+`availability.js`. الثلاثة الآن يستدعونها بلا نسخة موازية:
+
+```
+availability.js   ← منطق الجدول الخالص + AppError + خطط الكتابة على الأقفال
+   ↑        ↑          ↑
+booking.js  lifecycle.js  (getAvailabilityCore داخل availability.js نفسها)
+(bookAppointment)  (cancelAppointment, rescheduleAppointment)
+```
+
+**القاعدة الحرجة**: `bookAppointment` و`getAvailability` و
+`rescheduleAppointment` الثلاثة يستدعون `assertSlotWithinSchedule` و
+`generateSlotTimes` و`isWorkingDay` نفسها — فلا تعرض `getAvailability` خانة
+يرفضها الحجز، ولا العكس. لكن معاملة `bookAppointment` (ونظيرتها في
+`rescheduleAppointment`) تبقى الحكم الأخير دائماً: استجابة `getAvailability`
+قد تصبح قديمة بجزء من الثانية قبل لحظة الحجز الفعلية.
+
+حقول الجدول الجديدة (`workingPeriods`, `breaks`, `closedDates`, `vacations`,
+`dateOverrides`, `workingDaysByWeekday`, `timezone`) **كلها اختيارية** —
+طبيب بلا أيٍّ منها يسلك تماماً كما قبل هذه المرحلة، بلا أي هجرة بيانات.
+التفاصيل والأمثلة في التوثيق أعلى كل دالة داخل `availability.js`.
 
 ---
 

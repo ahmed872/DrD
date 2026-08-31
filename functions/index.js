@@ -1,9 +1,53 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
-const { bookAppointmentCore, BookingError } = require("./booking");
+const { bookAppointmentCore } = require("./booking");
+const { cancelAppointmentCore, rescheduleAppointmentCore } = require("./lifecycle");
+const { AppError, getAvailabilityCore } = require("./availability");
 
 admin.initializeApp();
+
+/**
+ * يُشغّل دالة نطاق (`*Core`) خلف تحقق مصادقة موحَّد، ويترجم `AppError` إلى
+ * `HttpsError` بنفس الآلية للجميع — الحجز، الإلغاء، إعادة الجدولة، والتوفّر.
+ *
+ * الرسالة الداخلية لأي خطأ غير متوقع لا تصل العميل أبداً؛ تُسجَّل فقط.
+ */
+function callable(name, core) {
+  return functions.https.onCall(async (data, context) => {
+    if (!context.auth || !context.auth.uid) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "يجب تسجيل الدخول أولاً",
+        { reason: "unauthenticated" }
+      );
+    }
+
+    try {
+      const result = await core({
+        db: admin.firestore(),
+        uid: context.auth.uid,
+        data,
+      });
+      return { ok: true, ...result };
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw new functions.https.HttpsError(error.code, error.message, {
+          reason: error.reason,
+        });
+      }
+      functions.logger.error(`${name} فشل`, {
+        uid: context.auth.uid,
+        error: error && error.message,
+      });
+      throw new functions.https.HttpsError(
+        "internal",
+        "تعذّر إتمام الطلب، حاول مرة أخرى",
+        { reason: "internal" }
+      );
+    }
+  });
+}
 
 /**
  * حجز موعد — نقطة الدخول الوحيدة للحجز.
@@ -41,40 +85,93 @@ admin.initializeApp();
  *
  * الرسائل عربية وعامة عمداً: لا تكشف اسم مريض آخر ولا سبب رفض داخلياً.
  */
-exports.bookAppointment = functions.https.onCall(async (data, context) => {
-  if (!context.auth || !context.auth.uid) {
-    throw new functions.https.HttpsError(
-      "unauthenticated",
-      "يجب تسجيل الدخول أولاً",
-      { reason: "unauthenticated" }
-    );
-  }
+exports.bookAppointment = callable("bookAppointment", bookAppointmentCore);
 
-  try {
-    const result = await bookAppointmentCore({
-      db: admin.firestore(),
-      uid: context.auth.uid,
-      data,
-    });
-    return { ok: true, ...result };
-  } catch (error) {
-    if (error instanceof BookingError) {
-      throw new functions.https.HttpsError(error.code, error.message, {
-        reason: error.reason,
-      });
-    }
-    // لا تُسرَّب تفاصيل الخطأ الداخلي للعميل — تُسجَّل فقط.
-    functions.logger.error("bookAppointment فشل", {
-      uid: context.auth.uid,
-      error: error && error.message,
-    });
-    throw new functions.https.HttpsError(
-      "internal",
-      "تعذّر إتمام الحجز، حاول مرة أخرى",
-      { reason: "internal" }
-    );
-  }
-});
+/**
+ * إلغاء موعد — نقطة الدخول الوحيدة لإلغائه من العميل.
+ *
+ * المريض صاحب الموعد وحده يستطيع الإلغاء، وحتى مهلة معيّنة قبل موعد
+ * الكشف. الخانة تُحرَّر في نفس المعاملة التي تُغيّر حالة الموعد، فلا يبقى
+ * عدّادها مرفوعاً بلا صاحب.
+ *
+ * ```
+ * الطلب:  { appointmentId, reason? }
+ * الرد:   { ok, appointmentId, status, alreadyCancelled }
+ * ```
+ *
+ * إعادة إرسال نفس الطلب على موعد أُلغي بالفعل تُعيد نجاحاً هادئاً
+ * (`alreadyCancelled: true`) بدل خطأ.
+ *
+ * | reason | code | المعنى |
+ * |---|---|---|
+ * | `unauthenticated` | unauthenticated | بلا تسجيل دخول |
+ * | `invalid-argument` | invalid-argument | معرّف موعد غير صالح |
+ * | `appointment-not-found` | not-found | لا موعد بهذا المعرّف |
+ * | `permission-denied` | permission-denied | ليس موعدك |
+ * | `appointment-completed` | failed-precondition | تم الكشف بالفعل |
+ * | `appointment-not-cancellable` | failed-precondition | حالة الموعد لا تسمح بالإلغاء |
+ * | `appointment-past` | failed-precondition | موعد فات وقته |
+ * | `cancellation-deadline-passed` | failed-precondition | أقرب من مهلة الإلغاء |
+ * | `internal` | internal | خطأ غير متوقع |
+ */
+exports.cancelAppointment = callable("cancelAppointment", cancelAppointmentCore);
+
+/**
+ * إعادة جدولة موعد إلى وقت آخر عند **نفس الطبيب** — نقطة الدخول الوحيدة.
+ *
+ * العملية ذرّية: تحرير الخانة القديمة، وحجز الجديدة، وربط المستندين
+ * ببعضهما (`rescheduledTo` / `rescheduledFrom`)، كلها في معاملة واحدة —
+ * إما تنجح كاملة أو لا يتغيّر شيء.
+ *
+ * ```
+ * الطلب:  { appointmentId, newDate: 'yyyy-MM-dd', newTime: 'HH:mm', reason? }
+ * الرد:   { ok, appointmentId, previousAppointmentId, slotId,
+ *           appointmentDate, startTime, endTime, price, status,
+ *           duplicate, unchanged }
+ * ```
+ *
+ * `appointmentId` في الرد هو معرّف الموعد **الجديد** (يتغيّر مع الخانة)؛
+ * `previousAppointmentId` يشير إلى القديم لمن يحتاج تتبّعه. طلب إلى نفس
+ * الخانة الحالية يُعيد `unchanged: true` بلا أي تعديل.
+ *
+ * | reason | code | المعنى |
+ * |---|---|---|
+ * | `unauthenticated` | unauthenticated | بلا تسجيل دخول |
+ * | `invalid-argument` | invalid-argument | مدخلات غير صالحة |
+ * | `appointment-not-found` | not-found | لا موعد بهذا المعرّف |
+ * | `permission-denied` | permission-denied | ليس موعدك |
+ * | `appointment-completed` | failed-precondition | تم الكشف بالفعل |
+ * | `appointment-not-reschedulable` | failed-precondition | حالة الموعد لا تسمح بالتعديل |
+ * | `appointment-past` | failed-precondition | موعد فات وقته |
+ * | `reschedule-deadline-passed` | failed-precondition | أقرب من مهلة التعديل |
+ * | `doctor-not-verified` / `doctor-disabled` | failed-precondition | الطبيب غير متاح الآن |
+ * | `doctor-not-working` | failed-precondition | الطبيب لا يعمل في التاريخ الجديد |
+ * | `slot-not-found` | not-found | الوقت الجديد خارج جدول الطبيب |
+ * | `slot-expired` / `slot-out-of-range` | failed-precondition / out-of-range | التاريخ الجديد غير صالح |
+ * | `slot-unavailable` / `slot-closed` | aborted / failed-precondition | الخانة الجديدة ممتلئة أو مغلقة |
+ * | `already-booked-same-day` | already-exists | موعد آخر عندك في اليوم الجديد |
+ * | `internal` | internal | خطأ غير متوقع |
+ */
+exports.rescheduleAppointment = callable("rescheduleAppointment", rescheduleAppointmentCore);
+
+/**
+ * التوفّر — قراءة الخانات المتاحة عند طبيب ضمن مدى تاريخ.
+ *
+ * تستخدم **نفس** دوال الجدول التي يستخدمها `bookAppointment`، فلا تعرض
+ * وقتاً يرفضه الحجز. الرد مع ذلك ليس مرجعاً نهائياً — قد يصبح قديماً قبل
+ * لحظة الحجز، ومعاملة `bookAppointment` هي الحكم الأخير دائماً.
+ *
+ * ```
+ * الطلب:  { doctorId, dateFrom: 'yyyy-MM-dd', dateTo?: 'yyyy-MM-dd' }
+ * الرد:   { ok, doctorId, timezone, generatedAt, dateFrom, dateTo, slots: [
+ *           { slotId, date, startTime, endTime, capacity, bookedCount,
+ *             remainingCapacity, status } ] }
+ * ```
+ *
+ * `status` لكل خانة: `available` | `full` | `past` | `closed`. لا سعة ولا
+ * عدّادات تُرسَل من العميل — الرد وحده يحملها من Firestore.
+ */
+exports.getAvailability = callable("getAvailability", getAvailabilityCore);
 
 // ملاحظة أمنية (المرحلة صفر):
 //

@@ -792,7 +792,10 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     try {
       // عبر BookingService حتى يُحرَّر قفل الخانة مع تغيير الحالة في معاملة
       // واحدة، فيستطيع مريض آخر حجز الوقت الذي أخلاه الطبيب.
-      await _bookingService.cancel(appointmentId: appointmentId);
+      //
+      // `cancelAsDoctor` — لا `cancel` — لأن `cancelAppointment` على الخادم
+      // مخصّصة للمريض صاحب الموعد وحده.
+      await _bookingService.cancelAsDoctor(appointmentId: appointmentId);
 
       await _fetchAppointments();
 

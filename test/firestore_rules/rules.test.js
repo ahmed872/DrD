@@ -33,6 +33,8 @@ const {
 let testEnv;
 /** نفس القواعد بعد قلب مفتاح إقفال الحجز المباشر — راجع describe الأخير. */
 let lockedEnv;
+/** نفس القواعد بعد قلب مفتاح إقفال **الإلغاء** المباشر (المرحلة 1ب). */
+let cancelLockedEnv;
 
 const DOCTOR = 'doctor_1';
 const GROUP_DOCTOR = 'doctor_grouped';
@@ -70,9 +72,21 @@ const LOCKED_RULES = RULES.replace(
   'function clientDirectBookingEnabled() { return false; }'
 );
 
+/**
+ * نفس ملف القواعد بعد إقفال الإلغاء المباشر من العميل (المرحلة 1ب) —
+ * بمعزل عن مفتاح الحجز، حتى يُثبَت أن كل مفتاح يعمل باستقلال عن الآخر.
+ */
+const CANCEL_LOCKED_RULES = RULES.replace(
+  'function clientDirectCancelEnabled() { return true; }',
+  'function clientDirectCancelEnabled() { return false; }'
+);
+
 beforeAll(async () => {
   if (LOCKED_RULES === RULES) {
     throw new Error('تعذّر قلب مفتاح clientDirectBookingEnabled — تغيّرت صيغته؟');
+  }
+  if (CANCEL_LOCKED_RULES === RULES) {
+    throw new Error('تعذّر قلب مفتاح clientDirectCancelEnabled — تغيّرت صيغته؟');
   }
 
   testEnv = await initializeTestEnvironment({
@@ -84,11 +98,17 @@ beforeAll(async () => {
     projectId: 'drd-rules-locked',
     firestore: { host: '127.0.0.1', port: 8080, rules: LOCKED_RULES },
   });
+
+  cancelLockedEnv = await initializeTestEnvironment({
+    projectId: 'drd-rules-cancel-locked',
+    firestore: { host: '127.0.0.1', port: 8080, rules: CANCEL_LOCKED_RULES },
+  });
 });
 
 afterAll(async () => {
   if (testEnv) await testEnv.cleanup();
   if (lockedEnv) await lockedEnv.cleanup();
+  if (cancelLockedEnv) await cancelLockedEnv.cleanup();
 });
 
 beforeEach(async () => {
@@ -823,6 +843,76 @@ describe('بعد إقفال الحجز المباشر (المرحلة 1أ)', () 
       getDoc(doc(lockedAs(PATIENT, PATIENT_EMAIL), 'appointments', BOOKED_APPT)));
     await assertSucceeds(
       getDoc(doc(lockedAs(DOCTOR), 'appointments', BOOKED_APPT)));
+  });
+});
+
+describe('بعد إقفال الإلغاء المباشر (المرحلة 1ب)', () => {
+  // الحالة النهائية بعد نشر `cancelAppointment` والتحقق منه: الإلغاء من
+  // الخادم وحده. Admin SDK يتجاوز القواعد، فالدالة تعمل بينما يُمنع العميل.
+  //
+  // مفتاح الحجز (`clientDirectBookingEnabled`) يبقى `true` هنا عمداً —
+  // كل مفتاح يُختبَر باستقلال عن الآخر.
+
+  const cancelLockedAs = (uid, email) =>
+    cancelLockedEnv.authenticatedContext(uid, email ? { email } : {}).firestore();
+
+  beforeEach(async () => {
+    await cancelLockedEnv.clearFirestore();
+    await cancelLockedEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'users', DOCTOR), {
+        role: 'doctor', name: 'د. أحمد', isVerified: true,
+        bookingSystemType: 'Individual', price: 200,
+      });
+      await setDoc(doc(db, 'users', PATIENT), {
+        role: 'patient', name: 'مريض', email: PATIENT_EMAIL,
+      });
+      await setDoc(doc(db, 'slots', BOOKED_SLOT), {
+        doctorId: DOCTOR, appointmentDate: '2030-01-01', startTime: '09:00',
+        capacity: 4, bookedCount: 1, patientIds: [PATIENT],
+      });
+      await setDoc(doc(db, 'appointments', BOOKED_APPT), {
+        doctorId: DOCTOR, patientId: PATIENT, slotId: BOOKED_SLOT,
+        appointmentDate: '2030-01-01', startTime: '09:00', status: 'Booked',
+        price: 200, notes: '',
+      });
+    });
+  });
+
+  test('المريض لا يستطيع إلغاء موعده مباشرة بعد الإقفال', async () => {
+    const db = cancelLockedAs(PATIENT, PATIENT_EMAIL);
+    await assertFails(updateDoc(doc(db, 'appointments', BOOKED_APPT), {
+      status: 'Cancelled',
+    }));
+  });
+
+  test('العميل لا يستطيع إنقاص عدّاد خانة مباشرة بعد الإقفال', async () => {
+    const db = cancelLockedAs(PATIENT, PATIENT_EMAIL);
+    await assertFails(updateDoc(doc(db, 'slots', BOOKED_SLOT), {
+      bookedCount: 0, patientIds: arrayRemove(PATIENT),
+    }));
+  });
+
+  test('الحجز المباشر يبقى يعمل — مفتاح مستقلّ لم يُقفَل', async () => {
+    const db = cancelLockedAs(OTHER, OTHER_EMAIL);
+    await assertSucceeds(bookInOneBatch(db, {
+      doctorId: DOCTOR, patientId: OTHER, date: '2030-09-09', time: '11:00',
+    }));
+  });
+
+  test('الطبيب يبقى يدير خاناته ويُنهي المواعيد', async () => {
+    const db = cancelLockedAs(DOCTOR);
+    await assertSucceeds(updateDoc(doc(db, 'appointments', BOOKED_APPT), {
+      status: 'Completed',
+    }));
+    await assertSucceeds(updateDoc(doc(db, 'slots', BOOKED_SLOT), {
+      bookedCount: 0, patientIds: [],
+    }));
+  });
+
+  test('قراءة المواعيد القائمة تبقى متاحة لصاحبها', async () => {
+    await assertSucceeds(
+      getDoc(doc(cancelLockedAs(PATIENT, PATIENT_EMAIL), 'appointments', BOOKED_APPT)));
   });
 });
 

@@ -66,6 +66,16 @@ service cloud.firestore {
     // مرة كما هو ومرة بالقيمة مقلوبة.
     function clientDirectBookingEnabled() { return true; }
 
+    // المرحلة 1ب نقلت الإلغاء أيضاً إلى الخادم (`cancelAppointment`) —
+    // معه المهلة، وتحقّق الحالة، وربط تحرير الخانة بنفس المعاملة. **نفس
+    // انضباط النشر بالضبط**: هذا المفتاح يبقى `true` حتى يُتحقَّق أن العميل
+    // المنشور يلغي عبر الدالة لا مباشرة، ثم يُقلب — لا قبل ذلك.
+    //
+    // ما يتأثر به: تحديث حالة الموعد إلى `Cancelled` من المريض مباشرة،
+    // ونقص عدّاد الخانة المقابل. إعادة الجدولة (`rescheduleAppointment`)
+    // لم يكن لها مسار عميل مباشر إطلاقاً — فلا حاجة لمفتاح توافقي لها.
+    function clientDirectCancelEnabled() { return true; }
+
     // ===================== الطبيب القابل للحجز =====================
 
     // الحجز لا يُقبل إلا عند طبيب **موثَّق**.
@@ -285,7 +295,8 @@ service cloud.firestore {
                       // للقديمة ناقص صاحب الطلب: لا يضيف أحداً، ولا يشطب
                       // مريضاً آخر من خانة مجموعة ليُخلي له مكاناً.
                       || (
-                        request.resource.data.bookedCount == resource.data.bookedCount - 1
+                        clientDirectCancelEnabled()
+                        && request.resource.data.bookedCount == resource.data.bookedCount - 1
                         && request.resource.data.bookedCount >= 0
                         && request.auth.uid in resource.data.patientIds
                         && !(request.auth.uid in request.resource.data.patientIds)
@@ -364,8 +375,14 @@ service cloud.firestore {
       // أو يصفّر `price`، أو يكتب فوق `notes` — وهي الملاحظة الطبية التي
       // يكتبها الطبيب، أي تعديل سجل طبي.
 
-      // المريض: الإلغاء وحده. (`BookingService.cancel` يكتب الحقلين معاً.)
+      // المريض: الإلغاء وحده، وفقط عبر المسار المباشر القديم.
+      //
+      // المرحلة 1ب نقلت الإلغاء إلى `cancelAppointment` (تحقّق من الحالة
+      // والمهلة، وتحرير الخانة في نفس المعاملة). الدالة تعمل بـ Admin SDK
+      // فتتجاوز هذه القاعدة أصلاً؛ القاعدة هنا للتوافق مع نسخ تطبيق قديمة
+      // لم تُحدَّث بعد — وتُقفَل بعد التحقق، بنفس انضباط `clientDirectBookingEnabled()`.
       allow update: if isPatientOwner()
+                    && clientDirectCancelEnabled()
                     && changedKeys().hasOnly(['status', 'cancelledAt'])
                     && request.resource.data.status == 'Cancelled';
 

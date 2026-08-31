@@ -75,6 +75,43 @@ node scripts/backfill_phone_index.js     # يجب أن يكون "سيُكتب م
 
 ---
 
+## ⚠️ ترتيب نشر المرحلة 1ب (الإلغاء وإعادة الجدولة والتوفّر)
+
+نفس المبدأ بالضبط: `cancelAppointment` و`rescheduleAppointment` و
+`getAvailability` دوال جديدة لا تكسر شيئاً بمجرد نشرها (Admin SDK يتجاوز
+القواعد). الخطر في إقفال `clientDirectCancelEnabled()` قبل الأوان — نفس خطر
+`clientDirectBookingEnabled()` في المرحلة 1أ تماماً.
+
+| # | الخطوة | لماذا بهذا الترتيب |
+|---|---|---|
+| 1 | `firebase deploy --only functions,firestore:indexes` | الدوال الجديدة + فهرس `slots(doctorId, appointmentDate)` الذي يحتاجه `getAvailability` |
+| 2 | نشر التطبيق (ويب / متجر) | العميل يبدأ يستخدم `cancelAppointment`؛ المسار المباشر القديم ما زال مفتوحاً فالنسخ القديمة تستمر بالإلغاء |
+| 3 | **تحقّق** | ألغِ موعداً فعلياً من التطبيق، وتأكد أن الإلغاء يمر بالدالة (لا تحديث Firestore مباشر) |
+| 4 | اقلب `clientDirectCancelEnabled()` إلى `false` في `firestore.rules` | |
+| 5 | `firebase deploy --only firestore:rules` | الآن إلغاء المريض من الخادم وحده |
+
+**ملاحظتان مهمتان مختلفتان عن المرحلة 1أ:**
+
+- إعادة الجدولة (`rescheduleAppointment`) لم يكن لها مسار عميل مباشر
+  إطلاقاً قبل هذه المرحلة، فلا يوجد مفتاح توافقي لها ولا خطوة إقفال —
+  الدالة هي المسار الوحيد منذ نشرها.
+- إلغاء **الطبيب** لموعد مريضه من شاشة الجدول (`BookingService.cancelAsDoctor`)
+  يبقى بالمسار المباشر القديم عمداً، ولا يتأثر بهذا المفتاح — القواعد تمنح
+  الطبيب أصلاً حرية إدارة خانات عيادته ومواعيدها (`isUser(doctorId)`),
+  ولا تحتاج مهلة كالتي يحتاجها إلغاء المريض. راجع تعليق الدالة في
+  `lib/data/services/booking_service.dart`.
+
+الحالتان — قبل قلب `clientDirectCancelEnabled()` وبعده — مغطّاتان
+باختبارات القواعد (`test/firestore_rules/rules.test.js`، describe
+"بعد إقفال الإلغاء المباشر").
+
+### التراجع
+
+اقلب المفتاح إلى `true` وأعد نشر القواعد. الدالة تبقى تعمل، ويعود المسار
+المباشر القديم — بلا فقدان بيانات.
+
+---
+
 ## `grandfather_doctors.js`
 
 يمنح `isVerified: true` للأطباء الموجودين قبل المرحلة صفر، كما هم.

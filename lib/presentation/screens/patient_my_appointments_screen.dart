@@ -115,18 +115,17 @@ class _PatientMyAppointmentsScreenState
 
     if (confirmed == true) {
       try {
-        // الإلغاء يمرّ عبر BookingService حتى يُحرَّر قفل الخانة في نفس
-        // المعاملة. تغيير الحالة وحده — كما كان — يترك عدّاد الخانة مرفوعاً،
-        // فتبدو الخانة محجوزة إلى الأبد ولا يستطيع أي مريض آخر أخذها.
-        final ok = await _bookingService.cancel(appointmentId: appointmentId);
+        // الإلغاء يمرّ عبر BookingService إلى `cancelAppointment` على
+        // الخادم، فيتحقق من الحالة والمهلة ويُحرّر قفل الخانة في نفس
+        // المعاملة — لا يعدّل التطبيق الموعد أو الخانة مباشرة.
+        final result =
+            await _bookingService.cancel(appointmentId: appointmentId);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(ok
-                  ? 'تم إلغاء الموعد بنجاح'
-                  : 'تعذّر إلغاء الموعد، حاول مرة أخرى'),
-              backgroundColor: ok ? Colors.green : Colors.red,
+              content: Text(result.message),
+              backgroundColor: result.isSuccess ? Colors.green : Colors.red,
             ),
           );
           _fetchMyAppointments();
