@@ -156,8 +156,11 @@ class _PatientMyAppointmentsScreenState
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('إلغاء الموعد', textAlign: TextAlign.right),
-        content: const Text('هل أنت متأكد من إلغاء هذا الموعد؟',
-            textAlign: TextAlign.right),
+        content: const Text(
+          'هل أنت متأكد من إلغاء هذا الموعد؟\n\n'
+          'لا يمكن الإلغاء قبل الموعد بأقل من ساعة.',
+          textAlign: TextAlign.right,
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -679,53 +682,24 @@ class _PatientMyAppointmentsScreenState
   }
 
   // ✅ دالة للتحقق من إمكانية إلغاء الموعد
+  /// هل تُعرض أدوات الإلغاء وتغيير الموعد لهذا الموعد؟
+  ///
+  /// **الحالة وحدها**، لا حساب وقت. كانت هنا حسابات تاريخ وساعة تقرّر
+  /// بنفسها، وكانت تخالف الخادم: الخادم يرفض الإلغاء قبل الموعد بأقل من
+  /// ساعة (`CANCEL_DEADLINE_MINUTES` في `functions/lifecycle.js`)، بينما
+  /// الواجهة كانت تسمح حتى لحظة بدء الموعد — فيضغط المريض ويُفاجأ برفض.
+  ///
+  /// المهلة قرار خادم لا تكراره الواجهة: نعرض المحاولة، ونثق بالنتيجة،
+  /// ونترجم `cancellation-deadline-passed` إلى رسالة مفهومة.
   bool _canCancelAppointment(Map<String, dynamic> appointment) {
-    final appointmentDate = appointment['date'] as DateTime;
-    final appointmentTime = appointment['time'] as String;
-    final status = appointment['status'] as String;
-
-    // التحقق من حالة الموعد
-    final cancellableStatuses = ['upcoming', 'Scheduled', 'Booked', 'pending'];
-    if (!cancellableStatuses.contains(status)) {
-      return false; // لا يمكن إلغاء إذا كان مكتملاً أو ملغياً
-    }
-
-    // التحقق من التاريخ الفعلي
-    final now = DateTime.now();
-    final appointmentDateTime = DateTime(
-      appointmentDate.year,
-      appointmentDate.month,
-      appointmentDate.day,
-    );
-
-    // لا يمكن إلغاء موعد انقضى (في الماضي)
-    if (appointmentDateTime.isBefore(DateTime(now.year, now.month, now.day))) {
-      return false;
-    }
-
-    // إذا كان اليوم نفسه، تحقق من الوقت
-    if (appointmentDateTime
-        .isAtSameMomentAs(DateTime(now.year, now.month, now.day))) {
-      try {
-        final timeParts = appointmentTime.split(':');
-        if (timeParts.length >= 2) {
-          final apptHour = int.parse(timeParts[0]);
-          final apptMinute = int.parse(timeParts[1]);
-          final apptTimeOfDay =
-              DateTime(now.year, now.month, now.day, apptHour, apptMinute);
-
-          // لا يمكن إلغاء موعد بدأ بالفعل
-          if (now.isAfter(apptTimeOfDay)) {
-            return false;
-          }
-        }
-      } catch (e) {
-        // في حالة الخطأ في تحليل الوقت، اسمح بالإلغاء للأمان
-        return true;
-      }
-    }
-
-    return true; // يمكن الإلغاء
+    const cancellableStatuses = [
+      'upcoming',
+      'Scheduled',
+      'Booked',
+      'pending',
+      'confirmed',
+    ];
+    return cancellableStatuses.contains(appointment['status'] as String);
   }
 
   Widget _buildAppointmentCard(Map<String, dynamic> appointment) {

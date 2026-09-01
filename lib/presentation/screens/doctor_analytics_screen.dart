@@ -1,3 +1,5 @@
+import '../../core/utils/app_logger.dart';
+import '../widgets/role_guard.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -210,8 +212,11 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('خطأ في جلب البيانات: ${e}')));
+        AppLogger.error('تعذّر جلب إحصاءات الطبيب', e);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('تعذّر تحميل الإحصاءات، حاول مرة أخرى'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ));
         setState(() => _isLoading = false);
       }
     }
@@ -219,6 +224,15 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // الحارس يجعل الشاشة متّسقة مع صلاحية الخادم: من ليس طبيباً له عيادة
+    // (نشط أو موقوف) يرى رسالة مفهومة بدل استعلامات تُرفض بلا تفسير.
+    return RoleGuard(
+      requireDoctorClinicAccess: true,
+      child: Builder(builder: _buildBody),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
@@ -290,7 +304,9 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
       backgroundColor: Colors.grey[100],
       selectedColor: Colors.blue.shade700,
       labelStyle: TextStyle(
-        color: isSelected ? Colors.white : Colors.black87,
+        color: isSelected
+            ? Theme.of(context).colorScheme.onPrimary
+            : Colors.black87,
         fontWeight: FontWeight.w600,
       ),
     );

@@ -46,6 +46,12 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      // `ThemeData` يختار افتراضياً كثافة سطح المكتب على الويب، فتنقص 8 بكسل
+      // من ارتفاع كل زر: الـ 48 المقصودة أدناه تصير 40 على المتصفّح وحده.
+      // والتطبيق يُستخدم كـ PWA على متصفّح الهاتف، فيصغر هدف اللمس على نفس
+      // الشاشة التي يكون فيها 48 في النسخة الأصلية. نثبّت الكثافة القياسية
+      // ليكون ما نقيسه في المتصفّح هو ما يراه المستخدم على هاتفه.
+      visualDensity: VisualDensity.standard,
       scaffoldBackgroundColor:
           isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
       appBarTheme: AppBarTheme(
@@ -90,6 +96,25 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      // الأزرار النصية («نسيت كلمة المرور؟»، «سجل الآن») كانت 32 بكسل ارتفاعاً
+      // على الويب: `ThemeData` يختار كثافة سطح المكتب هناك فتنكمش، بينما
+      // هي 48 على الهاتف. والتطبيق يُستخدم كـ PWA على متصفّح الهاتف أيضاً،
+      // فيصبح الرابط أصغر من الحد الأدنى للمس على نفس الشاشة تماماً.
+      // القياس أعلاه من شجرة الدلالات في متصفّح فعلي، لا تقدير.
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          tapTargetSize: MaterialTapTargetSize.padded,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),

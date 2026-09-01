@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/constants/doctor_account_state.dart';
 import '../providers/firebase_auth_service.dart';
+import '../widgets/role_guard.dart';
 import 'admin/admin_home_screen.dart';
 import 'notifications_screen.dart';
 import 'doctor_application_screen.dart';
@@ -171,6 +173,13 @@ class HomeScreen extends StatelessWidget {
                         ),
                   ),
                   const SizedBox(height: 16),
+
+                  // حالة حساب الطبيب قبل أدواته: الطبيب الموقوف كان يرى
+                  // لوحته كاملة بلا أي إشارة إلى أن المرضى لا يرونه.
+                  if (isDoctor)
+                    DoctorStatusBanner(
+                      state: doctorAccountStateFrom(auth.userData),
+                    ),
 
                   if (isDoctor)
                     _buildDoctorServices(context)

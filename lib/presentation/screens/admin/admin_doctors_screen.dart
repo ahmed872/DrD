@@ -1,3 +1,4 @@
+import '../../widgets/role_guard.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -110,7 +111,9 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(result.message),
-      backgroundColor: result.isSuccess ? Colors.green : Colors.red,
+      backgroundColor: result.isSuccess
+          ? Theme.of(context).colorScheme.tertiary
+          : Theme.of(context).colorScheme.error,
     ));
     if (result.isSuccess) _loadFirstPage();
   }
@@ -159,7 +162,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
               const SizedBox(height: 8),
               Text('سبب الرفض: ${data['rejectionReason'] ?? '—'}',
                   textAlign: TextAlign.right,
-                  style: const TextStyle(color: Colors.red)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 20),
             if (_filter == DoctorFilter.pending) ...[
@@ -168,9 +171,11 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   Navigator.pop(context);
                   _runAction(() => _adminService.approveDoctor(doc.id));
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child:
-                    const Text('قبول', style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.tertiary),
+                child: Text('قبول',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary)),
               ),
               const SizedBox(height: 8),
               OutlinedButton(
@@ -180,7 +185,9 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   if (reason == null || reason.isEmpty) return;
                   _runAction(() => _adminService.rejectDoctor(doc.id, reason));
                 },
-                child: const Text('رفض', style: TextStyle(color: Colors.red)),
+                child: Text('رفض',
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
               ),
             ],
           ],
@@ -207,7 +214,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
               const SizedBox(height: 8),
               Text('سبب الإيقاف: ${data['suspensionReason'] ?? '—'}',
                   textAlign: TextAlign.right,
-                  style: const TextStyle(color: Colors.red)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 20),
             if (_filter == DoctorFilter.active)
@@ -218,7 +225,9 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   if (reason == null || reason.isEmpty) return;
                   _runAction(() => _adminService.suspendDoctor(doc.id, reason));
                 },
-                child: const Text('إيقاف', style: TextStyle(color: Colors.red)),
+                child: Text('إيقاف',
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
               ),
             if (_filter == DoctorFilter.suspended)
               ElevatedButton(
@@ -226,9 +235,11 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   Navigator.pop(context);
                   _runAction(() => _adminService.restoreDoctor(doc.id));
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child: const Text('استعادة',
-                    style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.tertiary),
+                child: Text('استعادة',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary)),
               ),
           ],
         ),
@@ -238,65 +249,69 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('إدارة الأطباء'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-      ),
-      body: Column(
-        children: [
-          SizedBox(
-            height: 52,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              children: DoctorFilter.values
-                  .map((f) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: ChoiceChip(
-                          label: Text(f.label),
-                          selected: _filter == f,
-                          onSelected: (_) => _switchFilter(f),
-                        ),
-                      ))
-                  .toList(),
+    return RoleGuard(
+      requireAdmin: true,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('إدارة الأطباء'),
+          centerTitle: true,
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+        body: Column(
+          children: [
+            SizedBox(
+              height: 52,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                children: DoctorFilter.values
+                    .map((f) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ChoiceChip(
+                            label: Text(f.label),
+                            selected: _filter == f,
+                            onSelected: (_) => _switchFilter(f),
+                          ),
+                        ))
+                    .toList(),
+              ),
             ),
-          ),
-          Expanded(
-            child: _docs.isEmpty && !_isLoading
-                ? const Center(child: Text('لا يوجد شيء هنا'))
-                : ListView.builder(
-                    itemCount: _docs.length + (_hasMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _docs.length) {
-                        _loadMore();
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(child: CircularProgressIndicator()),
+            Expanded(
+              child: _docs.isEmpty && !_isLoading
+                  ? const Center(child: Text('لا يوجد شيء هنا'))
+                  : ListView.builder(
+                      itemCount: _docs.length + (_hasMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index >= _docs.length) {
+                          _loadMore();
+                          return const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final doc = _docs[index];
+                        final data = doc.data();
+                        final isApplication = _filter == DoctorFilter.pending ||
+                            _filter == DoctorFilter.rejected;
+                        return ListTile(
+                          title: Text(
+                            isApplication
+                                ? (data['specialization'] ?? '—')
+                                : (data['name'] ?? '—'),
+                            textAlign: TextAlign.right,
+                          ),
+                          subtitle: Text(doc.id, textAlign: TextAlign.right),
+                          trailing: const Icon(Icons.chevron_left),
+                          onTap: () => isApplication
+                              ? _openApplicationDetail(doc)
+                              : _openUserDetail(doc),
                         );
-                      }
-                      final doc = _docs[index];
-                      final data = doc.data();
-                      final isApplication = _filter == DoctorFilter.pending ||
-                          _filter == DoctorFilter.rejected;
-                      return ListTile(
-                        title: Text(
-                          isApplication
-                              ? (data['specialization'] ?? '—')
-                              : (data['name'] ?? '—'),
-                          textAlign: TextAlign.right,
-                        ),
-                        subtitle: Text(doc.id, textAlign: TextAlign.right),
-                        trailing: const Icon(Icons.chevron_left),
-                        onTap: () => isApplication
-                            ? _openApplicationDetail(doc)
-                            : _openUserDetail(doc),
-                      );
-                    },
-                  ),
-          ),
-        ],
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

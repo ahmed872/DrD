@@ -28,11 +28,11 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       appBar: AppBar(
         title: const Text('إعداداتي'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         elevation: 1,
       ),
       body: Consumer<FirebaseAuthService>(
@@ -56,7 +56,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                         icon: const Icon(Icons.edit),
                         label: const Text('تعديل البيانات'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0097A7),
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primary,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -70,14 +71,18 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                           child: ElevatedButton(
                             onPressed: () => _cancelEdit(),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.grey[300],
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.outlineVariant,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Text(
+                            child: Text(
                               'إلغاء',
-                              style: TextStyle(color: Colors.grey),
+                              style: TextStyle(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant),
                             ),
                           ),
                         ),
@@ -88,17 +93,20 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                                 _isSaving ? null : () => _saveChanges(auth),
                             icon: const Icon(Icons.save),
                             label: _isSaving
-                                ? const SizedBox(
+                                ? SizedBox(
                                     width: 20,
                                     height: 20,
                                     child: CircularProgressIndicator(
-                                      color: Colors.white,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onPrimary,
                                       strokeWidth: 2,
                                     ),
                                   )
                                 : const Text('حفظ'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0097A7),
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.primary,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -125,8 +133,9 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey[200]!, width: 1),
+        color: Theme.of(context).colorScheme.onPrimary,
+        border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant, width: 1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -171,7 +180,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           label,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey[600],
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -179,19 +188,22 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.grey[50],
-            border: Border.all(color: Colors.grey[200]!),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            border:
+                Border.all(color: Theme.of(context).colorScheme.outlineVariant),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
             children: [
-              Icon(icon, color: Colors.grey[600], size: 20),
+              Icon(icon,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  size: 20),
               const SizedBox(width: 12),
               Text(
                 value,
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.grey[700],
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -214,7 +226,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           label,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey[600],
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -223,28 +235,35 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           controller: controller,
           enabled: enabled,
           decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: const Color(0xFF0097A7)),
+            prefixIcon:
+                Icon(icon, color: Theme.of(context).colorScheme.primary),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey[200]!),
+              borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
+              borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(
-                color: Color(0xFF0097A7),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.primary,
                 width: 2,
               ),
             ),
             disabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey[100]!),
+              borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant),
             ),
             filled: true,
-            fillColor: enabled ? Colors.white : Colors.grey[50],
+            fillColor: enabled
+                ? Theme.of(context).colorScheme.onPrimary
+                : Theme.of(context).colorScheme.surfaceContainerHighest,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 12,
@@ -252,7 +271,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           ),
           style: TextStyle(
             fontSize: 14,
-            color: Colors.grey[800],
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
       ],
@@ -267,7 +286,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           'تاريخ الميلاد',
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey[600],
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -289,8 +308,11 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: _isEditing ? Colors.white : Colors.grey[50],
-              border: Border.all(color: Colors.grey[200]!),
+              color: _isEditing
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
+              border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
@@ -300,7 +322,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                   children: [
                     Icon(
                       Icons.calendar_today,
-                      color: const Color(0xFF0097A7),
+                      color: Theme.of(context).colorScheme.primary,
                       size: 20,
                     ),
                     const SizedBox(width: 12),
@@ -311,8 +333,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         color: _selectedBirthDate != null
-                            ? Colors.grey[800]
-                            : Colors.grey[500],
+                            ? Theme.of(context).colorScheme.onSurface
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -320,7 +342,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                 if (_isEditing)
                   Icon(
                     Icons.edit,
-                    color: Colors.grey[400],
+                    color: Theme.of(context).colorScheme.outline,
                     size: 18,
                   ),
               ],
@@ -339,7 +361,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           'الجنس',
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey[600],
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -366,10 +388,14 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF0097A7) : Colors.white,
+          color: isSelected
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onPrimary,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isSelected ? const Color(0xFF0097A7) : Colors.grey[200]!,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.outlineVariant,
             width: 1,
           ),
         ),
@@ -377,7 +403,9 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.grey[700],
+            color: isSelected
+                ? Theme.of(context).colorScheme.onPrimary
+                : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w500,
             fontSize: 13,
           ),
@@ -390,8 +418,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        border: Border.all(color: Colors.red.shade200),
+        color: Theme.of(context).colorScheme.errorContainer,
+        border: Border.all(color: Theme.of(context).colorScheme.error),
         borderRadius: BorderRadius.circular(12),
       ),
       child: SizedBox(
@@ -401,7 +429,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           icon: const Icon(Icons.logout),
           label: const Text('تسجيل الخروج'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.shade600,
+            backgroundColor: Theme.of(context).colorScheme.error,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
@@ -477,8 +505,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                 );
               }
             },
-            child:
-                const Text('تسجيل الخروج', style: TextStyle(color: Colors.red)),
+            child: Text('تسجيل الخروج',
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ),
         ],
       ),
@@ -489,7 +517,9 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: isError
+            ? Theme.of(context).colorScheme.error
+            : Theme.of(context).colorScheme.tertiary,
         duration: const Duration(seconds: 2),
       ),
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/theme/app_spacing.dart';
 import 'dart:async';
 import '../providers/firebase_auth_service.dart';
 
@@ -61,9 +62,9 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     if (mounted) {
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('تم إعادة إرسال الرسالة بنجاح ✅'),
-            backgroundColor: Colors.green,
+            backgroundColor: Theme.of(context).colorScheme.tertiary,
             duration: Duration(seconds: 2),
           ),
         );
@@ -84,7 +85,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(auth.errorMessage ?? 'حدث خطأ'),
-            backgroundColor: Colors.red,
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
@@ -96,240 +97,262 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     return WillPopScope(
       onWillPop: () async => false, // منع الرجوع للخلف
       child: Scaffold(
-        backgroundColor: Colors.grey[50],
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
         body: SafeArea(
           child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const SizedBox(height: 40),
+            child: ContentWidthLimit(
+              // على شاشة عريضة كان المحتوى يمتدّ بعرض النافذة كاملاً؛ سطر نصّ
+              // بعرض 1400 بكسل غير مقروء.
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 40),
 
-                  // أيقونة البريد
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.mail_outline,
-                      size: 70,
-                      color: Color(0xFF0097A7),
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // العنوان
-                  Text(
-                    'تفعيل البريد الإلكتروني',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[900],
-                        ),
-                    textAlign: TextAlign.center,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // الوصف
-                  Consumer<FirebaseAuthService>(
-                    builder: (context, auth, _) {
-                      return Text(
-                        'تم إرسال رسالة تفعيل إلى:\n${auth.userData?['email'] ?? "بريدك الإلكتروني"}',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 15,
-                          height: 1.5,
-                        ),
-                        textAlign: TextAlign.center,
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // رسالة التعليمات
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFF0097A7).withOpacity(0.2),
+                    // أيقونة البريد
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.mail_outline,
+                        size: 70,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
                       ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              color: const Color(0xFF0097A7),
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'خطوات التفعيل:',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF0097A7),
+
+                    const SizedBox(height: 32),
+
+                    // العنوان
+                    Text(
+                      'تفعيل البريد الإلكتروني',
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                      textAlign: TextAlign.center,
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // الوصف
+                    Consumer<FirebaseAuthService>(
+                      builder: (context, auth, _) {
+                        return Text(
+                          'تم إرسال رسالة تفعيل إلى:\n${auth.userData?['email'] ?? "بريدك الإلكتروني"}',
+                          style: TextStyle(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                          textAlign: TextAlign.center,
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    // رسالة التعليمات
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onPrimaryContainer,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'خطوات التفعيل:',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer,
+                                  ),
                                 ),
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '1. افتح بريدك الإلكتروني\n2. ابحث عن رسالة من HEL DOC\n3. انقر على رابط التفعيل\n4. ستتم إعادة توجيهك تلقائياً',
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontSize: 14,
+                              height: 1.8,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '1. افتح بريدك الإلكتروني\n2. ابحث عن رسالة من HEL DOC\n3. انقر على رابط التفعيل\n4. ستتم إعادة توجيهك تلقائياً',
-                          style: TextStyle(
-                            color: Colors.grey[700],
-                            fontSize: 14,
-                            height: 1.8,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 40),
-
-                  // حالة الفحص
-                  if (_isChecking)
-                    Column(
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation(
-                            const Color(0xFF0097A7).withOpacity(0.7),
-                          ),
-                          strokeWidth: 2.5,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'جاري التحقق من التفعيل...',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    Column(
-                      children: [
-                        Icon(
-                          Icons.check_circle_outline,
-                          color: Colors.grey[400],
-                          size: 40,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'يتم البحث عن التفعيل...',
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                  const SizedBox(height: 40),
-
-                  // زر تفعيل يدوي
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isChecking ? null : _checkEmailVerification,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0097A7),
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        disabledBackgroundColor: Colors.grey[300],
+                        ],
                       ),
-                      child: _isChecking
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation(Colors.white),
-                              ),
-                            )
-                          : const Text(
-                              'تم التفعيل، ادخل الآن',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                    ),
+
+                    const SizedBox(height: 40),
+
+                    // حالة الفحص
+                    if (_isChecking)
+                      Column(
+                        children: [
+                          CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation(
+                              Theme.of(context).colorScheme.primary,
                             ),
-                    ),
-                  ),
+                            strokeWidth: 2.5,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'جاري التحقق من التفعيل...',
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Column(
+                        children: [
+                          Icon(
+                            Icons.check_circle_outline,
+                            color: Theme.of(context).colorScheme.outline,
+                            size: 40,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'يتم البحث عن التفعيل...',
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
 
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 40),
 
-                  // زر إعادة الإرسال
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: _resendCountdown > 0 ? null : _resendEmail,
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: _resendCountdown > 0
-                              ? Colors.grey[300]!
-                              : const Color(0xFF0097A7),
-                          width: 2,
+                    // زر تفعيل يدوي
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _isChecking ? null : _checkEmailVerification,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primary,
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onPrimary,
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          disabledBackgroundColor:
+                              Theme.of(context).colorScheme.outlineVariant,
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        child: _isChecking
+                            ? SizedBox(
+                                height: 24,
+                                width: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    Theme.of(context).colorScheme.onPrimary,
+                                  ),
+                                ),
+                              )
+                            : const Text(
+                                'تم التفعيل، ادخل الآن',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // زر إعادة الإرسال
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: OutlinedButton(
+                        onPressed: _resendCountdown > 0 ? null : _resendEmail,
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: _resendCountdown > 0
+                                ? Theme.of(context).colorScheme.outlineVariant
+                                : Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          _resendCountdown > 0
+                              ? 'أعد الإرسال بعد $_resendCountdown ثانية'
+                              : 'إعادة إرسال الرسالة',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: _resendCountdown > 0
+                                ? Theme.of(context).colorScheme.onSurfaceVariant
+                                : Theme.of(context).colorScheme.primary,
+                          ),
                         ),
                       ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // زر الخروج
+                    TextButton(
+                      onPressed: () async {
+                        final auth = Provider.of<FirebaseAuthService>(context,
+                            listen: false);
+                        await auth.logout();
+                        if (mounted) {
+                          Navigator.of(context).pushReplacementNamed('/');
+                        }
+                      },
                       child: Text(
-                        _resendCountdown > 0
-                            ? 'أعد الإرسال بعد $_resendCountdown ثانية'
-                            : 'إعادة إرسال الرسالة',
+                        'الخروج',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: _resendCountdown > 0
-                              ? Colors.grey[500]
-                              : const Color(0xFF0097A7),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 14,
                         ),
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // زر الخروج
-                  TextButton(
-                    onPressed: () async {
-                      final auth = Provider.of<FirebaseAuthService>(context,
-                          listen: false);
-                      await auth.logout();
-                      if (mounted) {
-                        Navigator.of(context).pushReplacementNamed('/');
-                      }
-                    },
-                    child: const Text(
-                      'الخروج',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

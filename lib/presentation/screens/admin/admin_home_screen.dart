@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/role_guard.dart';
 import 'admin_doctors_screen.dart';
 
 /// أساس لوحة الإدارة — عدّادات سريعة وروابط. وظيفية لا تصميماً نهائياً؛
@@ -15,6 +16,17 @@ class AdminHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // الزرّ المؤدي إلى هنا مخفي لغير الأدمن، والزرّ المخفي ليس حاجزاً:
+    // الحارس يجعل الواجهة متّسقة مع صلاحية الخادم بدل شاشة تفشل استعلاماتها.
+    return const RoleGuard(requireAdmin: true, child: _AdminHomeBody());
+  }
+}
+
+class _AdminHomeBody extends StatelessWidget {
+  const _AdminHomeBody();
+
+  @override
+  Widget build(BuildContext context) {
     final users = FirebaseFirestore.instance.collection('users');
     final applications =
         FirebaseFirestore.instance.collection('doctorApplications');
@@ -23,7 +35,7 @@ class AdminHomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('لوحة الإدارة'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -33,7 +45,7 @@ class AdminHomeScreen extends StatelessWidget {
             _CountCard(
               title: 'طلبات توثيق قيد الانتظار',
               icon: Icons.pending_actions,
-              color: Colors.orange,
+              color: Theme.of(context).colorScheme.secondary,
               countFuture: applications
                   .where('status', isEqualTo: 'pending')
                   .count()
@@ -45,7 +57,7 @@ class AdminHomeScreen extends StatelessWidget {
             _CountCard(
               title: 'أطباء نشطون',
               icon: Icons.verified,
-              color: Colors.green,
+              color: Theme.of(context).colorScheme.tertiary,
               countFuture: users
                   .where('role', isEqualTo: 'doctor')
                   .where('isVerified', isEqualTo: true)
@@ -59,7 +71,7 @@ class AdminHomeScreen extends StatelessWidget {
             _CountCard(
               title: 'أطباء موقوفون',
               icon: Icons.block,
-              color: Colors.red,
+              color: Theme.of(context).colorScheme.error,
               countFuture: users
                   .where('role', isEqualTo: 'doctor')
                   .where('disabled', isEqualTo: true)
@@ -75,8 +87,8 @@ class AdminHomeScreen extends StatelessWidget {
               icon: const Icon(Icons.list),
               label: const Text('إدارة الأطباء'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0097A7),
-                foregroundColor: Colors.white,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
@@ -115,7 +127,7 @@ class _CountCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.onPrimary,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
@@ -123,7 +135,8 @@ class _CountCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey[200]!),
+            border:
+                Border.all(color: Theme.of(context).colorScheme.outlineVariant),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(

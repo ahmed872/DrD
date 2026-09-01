@@ -99,7 +99,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('حدث خطأ في تحميل الأطباء'),
-            backgroundColor: Colors.red,
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
@@ -118,7 +118,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
       appBar: AppBar(
         title: const Text('البحث عن طبيب'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         elevation: 1,
       ),
       body: Column(
@@ -177,7 +177,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
           borderRadius: BorderRadius.circular(12),
         ),
         filled: true,
-        fillColor: Colors.grey[50],
+        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
       onChanged: (value) {
         setState(() {});
@@ -200,17 +200,22 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             children: List.generate(_specialties.length, (index) {
               final isSelected = _selectedSpecialty == index;
               return Padding(
-                padding: const EdgeInsets.only(right: 8),
+                // كان `right` هنا و`left` في شاشة مرضى الطبيب — صفّا رقائق
+                // متشابهان بتباعد معكوس. الشكل الاتجاهي يوحّدهما.
+                padding: const EdgeInsetsDirectional.only(end: 8),
                 child: FilterChip(
                   label: Text(_specialties[index]),
                   selected: isSelected,
                   onSelected: (selected) {
                     setState(() => _selectedSpecialty = index);
                   },
-                  backgroundColor: Colors.grey[100],
-                  selectedColor: Colors.blue.shade700,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.surfaceContainerHighest,
+                  selectedColor: Theme.of(context).colorScheme.primary,
                   labelStyle: TextStyle(
-                    color: isSelected ? Colors.white : Colors.black87,
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.onPrimary
+                        : Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -309,7 +314,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             onChanged: (value) {
               setState(() => _availableNow = value ?? false);
             },
-            activeColor: Colors.blue.shade700,
+            activeColor: Theme.of(context).colorScheme.primary,
           ),
         ),
       ],
@@ -328,7 +333,8 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
               const SizedBox(height: 16),
               Text(
                 'جاري تحميل الأطباء...',
-                style: TextStyle(color: Colors.grey[600]),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -381,12 +387,16 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             children: [
               Text(
                 '🔍',
-                style: TextStyle(fontSize: 48, color: Colors.grey[300]),
+                style: TextStyle(
+                    fontSize: 48,
+                    color: Theme.of(context).colorScheme.outlineVariant),
               ),
               const SizedBox(height: 16),
               Text(
                 'لا توجد نتائج تطابق البحث',
-                style: TextStyle(color: Colors.grey[500], fontSize: 16),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 16),
               ),
             ],
           ),
@@ -448,7 +458,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                       Text(
                         doctor['specialization'],
                         style: TextStyle(
-                          color: Colors.blue.shade700,
+                          color: Theme.of(context).colorScheme.primary,
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
@@ -459,7 +469,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.blue[50],
+                    color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
@@ -470,7 +480,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            Divider(color: Colors.grey[300]),
+            Divider(color: Theme.of(context).colorScheme.outlineVariant),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -480,21 +490,25 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                     i < doctor['rating'].toInt()
                         ? Icons.star
                         : Icons.star_border,
-                    color: Colors.amber,
+                    color: Theme.of(context).colorScheme.tertiary,
                     size: 18,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   '${doctor['rating']} (${doctor['reviews']} تقييم)',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               doctor['bio'],
-              style: TextStyle(color: Colors.grey[700], fontSize: 12),
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -502,7 +516,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.grey[100],
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Column(
@@ -542,11 +556,15 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _infoChip('💰 ${doctor['price'].toInt()} جنيه', Colors.green),
-                _infoChip('👥 ${doctor['patients']} مريض', Colors.blue),
+                _infoChip('💰 ${doctor['price'].toInt()} جنيه',
+                    Theme.of(context).colorScheme.tertiary),
+                _infoChip('👥 ${doctor['patients']} مريض',
+                    Theme.of(context).colorScheme.primary),
                 _infoChip(
                   doctor['available'] ? '✅ متاح الآن' : '⏳ غير متاح',
-                  doctor['available'] ? Colors.green : Colors.orange,
+                  doctor['available']
+                      ? Theme.of(context).colorScheme.tertiary
+                      : Theme.of(context).colorScheme.secondary,
                 ),
               ],
             ),
@@ -555,7 +573,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade700,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -571,10 +589,10 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                     ),
                   );
                 },
-                child: const Text(
+                child: Text(
                   'احجز موعداً',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onPrimary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -602,7 +620,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                 label,
                 style: TextStyle(
                   fontSize: 11,
-                  color: Colors.grey[600],
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w500,
                 ),
               ),

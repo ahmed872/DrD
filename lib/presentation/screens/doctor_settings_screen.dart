@@ -1,3 +1,4 @@
+import '../widgets/role_guard.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -180,6 +181,15 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // الحارس يجعل الشاشة متّسقة مع صلاحية الخادم: من ليس طبيباً له عيادة
+    // (نشط أو موقوف) يرى رسالة مفهومة بدل استعلامات تُرفض بلا تفسير.
+    return RoleGuard(
+      requireDoctorClinicAccess: true,
+      child: Builder(builder: _buildBody),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -190,7 +200,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       appBar: AppBar(
         title: const Text('إعدادات العيادة'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         elevation: 1,
         actions: [
           IconButton(
@@ -235,18 +245,20 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                 value: _selectedSpecialtyAr,
                 decoration: InputDecoration(
                   labelText: 'التخصص / Specialization',
-                  prefixIcon:
-                      const Icon(Icons.medical_services, color: Colors.blue),
+                  prefixIcon: Icon(Icons.medical_services,
+                      color: Theme.of(context).colorScheme.primary),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.outlineVariant),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.blue, width: 2),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary, width: 2),
                   ),
                 ),
                 items: _specialties.map((spec) {
@@ -368,9 +380,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200),
+                  border:
+                      Border.all(color: Theme.of(context).colorScheme.primary),
                 ),
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -399,16 +412,17 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onPrimary,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue),
+                          border: Border.all(
+                              color: Theme.of(context).colorScheme.primary),
                         ),
                         child: Text(
                           '${_startTime.format(context)} - ${_endTime.format(context)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
                         ),
                       ),
@@ -425,9 +439,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: Theme.of(context).colorScheme.tertiaryContainer,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
+                  border:
+                      Border.all(color: Theme.of(context).colorScheme.tertiary),
                 ),
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -451,7 +466,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                                   _workingDays[entry.key] = value;
                                 });
                               },
-                              activeColor: Colors.green,
+                              activeColor:
+                                  Theme.of(context).colorScheme.tertiary,
                             ),
                           ],
                         ),
@@ -476,7 +492,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor: Theme.of(context).colorScheme.tertiary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -512,10 +528,12 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.blue.shade100,
+        color: Theme.of(context).colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(8),
         border: Border(
-          right: BorderSide(color: Colors.blue.shade700, width: 4),
+          right: BorderSide(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              width: 4),
         ),
       ),
       child: Text(
@@ -523,7 +541,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Colors.blue.shade900,
+          color: Theme.of(context).colorScheme.onPrimaryContainer,
         ),
       ),
     );
@@ -542,17 +560,19 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blue),
+        prefixIcon: Icon(icon, color: Theme.of(context).colorScheme.primary),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide:
+              BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.blue, width: 2),
+          borderSide: BorderSide(
+              color: Theme.of(context).colorScheme.primary, width: 2),
         ),
       ),
     );
@@ -568,7 +588,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+          style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 4),
         OutlinedButton(
@@ -589,10 +611,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           ),
           child: Text(
             time.format(context),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.blue,
+              color: Theme.of(context).colorScheme.primary,
             ),
           ),
         ),
@@ -625,9 +647,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         price <= 0) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text('يرجى التأكد من أن السعر ومدة الجلسة أكبر من صفر'),
-          backgroundColor: Colors.red,
+          backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
       return;
@@ -658,9 +680,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Row(
+              content: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.white),
+                  Icon(Icons.check_circle,
+                      color: Theme.of(context).colorScheme.onPrimary),
                   SizedBox(width: 12),
                   Text(
                     '✅ تم الحفظ بنجاح / Saved Successfully',
@@ -668,7 +691,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   ),
                 ],
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: Theme.of(context).colorScheme.tertiary,
               duration: const Duration(seconds: 2),
             ),
           );
@@ -678,7 +701,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('تعذّر حفظ الإعدادات، حاول مرة أخرى'),
-              backgroundColor: Colors.red,
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
         }
@@ -749,7 +772,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
             flex: 2,
             child: Text(
               enText,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
               textAlign: TextAlign.left,
             ),
           ),
