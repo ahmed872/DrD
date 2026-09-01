@@ -11,6 +11,7 @@ const {
   restoreDoctorCore,
 } = require("./admin");
 const { sendAppointmentRemindersCore } = require("./reminders");
+const { createReviewCore, getReviewEligibilityCore } = require("./reviews");
 
 admin.initializeApp();
 
@@ -185,6 +186,54 @@ exports.rescheduleAppointment = callable("rescheduleAppointment", rescheduleAppo
  * عدّادات تُرسَل من العميل — الرد وحده يحملها من Firestore.
  */
 exports.getAvailability = callable("getAvailability", getAvailabilityCore);
+
+// ===================== المرحلة 4: المراجعات والتقييمات =====================
+
+/**
+ * كتابة مراجعة عن زيارة مكتملة — نقطة الدخول الوحيدة.
+ *
+ * ```
+ * الطلب:  { appointmentId, rating: 1..5, comment? }
+ * الرد:   { ok, reviewId, appointmentId, doctorId, rating, comment,
+ *           patientName, verifiedVisit, doctorRating, doctorReviews,
+ *           duplicate }
+ * ```
+ *
+ * `patientId` و`doctorId` و`verifiedVisit` و`createdAt` ومتوسط الطبيب: كلها
+ * من الخادم. أي قيمة لها في الطلب تُتجاهل — المرجع مستند الموعد نفسه.
+ *
+ * المراجعة والمُجمَّع يُكتبان في معاملة واحدة، فلا تبقى مراجعة بلا أثر في
+ * المتوسط ولا متوسط ارتفع بلا مراجعة. ومعرّف المراجعة هو معرّف الموعد، فطلب
+ * مكرَّر يُعيد `duplicate: true` بالمراجعة القائمة بدل رفع العدّاد مرتين.
+ *
+ * | reason | code | المعنى |
+ * |---|---|---|
+ * | `unauthenticated` | unauthenticated | بلا تسجيل دخول |
+ * | `invalid-argument` | invalid-argument | تقييم خارج 1..5، أو تعليق طويل، أو معرّف غير صالح |
+ * | `appointment-not-found` | not-found | لا موعد بهذا المعرّف |
+ * | `permission-denied` | permission-denied | ليس موعدك |
+ * | `appointment-not-completed` | failed-precondition | الكشف لم يكتمل بعد |
+ * | `doctor-not-found` | not-found | حساب الطبيب غير موجود |
+ * | `internal` | internal | خطأ غير متوقع |
+ */
+exports.createReview = callable("createReview", createReviewCore);
+
+/**
+ * هل يمكن تقييم هذا الموعد؟ — قرار الخادم، لا استنتاج الواجهة من الحالة.
+ *
+ * ```
+ * الطلب:  { appointmentId }
+ * الرد:   { ok, appointmentId, doctorId, eligible, alreadyReviewed, reason,
+ *           rating?, comment? }
+ * ```
+ *
+ * `reason` عند عدم الأهلية: `already-reviewed` أو `appointment-not-completed`.
+ * موعد ليس لصاحب الطلب يُرفَض بـ `permission-denied` ولا تُكشف حالته.
+ */
+exports.getReviewEligibility = callable(
+  "getReviewEligibility",
+  getReviewEligibilityCore
+);
 
 // ===================== المرحلة 2: الإدارة وتوثيق الأطباء =====================
 //

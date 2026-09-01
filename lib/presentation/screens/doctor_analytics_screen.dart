@@ -44,12 +44,20 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
       if (user == null) return;
 
       int sessionDur = 30;
+      // التقييم من المُجمَّع الذي يكتبه الخادم (`createReview`) لا من حساب
+      // محلي على المراجعات: كان معروضاً هنا كرقم ثابت `5.0` مهما كان تقييم
+      // الطبيب الحقيقي.
+      double avgRating = 0;
+      int reviewCount = 0;
       final docRef = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .get();
       if (docRef.exists) {
-        sessionDur = docRef.data()?['sessionDuration'] ?? 30;
+        final data = docRef.data();
+        sessionDur = data?['sessionDuration'] ?? 30;
+        avgRating = (data?['rating'] as num?)?.toDouble() ?? 0;
+        reviewCount = (data?['reviews'] as num?)?.toInt() ?? 0;
       }
 
       DateTime now = DateTime.now();
@@ -188,7 +196,8 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
           'cancelledAppointments': cancelled,
           'totalPatients': uniquePatients.length,
           'newPatients': uniquePatients.length, // approximation
-          'avgRating': 5.0, // Should be fetched from doctor's reviews if any
+          'avgRating': avgRating,
+          'reviewCount': reviewCount,
           'totalRevenue': revenue.toInt(),
           'avgSessionDuration': sessionDur,
           'noShowRate': noShow,
@@ -314,8 +323,12 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
           '👥',
         ),
         _metricCard(
+          // «لا تقييمات بعد» أصدق من عرض 0 ⭐ لطبيب لم يقيّمه أحد.
           'التقييم',
-          '${_analyticsData["avgRating"]} ⭐',
+          (_analyticsData['reviewCount'] ?? 0) == 0
+              ? 'لا تقييمات بعد'
+              : '${_analyticsData["avgRating"]} ⭐ '
+                  '(${_analyticsData["reviewCount"]})',
           Colors.amber.shade700,
           '⭐',
         ),

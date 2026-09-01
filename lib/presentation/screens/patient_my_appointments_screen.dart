@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../data/services/booking_service.dart';
+import '../../data/services/review_service.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/utils/app_logger.dart';
 
@@ -17,6 +18,13 @@ class PatientMyAppointmentsScreen extends StatefulWidget {
 class _PatientMyAppointmentsScreenState
     extends State<PatientMyAppointmentsScreen> {
   final BookingService _bookingService = BookingService();
+  final ReviewService _reviewService = ReviewService();
+
+  /// معرّفات المواعيد التي قيّمها المريض بالفعل.
+  ///
+  /// تُقرأ مرة واحدة مع قائمة المواعيد لتحديد شكل الزر (تقييم / تم التقييم)،
+  /// بينما الأهلية الحقيقية تُحسم على الخادم عند الضغط — الواجهة لا تقرّر.
+  Set<String> _reviewedAppointmentIds = {};
 
   int _selectedFilterIndex = 0; // 0: Upcoming, 1: Past
   List<Map<String, dynamic>> _allAppointments = [];
@@ -77,6 +85,13 @@ class _PatientMyAppointmentsScreenState
           if (dateCmp != 0) return dateCmp;
           return (b['time'] as String).compareTo(a['time'] as String);
         });
+
+        // المراجعات التي كتبها هذا المريض — استعلام واحد لكل القائمة، بدل
+        // سؤال الخادم عن أهلية كل موعد على حدة. يحدّد شكل الزر فقط؛ القرار
+        // الفعلي يبقى على الخادم عند الضغط.
+        _reviewedAppointmentIds = await _fetchReviewedAppointmentIds(
+          auth.userId!,
+        );
       } catch (e) {
         AppLogger.info('Error fetching appointments: $e');
         if (mounted) {
@@ -90,6 +105,24 @@ class _PatientMyAppointmentsScreenState
       }
     }
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// معرّفات المواعيد التي قيّمها هذا المريض.
+  ///
+  /// معرّف مستند المراجعة هو معرّف الموعد نفسه (`functions/reviews.js`)، لذا
+  /// معرّفات المستندات وحدها تكفي بلا قراءة أي حقل.
+  Future<Set<String>> _fetchReviewedAppointmentIds(String patientId) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('reviews')
+          .where('patientId', isEqualTo: patientId)
+          .get();
+      return snap.docs.map((d) => d.id).toSet();
+    } catch (e) {
+      // فشل القراءة لا يمنع عرض المواعيد؛ يظهر زر التقييم والخادم يحسم.
+      AppLogger.info('تعذّر جلب المراجعات السابقة: $e');
+      return _reviewedAppointmentIds;
+    }
   }
 
   Future<void> _cancelAppointment(String appointmentId) async {
@@ -295,18 +328,21 @@ class _PatientMyAppointmentsScreenState
                 ),
                 const SizedBox(height: 24),
                 Center(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _showRatingDialog(appointment);
-                    },
-                    icon: const Icon(Icons.star_rate),
-                    label: const Text('تقييم الطبيب'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
+                  child: _reviewedAppointmentIds
+                          .contains(appointment['id'] as String)
+                      ? const _ReviewedBadge()
+                      : ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _openRatingFlow(appointment);
+                          },
+                          icon: const Icon(Icons.star_rate),
+                          label: const Text('تقييم الطبيب'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
                 ),
               ],
             ],
@@ -322,14 +358,54 @@ class _PatientMyAppointmentsScreenState
     );
   }
 
+  /// يسأل الخادم عن الأهلية أولاً، ثم يفتح نافذة التقييم.
+  ///
+  /// الواجهة لا تقرّر الأهلية من حالة الموعد وحدها: قد تكون الزيارة مُقيَّمة
+  /// من جهاز آخر، أو تكون الحالة تغيّرت منذ آخر تحديث للقائمة.
+  Future<void> _openRatingFlow(Map<String, dynamic> appointment) async {
+    final appointmentId = appointment['id'] as String;
+    final messenger = ScaffoldMessenger.of(context);
+
+    final eligibility = await _reviewService.checkEligibility(appointmentId);
+    if (!mounted) return;
+
+    if (eligibility.alreadyReviewed) {
+      setState(() => _reviewedAppointmentIds = {
+            ..._reviewedAppointmentIds,
+            appointmentId,
+          });
+      messenger.showSnackBar(const SnackBar(
+        content: Text('سبق أن قيّمت هذه الزيارة، شكراً لك'),
+      ));
+      return;
+    }
+
+    if (!eligibility.eligible) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(
+          eligibility.reason == 'appointment-not-completed'
+              ? 'يمكنك التقييم بعد اكتمال الكشف فقط'
+              : 'تعذّر فتح التقييم الآن، حاول مرة أخرى',
+        ),
+        backgroundColor: Colors.orange,
+      ));
+      return;
+    }
+
+    if (!mounted) return;
+    _showRatingDialog(appointment);
+  }
+
   void _showRatingDialog(Map<String, dynamic> appointment) {
-    double rating = 5.0;
+    int rating = 5;
+    var isSubmitting = false;
     final TextEditingController commentController = TextEditingController();
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
+        builder: (context, setDialogState) => AlertDialog(
           title: const Text('تقييم الطبيب', textAlign: TextAlign.right),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -341,14 +417,15 @@ class _PatientMyAppointmentsScreenState
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(5, (index) {
                   return IconButton(
+                    tooltip: '${index + 1} من 5',
                     icon: Icon(
                       index < rating ? Icons.star : Icons.star_border,
                       color: Colors.amber,
                       size: 32,
                     ),
-                    onPressed: () {
-                      setState(() => rating = index + 1.0);
-                    },
+                    onPressed: isSubmitting
+                        ? null
+                        : () => setDialogState(() => rating = index + 1),
                   );
                 }),
               ),
@@ -356,6 +433,10 @@ class _PatientMyAppointmentsScreenState
               TextField(
                 controller: commentController,
                 maxLines: 3,
+                // نفس الحد المفروض على الخادم (`MAX_COMMENT_LENGTH`)، حتى
+                // يُمنع التجاوز قبل الإرسال بدل أن يُرفض بعده.
+                maxLength: 1000,
+                enabled: !isSubmitting,
                 decoration: const InputDecoration(
                   hintText: 'اكتب تعليقك هنا (اختياري)',
                   border: OutlineInputBorder(),
@@ -366,16 +447,27 @@ class _PatientMyAppointmentsScreenState
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
               child: const Text('إلغاء'),
             ),
             ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await _submitRating(
-                    appointment, rating, commentController.text);
-              },
-              child: const Text('إرسال التقييم'),
+              // التعطيل أثناء الإرسال يمنع الضغط المزدوج من الأساس؛ ولو وصل
+              // طلبان رغم ذلك فالخادم يُرجع نفس المراجعة بلا عدّاد مضاعف.
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      setDialogState(() => isSubmitting = true);
+                      await _submitRating(
+                          appointment, rating, commentController.text);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+              child: isSubmitting
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('إرسال التقييم'),
             ),
           ],
         ),
@@ -384,76 +476,35 @@ class _PatientMyAppointmentsScreenState
   }
 
   Future<void> _submitRating(
-      Map<String, dynamic> appointment, double rating, String comment) async {
-    try {
-      final doctorId = appointment['doctorId'];
-      final appointmentId = appointment['id'] as String;
-      final auth = Provider.of<FirebaseAuthService>(context, listen: false);
+      Map<String, dynamic> appointment, int rating, String comment) async {
+    final appointmentId = appointment['id'] as String;
+    final messenger = ScaffoldMessenger.of(context);
 
-      // معرّف المراجعة هو معرّف الموعد نفسه.
-      //
-      // كانت `add()` تُنشئ مستنداً بمعرّف عشوائي، فلا شيء يمنع مريضاً من
-      // إرسال عشر مراجعات لنفس الزيارة — ولا يمنع حساباً بلا أي زيارة من
-      // إغراق طبيب بمراجعات. الآن `firestore.rules` تشترط أن يكون المعرّف
-      // معرّف موعد **مكتمل** يخصّ صاحب الطلب، فتصبح المراجعة واحدة لكل زيارة.
-      await FirebaseFirestore.instance
-          .collection('reviews')
-          .doc(appointmentId)
-          .set({
-        'doctorId': doctorId,
-        'patientId': auth.userId,
-        'patientName': auth.userName ?? 'مريض',
-        'appointmentId': appointmentId,
-        'rating': rating,
-        'comment': comment,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+    // الطلب يحمل الزيارة والنجوم والتعليق فقط.
+    //
+    // كان هنا مساران: كتابة مستند المراجعة، ثم معاملة منفصلة تحسب متوسط
+    // الطبيب على العميل وتكتبه. انقطاع بينهما كان يترك مراجعة بلا أثر في
+    // المتوسط، وإعادة الإرسال كانت ترفع العدّاد مرتين على زيارة واحدة.
+    // الآن `createReview` تكتب الاثنين في معاملة واحدة على الخادم.
+    final result = await _reviewService.submit(
+      appointmentId: appointmentId,
+      rating: rating,
+      comment: comment,
+    );
 
-      // Update doctor's overall rating
-      final docRef =
-          FirebaseFirestore.instance.collection('users').doc(doctorId);
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final docData = await transaction.get(docRef);
-        if (docData.exists) {
-          final data = docData.data()!;
+    if (!mounted) return;
 
-          // Safely parse existing rating/reviews, defaulting to 0 if not exist
-          int currentReviews = 0;
-          if (data.containsKey('reviews') && data['reviews'] != null) {
-            currentReviews = (data['reviews'] as num).toInt();
-          }
-
-          double currentRating = 0.0;
-          if (data.containsKey('rating') && data['rating'] != null) {
-            currentRating = (data['rating'] as num).toDouble();
-          }
-
-          double newRating = ((currentRating * currentReviews) + rating) /
-              (currentReviews + 1);
-
-          transaction.update(docRef, {
-            'rating': newRating,
-            'reviews': currentReviews + 1,
+    if (result.isSuccess) {
+      setState(() => _reviewedAppointmentIds = {
+            ..._reviewedAppointmentIds,
+            appointmentId,
           });
-        }
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('تم إرسال تقييمك بنجاح!'),
-              backgroundColor: Colors.green),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('حدث خطأ أثناء إرسال التقييم: $e'),
-              backgroundColor: Colors.red),
-        );
-      }
     }
+
+    messenger.showSnackBar(SnackBar(
+      content: Text(result.message),
+      backgroundColor: result.isSuccess ? Colors.green : Colors.red,
+    ));
   }
 
   Widget _buildDetailRow(String label, String value) {
@@ -836,29 +887,67 @@ class _PatientMyAppointmentsScreenState
                 ),
               ],
 
+              // زر التقييم على البطاقة.
+              //
+              // كان هذا الزر يعرض «سيتم تفعيل التقييم قريباً!» بينما التقييم
+              // يعمل فعلاً من نافذة التفاصيل — زرّان بنفس الاسم، أحدهما ميت.
               if (appointment['status'] == 'Completed') ...[
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('سيتم تفعيل التقييم قريباً!')),
-                      );
-                    },
-                    icon: const Icon(Icons.star_rate, color: Colors.amber),
-                    label: const Text('تقييم الطبيب'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[50],
-                      foregroundColor: Colors.blue[800],
-                    ),
-                  ),
+                  child: _reviewedAppointmentIds
+                          .contains(appointment['id'] as String)
+                      ? const _ReviewedBadge()
+                      : ElevatedButton.icon(
+                          onPressed: () => _openRatingFlow(appointment),
+                          icon:
+                              const Icon(Icons.star_rate, color: Colors.amber),
+                          label: const Text('تقييم الطبيب'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[50],
+                            foregroundColor: Colors.blue[800],
+                          ),
+                        ),
                 ),
               ]
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// شارة «تم التقييم» — تحلّ محل زر التقييم بعد إرسال المراجعة.
+///
+/// المراجعة غير قابلة للتعديل بعد كتابتها (راجع `functions/reviews.js`)،
+/// فعرض زر يفتح نافذة لن تُقبل كتابتها كان سيعِد بما لا يحدث.
+class _ReviewedBadge extends StatelessWidget {
+  const _ReviewedBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green.shade200),
+      ),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.star, color: Colors.amber, size: 18),
+          SizedBox(width: 8),
+          Text(
+            'تم التقييم',
+            style: TextStyle(
+              color: Colors.green,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

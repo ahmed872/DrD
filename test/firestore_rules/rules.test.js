@@ -273,15 +273,22 @@ describe('users — إنشاء الحساب والدور', () => {
   });
 });
 
-describe('تقييم الطبيب (الحقول المجمَّعة)', () => {
-  test('مراجعة صحيحة: زيادة واحدة وقيمة ضمن النطاق', async () => {
-    await assertSucceeds(updateDoc(doc(asPatient(), 'users', DOCTOR), {
+describe('تقييم الطبيب (الحقول المجمَّعة) — خادمية بالكامل (المرحلة 4)', () => {
+  // حتى المرحلة 3 كانت القواعد تسمح لأي مستخدم مسجَّل بتحديث `rating` و
+  // `reviews` على أي طبيب شرط زيادة العدّاد بواحد وقيمة بين 0 و5 — بلا أي
+  // ربط بمراجعة حقيقية. أي أن تحريك تقييم طبيب لم يكن يحتاج زيارة، وتكراره
+  // يهبط بتقييم منافس إلى الصفر.
+  //
+  // الآن لا استثناء لأحد: المُجمَّع يتغيّر داخل معاملة `createReview` وحدها.
+
+  test('المريض لا يستطيع تحديث متوسط الطبيب — ولو بزيادة «شرعية»', async () => {
+    // كان هذا الطلب بالذات مقبولاً قبل المرحلة 4.
+    await assertFails(updateDoc(doc(asPatient(), 'users', DOCTOR), {
       rating: 4.2, reviews: 11,
     }));
   });
 
   test('لا يمكن تزوير عدد المراجعات', async () => {
-    // القاعدة القديمة كانت تسمح بهذا.
     await assertFails(updateDoc(doc(asPatient(), 'users', DOCTOR), {
       rating: 5, reviews: 99999,
     }));
@@ -293,15 +300,50 @@ describe('تقييم الطبيب (الحقول المجمَّعة)', () => {
     }));
   });
 
+  test('لا يمكن إنزال تقييم طبيب منافس', async () => {
+    await assertFails(updateDoc(doc(asPatient(), 'users', DOCTOR), {
+      rating: 0, reviews: 11,
+    }));
+  });
+
   test('الطبيب لا يرفع تقييم نفسه', async () => {
     await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
       rating: 5, reviews: 11,
     }));
   });
 
+  test('الطبيب لا يعدّل عدد مراجعاته وحده', async () => {
+    await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      reviews: 500,
+    }));
+  });
+
+  test('لا أحد يكتب ratingSum — مجموع النجوم مصدر الحقيقة', async () => {
+    await assertFails(updateDoc(doc(asPatient(), 'users', DOCTOR), {
+      ratingSum: 9999,
+    }));
+    await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      ratingSum: 9999,
+    }));
+  });
+
+  test('الطبيب يعدّل إعدادات عيادته دون أن يمسّ المُجمَّع', async () => {
+    // الإقفال يجب ألا يكسر التعديل المشروع للملف الشخصي.
+    await assertSucceeds(setDoc(doc(asDoctor(), 'users', DOCTOR), {
+      clinicNameAr: 'عيادة النور', price: 250,
+    }, { merge: true }));
+  });
+
   test('لا يمكن تمرير حقول أخرى مع التقييم', async () => {
     await assertFails(updateDoc(doc(asPatient(), 'users', DOCTOR), {
       rating: 4.2, reviews: 11, price: 0,
+    }));
+  });
+
+  test('حتى الأدمن لا يكتب المُجمَّع من العميل', async () => {
+    // الإدارة تعمل عبر دوال الخادم؛ لا كتابة مباشرة على المُجمَّع من التطبيق.
+    await assertFails(updateDoc(doc(asAdminUser(), 'users', DOCTOR), {
+      rating: 5, reviews: 100,
     }));
   });
 });
@@ -801,20 +843,34 @@ describe('ratings — بيانات طبية', () => {
   });
 });
 
-describe('reviews — مراجعة عن زيارة حدثت فعلاً', () => {
+describe('reviews — الكتابة من الخادم وحده (المرحلة 4)', () => {
+  // كانت القواعد تسمح للمريض بكتابة مراجعته مباشرة بعد التحقق من زيارة
+  // مكتملة. ذلك أغلق «مراجعة بلا زيارة»، لكن بقيت ثلاث فجوات لا تسدّها
+  // قاعدة: لا ذرّية بين المراجعة والمُجمَّع، والمتوسط يُحسب على العميل،
+  // وإعادة الإرسال ترفع العدّاد مرتين.
+  //
+  // الآن `createReview` (Admin SDK) هي المسار الوحيد، وكل كتابة من العميل
+  // مرفوضة — حتى الصحيحة منها، فوجود بابين لنفس الغرض يعني أن أضعفهما هو
+  // الذي سيُستخدم.
+
   const review = (extra = {}) => ({
     doctorId: DOCTOR, patientId: PATIENT, appointmentId: DONE_APPT,
     rating: 5, comment: 'ممتاز', ...extra,
   });
 
-  test('مراجعة عن موعد مكتمل مقبولة', async () => {
-    await assertSucceeds(
+  const seedReview = async (extra = {}) => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'reviews', DONE_APPT), review(extra));
+    });
+  };
+
+  test('المريض لا يكتب مراجعته مباشرة — ولو عن زيارة مكتملة فعلاً', async () => {
+    // كان هذا الطلب بالذات مقبولاً قبل المرحلة 4.
+    await assertFails(
       setDoc(doc(asPatient(), 'reviews', DONE_APPT), review()));
   });
 
   test('مراجعة بلا موعد مكتمل مرفوضة', async () => {
-    // الثغرة القديمة: أي حساب مسجَّل يكتب أي عدد من المراجعات لأي طبيب،
-    // فيُسقط تقييم منافس إلى الصفر في دقائق.
     await assertFails(setDoc(doc(asPatient(), 'reviews', BOOKED_APPT),
       review({ appointmentId: BOOKED_APPT })));
   });
@@ -834,34 +890,122 @@ describe('reviews — مراجعة عن زيارة حدثت فعلاً', () => {
       review({ doctorId: GROUP_DOCTOR })));
   });
 
-  test('معرّف المراجعة يجب أن يكون معرّف الموعد', async () => {
+  test('معرّف مراجعة عشوائي مرفوض', async () => {
     await assertFails(setDoc(doc(asPatient(), 'reviews', 'rev_random'),
       review()));
-  });
-
-  test('لا مراجعة ثانية لنفس الموعد من شخص آخر', async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), 'reviews', DONE_APPT), review());
-    });
-    await assertFails(setDoc(doc(asOther(), 'reviews', DONE_APPT),
-      review({ patientId: OTHER })));
-  });
-
-  test('صاحب المراجعة يعدّل نجومه وتعليقه فقط', async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), 'reviews', DONE_APPT), review());
-    });
-    await assertSucceeds(updateDoc(doc(asPatient(), 'reviews', DONE_APPT), {
-      rating: 4, comment: 'جيد',
-    }));
-    await assertFails(updateDoc(doc(asPatient(), 'reviews', DONE_APPT), {
-      doctorId: GROUP_DOCTOR,
-    }));
   });
 
   test('التقييم خارج 1..5 مرفوض', async () => {
     await assertFails(setDoc(doc(asPatient(), 'reviews', DONE_APPT),
       review({ rating: 100 })));
+  });
+
+  test('الطبيب لا يكتب مراجعة لنفسه', async () => {
+    await assertFails(setDoc(doc(asDoctor(), 'reviews', DONE_APPT),
+      review({ patientId: DOCTOR })));
+  });
+
+  test('حتى الأدمن لا يكتب مراجعة من العميل', async () => {
+    await assertFails(setDoc(doc(asAdminUser(), 'reviews', DONE_APPT), review()));
+  });
+
+  test('لا مراجعة ثانية لنفس الموعد من شخص آخر', async () => {
+    await seedReview();
+    await assertFails(setDoc(doc(asOther(), 'reviews', DONE_APPT),
+      review({ patientId: OTHER })));
+  });
+
+  // ===== المراجعة غير قابلة للتعديل بعد كتابتها =====
+
+  test('صاحب المراجعة لا يعدّل نجومه بعد الإرسال', async () => {
+    await seedReview();
+    await assertFails(updateDoc(doc(asPatient(), 'reviews', DONE_APPT), {
+      rating: 4, comment: 'جيد',
+    }));
+  });
+
+  test('لا يمكن تعديل هوية الموعد أو الطبيب أو المريض', async () => {
+    await seedReview();
+    const db = asPatient();
+    await assertFails(updateDoc(doc(db, 'reviews', DONE_APPT), {
+      doctorId: GROUP_DOCTOR,
+    }));
+    await assertFails(updateDoc(doc(db, 'reviews', DONE_APPT), {
+      patientId: OTHER,
+    }));
+    await assertFails(updateDoc(doc(db, 'reviews', DONE_APPT), {
+      appointmentId: BOOKED_APPT,
+    }));
+  });
+
+  test('لا يمكن تزوير verifiedVisit', async () => {
+    await seedReview();
+    await assertFails(updateDoc(doc(asPatient(), 'reviews', DONE_APPT), {
+      verifiedVisit: true,
+    }));
+    await assertFails(setDoc(doc(asPatient(), 'reviews', 'forged_visit'),
+      review({ appointmentId: 'forged_visit', verifiedVisit: true })));
+  });
+
+  test('لا يمكن تزوير createdAt', async () => {
+    await seedReview();
+    await assertFails(updateDoc(doc(asPatient(), 'reviews', DONE_APPT), {
+      createdAt: new Date('2020-01-01'),
+    }));
+  });
+
+  test('مريض آخر لا يعدّل مراجعة غيره', async () => {
+    await seedReview();
+    await assertFails(updateDoc(doc(asOther(), 'reviews', DONE_APPT), {
+      rating: 1,
+    }));
+  });
+
+  test('الطبيب لا يعدّل مراجعة كُتبت عنه', async () => {
+    await seedReview();
+    await assertFails(updateDoc(doc(asDoctor(), 'reviews', DONE_APPT), {
+      rating: 5, comment: 'ممتاز جداً',
+    }));
+  });
+
+  // ===== الحذف =====
+
+  test('لا أحد يحذف مراجعة من العميل', async () => {
+    await seedReview();
+    await assertFails(deleteDoc(doc(asPatient(), 'reviews', DONE_APPT)));
+    await assertFails(deleteDoc(doc(asOther(), 'reviews', DONE_APPT)));
+    await assertFails(deleteDoc(doc(asDoctor(), 'reviews', DONE_APPT)));
+    await assertFails(deleteDoc(doc(asAdminUser(), 'reviews', DONE_APPT)));
+  });
+
+  // ===== القراءة =====
+
+  test('المستخدم المسجَّل يقرأ المراجعات — جزء من اختيار الطبيب', async () => {
+    await seedReview();
+    await assertSucceeds(getDoc(doc(asOther(), 'reviews', DONE_APPT)));
+    await assertSucceeds(getDoc(doc(asDoctor(), 'reviews', DONE_APPT)));
+  });
+
+  test('غير المسجَّل لا يقرأ المراجعات', async () => {
+    await seedReview();
+    await assertFails(getDoc(doc(asAnon(), 'reviews', DONE_APPT)));
+  });
+
+  test('مستند المراجعة لا يحمل هاتف المريض ولا بريده', async () => {
+    // ما يكتبه الخادم (functions/reviews.js) لا يتضمّن أياً منهما؛ هذا
+    // الاختبار يحرس ذلك من انحدار مستقبلي في شكل المستند.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'reviews', DONE_APPT), {
+        appointmentId: DONE_APPT, doctorId: DOCTOR, patientId: PATIENT,
+        patientName: 'مريض', rating: 5, comment: 'ممتاز',
+        verifiedVisit: true, createdAt: new Date(),
+      });
+    });
+    const snap = await getDoc(doc(asOther(), 'reviews', DONE_APPT));
+    const data = snap.data();
+    expect(data.patientPhone).toBeUndefined();
+    expect(data.patientEmail).toBeUndefined();
+    expect(data.notes).toBeUndefined();
   });
 });
 
