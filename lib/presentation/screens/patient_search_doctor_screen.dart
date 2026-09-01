@@ -1,5 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_theme.dart';
+import '../widgets/app_surfaces.dart';
 import 'patient_booking_screen.dart';
 import '../../core/utils/app_logger.dart';
 
@@ -15,8 +19,13 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
   final TextEditingController _searchController = TextEditingController();
   int _selectedSpecialty = 0;
   double _selectedRating = 0;
-  RangeValues _priceRange = const RangeValues(100, 500);
+  static const double _kPriceMin = 100;
+  static const double _kPriceMax = 500;
+  RangeValues _priceRange = const RangeValues(_kPriceMin, _kPriceMax);
   bool _availableNow = false;
+
+  /// الفلاتر المتقدّمة مطويّة افتراضياً.
+  bool _filtersExpanded = false;
 
   final List<String> _specialties = [
     'الكل',
@@ -115,12 +124,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('البحث عن طبيب'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        elevation: 1,
-      ),
+      appBar: AppBar(title: const Text('البحث عن طبيب')),
       body: Column(
         children: [
           if (_isLoadingDoctors)
@@ -134,20 +138,32 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
               },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSearchBar(),
-                      const SizedBox(height: 16),
-                      _buildSpecialtyFilter(),
-                      const SizedBox(height: 16),
-                      _buildAdvancedFilters(),
-                      const SizedBox(height: 16),
-                      _buildResults(),
-                      const SizedBox(height: 32),
-                    ],
+                child: ContentWidthLimit(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // الترتيب هنا يقرّر متى يرى المريض أول طبيب.
+                        // كان: بحث + تخصصات + ثلاث بطاقات فلترة كاملة العرض
+                        // (تقييم، سعر، متاح الآن) — نحو 1100 بكسل قبل أول
+                        // نتيجة، أي شاشتان كاملتان من الضبط قبل أي محتوى.
+                        // الفلاتر المتقدّمة صارت خلف زرّ يظهر عدد المفعَّل
+                        // منها، والنتائج تبدأ مباشرة بعد شرائح التخصص.
+                        _buildSearchBar(),
+                        const SizedBox(height: AppSpacing.lg),
+                        _buildSpecialtyFilter(),
+                        const SizedBox(height: AppSpacing.md),
+                        _buildFilterToggle(),
+                        if (_filtersExpanded) ...[
+                          const SizedBox(height: AppSpacing.md),
+                          _buildAdvancedFilters(),
+                        ],
+                        const SizedBox(height: AppSpacing.xl),
+                        _buildResults(),
+                        const SizedBox(height: AppSpacing.xxl),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -227,15 +243,33 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
     );
   }
 
+  /// عدد الفلاتر المتقدّمة المفعَّلة — يُعرض على الزرّ حتى لا تختفي
+  /// فلترة نشطة خلف قسم مطويّ فيحتار المريض لِمَ النتائج قليلة.
+  int get _activeAdvancedFilters {
+    var n = 0;
+    if (_selectedRating > 0) n++;
+    if (_availableNow) n++;
+    if (_priceRange.start > _kPriceMin || _priceRange.end < _kPriceMax) n++;
+    return n;
+  }
+
+  Widget _buildFilterToggle() {
+    final active = _activeAdvancedFilters;
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: TextButton.icon(
+        onPressed: () => setState(() => _filtersExpanded = !_filtersExpanded),
+        icon: Icon(_filtersExpanded ? Icons.expand_less : Icons.tune, size: 18),
+        label: Text(active == 0 ? 'فلاتر متقدمة' : 'فلاتر متقدمة ($active)'),
+      ),
+    );
+  }
+
   Widget _buildAdvancedFilters() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'الفلاتر المتقدمة',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 4),
         Card(
           elevation: 1,
           child: Padding(
@@ -417,187 +451,122 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
     );
   }
 
+  /// بطاقة الطبيب.
+  ///
+  /// كانت البطاقة السابقة تُقرأ من أسفلها: الاسم والتخصص أعلى، ثم مربّع
+  /// لوني فارغ مكان الصورة، ثم فاصل، ثم النجوم، ثم النبذة، ثم بطاقة
+  /// متداخلة للموقع، وأخيراً السعر وأيام العمل وزرّ الحجز — أي أن السعر
+  /// والإجراء، وهما ما يقرّر عليهما المريض، يقعان تحت الطيّ.
+  ///
+  /// الترتيب الآن: الهويّة (حرف الاسم، الاسم، التخصص، التوثيق) → التقييم
+  /// والسعر في سطر واحد → الموقع → الحجز. ثلاثة أسطر قابلة للمسح البصري
+  /// السريع، وبطاقة واحدة بلا بطاقات متداخلة.
   Widget _buildDoctorCard(Map<String, dynamic> doctor) {
-    String workingDaysText = 'غير محدد';
-    final workingDaysDynamic = doctor['workingDays'];
-    if (workingDaysDynamic is Map) {
-      final activeDays = workingDaysDynamic.entries
-          .where((e) => e.value == true)
-          .map((e) => e.key.split(' ').first)
-          .toList();
-      if (activeDays.isNotEmpty) {
-        workingDaysText = activeDays.join('، ');
-      }
-    } else if (workingDaysDynamic is List && workingDaysDynamic.isNotEmpty) {
-      workingDaysText = workingDaysDynamic.join('، ');
-    }
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final name = (doctor['name'] ?? 'طبيب').toString();
+    final rating = (doctor['rating'] as num?)?.toDouble() ?? 0;
+    final reviews = (doctor['reviews'] as num?)?.toInt() ?? 0;
 
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: AppCard(
+        onTap: () => _openBooking(doctor),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // حرف الاسم بدل مربّع لوني فارغ: لا صور أطباء في النظام،
+                // والمربّع الفارغ يقرأ كصورة لم تُحمَّل.
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _initial(name),
+                    style: theme.textTheme.titleLarge
+                        ?.copyWith(color: scheme.onPrimaryContainer),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        doctor['clinicNameAr'],
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          // كل طبيب معروض هنا موثَّق (الاستعلام يشترطه)،
+                          // فالعلامة تأكيد لا تمييز.
+                          Icon(Icons.verified, size: 16, color: scheme.primary),
+                        ],
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        doctor['specialization'],
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
+                        (doctor['specialization'] ?? '').toString(),
+                        style: theme.textTheme.bodySmall,
                       ),
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    '👨‍⚕️',
-                    style: TextStyle(fontSize: 28),
-                  ),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-            Divider(color: Theme.of(context).colorScheme.outlineVariant),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.lg),
             Row(
               children: [
-                ...List.generate(
-                  5,
-                  (i) => Icon(
-                    i < doctor['rating'].toInt()
-                        ? Icons.star
-                        : Icons.star_border,
-                    color: Theme.of(context).colorScheme.tertiary,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 8),
+                const Icon(Icons.star_rounded,
+                    size: 18, color: AppColors.rating),
+                const SizedBox(width: 4),
                 Text(
-                  '${doctor['rating']} (${doctor['reviews']} تقييم)',
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12),
+                  rating == 0 ? 'جديد' : rating.toStringAsFixed(1),
+                  style: theme.textTheme.titleSmall,
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              doctor['bio'],
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildDetailRow(
-                    '📍',
-                    'الموقع',
-                    doctor['clinicLocation'],
-                  ),
-                  const SizedBox(height: 6),
-                  _buildDetailRow(
-                    '🕐',
-                    'ساعات العمل',
-                    doctor['workingHours'],
-                  ),
-                  const SizedBox(height: 6),
-                  _buildDetailRow(
-                    '📅',
-                    'أيام العمل',
-                    workingDaysText,
-                  ),
-                  const SizedBox(height: 6),
-                  _buildDetailRow(
-                    doctor['bookingSystemType'] == 'Grouped' ? '👥' : '⏱️',
-                    doctor['bookingSystemType'] == 'Grouped'
-                        ? 'نظام الحجز'
-                        : 'مدة الجلسة',
-                    doctor['bookingSystemType'] == 'Grouped'
-                        ? 'أسبقية الحضور (مجمع)'
-                        : '${doctor['sessionDuration']} دقيقة',
-                  ),
+                if (reviews > 0) ...[
+                  const SizedBox(width: 4),
+                  Text('($reviews)', style: theme.textTheme.bodySmall),
                 ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _infoChip('💰 ${doctor['price'].toInt()} جنيه',
-                    Theme.of(context).colorScheme.tertiary),
-                _infoChip('👥 ${doctor['patients']} مريض',
-                    Theme.of(context).colorScheme.primary),
-                _infoChip(
-                  doctor['available'] ? '✅ متاح الآن' : '⏳ غير متاح',
-                  doctor['available']
-                      ? Theme.of(context).colorScheme.tertiary
-                      : Theme.of(context).colorScheme.secondary,
+                const Spacer(),
+                Text(
+                  '${(doctor['price'] as num).toInt()} جنيه',
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(color: scheme.primary),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Icon(Icons.location_on_outlined,
+                    size: 16, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    (doctor['clinicLocation'] ?? '').toString(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
                   ),
                 ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PatientBookingScreen(
-                        initialDoctorId: doctor['id'],
-                      ),
-                    ),
-                  );
-                },
-                child: Text(
-                  'احجز موعداً',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onPrimary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            FilledButton(
+              onPressed: () => _openBooking(doctor),
+              child: const Text('احجز موعداً'),
             ),
           ],
         ),
@@ -605,56 +574,19 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
     );
   }
 
-  Widget _buildDetailRow(String emoji, String label, String value) {
-    return Row(
-      children: [
-        Text(
-          emoji,
-          style: const TextStyle(fontSize: 16),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+  void _openBooking(Map<String, dynamic> doctor) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            PatientBookingScreen(initialDoctorId: doctor['id']),
+      ),
     );
   }
 
-  Widget _infoChip(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        border: Border.all(color: color.withOpacity(0.3)),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
-    );
+  /// أول حرف من اسم الطبيب بعد إسقاط لقب «د.».
+  static String _initial(String name) {
+    final cleaned = name.replaceFirst(RegExp(r'^د\.?\s*'), '').trim();
+    return cleaned.isEmpty ? '؟' : cleaned.characters.first;
   }
 }

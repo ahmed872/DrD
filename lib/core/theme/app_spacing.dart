@@ -32,9 +32,23 @@ class AppRadii {
   static const double xl = 16;
   static const double pill = 999;
 
-  static BorderRadius get card => BorderRadius.circular(lg);
-  static BorderRadius get field => BorderRadius.circular(md);
-  static BorderRadius get chip => BorderRadius.circular(pill);
+  // ===== أدوار الشكل (المرحلة 6.5) =====
+  //
+  // كانت الشاشات تحمل 118 استدعاءً لـ `BorderRadius.circular` بست قيم
+  // مختلفة (4, 6, 8, 10, 12, 20)، بينما `AppRadii` أعلاه مستعمَل في
+  // شاشتين من أربع وعشرين. القيم أدناه تُسمّى بدورها لا بمقاسها، فيصعب
+  // اختيار الخطأ: البطاقة أعرض انحناءً من الزرّ، والزرّ من الحقل.
+  static const double card = 18;
+  static const double button = 14;
+  static const double input = 14;
+  static const double dialog = 22;
+  static const double chip = pill;
+
+  // اختصارات جاهزة بنفس القيم أعلاه.
+  static BorderRadius get cardRadius => BorderRadius.circular(card);
+  static BorderRadius get buttonRadius => BorderRadius.circular(button);
+  static BorderRadius get fieldRadius => BorderRadius.circular(input);
+  static BorderRadius get chipRadius => BorderRadius.circular(chip);
 }
 
 /// نقاط التكسّر للتخطيط المتجاوب.

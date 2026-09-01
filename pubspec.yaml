@@ -37,3 +37,18 @@ flutter:
 
   assets:
     - assets/images/logo.png
+
+  # Cairo: خطّ عربي مصمَّم لواجهات الشاشات، بحروف لاتينية وأرقام من نفس
+  # العائلة — فلا يختلف شكل «د. سلمى» عن شكل «09:00» في السطر نفسه.
+  # كل ملف يدمج المجموعتين العربية واللاتينية في وجه واحد (نحو 72 ك.ب).
+  # قبل هذا لم يكن للتطبيق خطّ معرَّف إطلاقاً: كان يقع على خط النظام
+  # الافتراضي، وهو ما يجعل أي تطبيق Flutter يبدو قالباً عاماً.
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-400.ttf
+          weight: 400
+        - asset: assets/fonts/Cairo-600.ttf
+          weight: 600
+        - asset: assets/fonts/Cairo-700.ttf
+          weight: 700

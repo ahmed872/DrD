@@ -48,36 +48,41 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 40),
-                // Logo وعنوان
+                const SizedBox(height: AppSpacing.xxl),
+                // شاشة الدخول: أقلّ ما يمكن وبثقة. الشعار أصغر (72 بدل
+                // 100) والعنوان من سلّم الخطوط لا بمقاسات مكتوبة، والنصّ
+                // الثانوي يقول ماذا يفعل المستخدم هنا بدل أن يكرّر عنوان
+                // الزرّ الذي تحته.
                 Container(
-                  width: 100,
-                  height: 100,
+                  width: 72,
+                  height: 72,
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(AppRadii.card),
                     image: const DecorationImage(
                       image: AssetImage('assets/images/logo.png'),
                       fit: BoxFit.cover,
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.xl),
                 Text(
-                  'نظام حجز المواعيد',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+                  'DrD',
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
                         color: Theme.of(context).colorScheme.primary,
                       ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
-                  _isLogin ? 'تسجيل دخول' : 'إنشاء حساب جديد',
+                  _isLogin
+                      ? 'سجّل دخولك لإدارة مواعيدك'
+                      : 'أنشئ حسابك في دقيقة',
+                  textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: AppSpacing.xxl),
 
                 // رقم الجوال
                 _buildTextField(

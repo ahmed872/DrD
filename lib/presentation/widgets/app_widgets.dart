@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_theme.dart';
 
 /// حالة فارغة: أيقونة، عنوان، شرح، وإجراء اختياري.
 class EmptyState extends StatelessWidget {
@@ -163,7 +164,7 @@ class SkeletonCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: AppRadii.card,
+        borderRadius: AppRadii.cardRadius,
       ),
     );
   }
@@ -236,7 +237,7 @@ class StatusChip extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: AppRadii.chip,
+        borderRadius: AppRadii.chipRadius,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -320,7 +321,7 @@ class RatingStars extends StatelessWidget {
         final star = Icon(
           filled ? Icons.star_rounded : Icons.star_border_rounded,
           size: interactive ? size * 1.8 : size,
-          color: filled ? scheme.tertiary : scheme.outline,
+          color: filled ? AppColors.rating : scheme.outline,
         );
 
         if (!interactive) return star;
@@ -331,7 +332,7 @@ class RatingStars extends StatelessWidget {
           selected: filled,
           child: InkWell(
             onTap: () => onChanged!(index + 1),
-            borderRadius: AppRadii.chip,
+            borderRadius: AppRadii.chipRadius,
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.xs),
               child: star,
@@ -408,3 +409,30 @@ IconData directionalForwardIcon(BuildContext context) =>
     Directionality.of(context) == TextDirection.rtl
         ? Icons.arrow_back_ios_new
         : Icons.arrow_forward_ios;
+
+/// سهم «التالي/فتح» جاهزاً للرسم.
+///
+/// [directionalForwardIcon] وحدها لا تكفي: Flutter يعكس أيقونات الأسهم
+/// تلقائياً في السياق العربي، فينعكس الاختيار مرّة ثانية ويعود السهم
+/// مشيراً إلى الخلف. رُصد ذلك في لقطات المرحلة 6.5: سهم «>» في كل بطاقة
+/// موعد بينما اتجاه القراءة من اليمين إلى اليسار.
+///
+/// الحلّ هنا أن نختار الشكل بأنفسنا ونمنع الانعكاس بفرض سياق `ltr` على
+/// الأيقونة وحدها — لا على المحتوى حولها.
+class DirectionalForwardIcon extends StatelessWidget {
+  const DirectionalForwardIcon({super.key, this.size = 16, this.color});
+
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
+    return Icon(
+      isRtl ? Icons.chevron_left : Icons.chevron_right,
+      textDirection: TextDirection.ltr,
+      size: size,
+      color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+  }
+}

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../core/theme/app_spacing.dart';
 import '../../data/services/doctor_dashboard_service.dart';
+import 'app_surfaces.dart';
 import 'app_widgets.dart';
 
 /// ملخّص لوحة الطبيب: أرقام اليوم وأقرب موعد.
@@ -83,9 +84,16 @@ class _SummaryBody extends StatelessWidget {
     final theme = Theme.of(context);
     final next = summary.nextAppointment;
 
+    // الترتيب مقصود: الموعد القادم أولاً ثم الأرقام. كان العكس، فتسرق
+    // خمس بطاقات أرقام الانتباهَ من السطر الوحيد الذي يقول للطبيب من
+    // ينتظره الآن.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (next != null) ...[
+          _NextForDoctor(next: next),
+          const SizedBox(height: AppSpacing.lg),
+        ],
         Row(
           children: [
             _Stat(
@@ -134,47 +142,73 @@ class _SummaryBody extends StatelessWidget {
             ),
           ),
         ),
-        if (next != null) ...[
-          const SizedBox(height: AppSpacing.lg),
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(AppRadii.md),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.schedule,
-                    color: theme.colorScheme.onPrimaryContainer),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'أقرب موعد',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${next.patientName} — '
-                        '${DateFormat('EEEE d MMMM', 'ar').format(next.date)}'
-                        '${next.startTime.isEmpty ? '' : ' • ${next.startTime}'}',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: theme.colorScheme.onPrimaryContainer,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+      ],
+    );
+  }
+}
+
+/// أقرب موعد للطبيب — العنصر الأول في ملخّصه.
+class _NextForDoctor extends StatelessWidget {
+  const _NextForDoctor({required this.next});
+
+  final DoctorNextAppointment next;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final now = DateTime.now();
+    final isToday = next.date.year == now.year &&
+        next.date.month == now.month &&
+        next.date.day == now.day;
+    final when =
+        isToday ? 'اليوم' : DateFormat('EEEE d MMMM', 'ar').format(next.date);
+
+    return AppCard(
+      emphasized: true,
+      tone: scheme.primaryContainer,
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.schedule, size: 18, color: scheme.onPrimaryContainer),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                'أقرب موعد',
+                style: theme.textTheme.labelMedium
+                    ?.copyWith(color: scheme.onPrimaryContainer),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            next.patientName,
+            style: theme.textTheme.titleLarge
+                ?.copyWith(color: scheme.onPrimaryContainer),
+          ),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Text(when,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: scheme.onPrimaryContainer)),
+              if (next.startTime.isNotEmpty) ...[
+                Text('  •  ',
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: scheme.onPrimaryContainer)),
+                Text(
+                  next.startTime,
+                  textDirection: TextDirection.ltr,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: scheme.onPrimaryContainer),
                 ),
               ],
-            ),
+            ],
           ),
         ],
-      ],
+      ),
     );
   }
 }

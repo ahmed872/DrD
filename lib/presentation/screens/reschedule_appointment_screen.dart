@@ -203,7 +203,7 @@ class _RescheduleAppointmentScreenState
                     padding: AppSpacing.card,
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primaryContainer,
-                      borderRadius: AppRadii.card,
+                      borderRadius: AppRadii.cardRadius,
                     ),
                     child: Row(
                       children: [

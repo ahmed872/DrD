@@ -6,6 +6,10 @@ import '../providers/firebase_auth_service.dart';
 import '../widgets/role_guard.dart';
 import 'admin/admin_home_screen.dart';
 import 'notifications_screen.dart';
+import '../../core/theme/app_spacing.dart';
+import '../widgets/app_surfaces.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/patient_home_section.dart';
 import '../widgets/doctor_summary_card.dart';
 import 'doctor_application_screen.dart';
 import 'doctor_settings_screen.dart';
@@ -30,177 +34,180 @@ class HomeScreen extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: const Text('الرئيسية'),
-            centerTitle: true,
-            elevation: 1,
             actions: [
               if (auth.userId != null) _NotificationBell(uid: auth.userId!),
-              // تحديث صلاحية الإدارة — لازم بعد منحها بـ create_admin.js لأن
-              // الجلسة الحالية تحمل رمزاً صدر قبل المنح. راجع
-              // FirebaseAuthService.refreshClaims.
-              IconButton(
-                icon: const Icon(Icons.sync),
-                tooltip: 'تحديث الصلاحيات',
-                onPressed: () async {
-                  await auth.refreshClaims();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(auth.isAdmin
-                          ? 'صلاحية الإدارة مفعّلة'
-                          : 'لا تحمل صلاحية إدارة حالياً'),
-                    ));
-                  }
-                },
-              ),
-              // رابط الإعدادات للمرضى
               if (auth.userRole == 'patient')
                 IconButton(
-                  icon: const Icon(Icons.settings),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const PatientSettingsScreen(),
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: 'الإعدادات',
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PatientSettingsScreen(),
+                    ),
+                  ),
+                ),
+              // شريط الرئيسية كان يحمل أربعة أزرار: إشعارات، ومزامنة
+              // صلاحيات، وإعدادات، وخروج. اثنان منها إجراءان نادران
+              // (الخروج، ومزامنة صلاحية الإدارة بعد منحها بـ
+              // `create_admin.js`)، فجُمعا في قائمة إضافية.
+              //
+              // ولا يصحّ إخفاء المزامنة خلف `auth.isAdmin`: هي لازمة تحديداً
+              // حين يحمل الرمز الحالي حالةً أقدم من المنح، أي حين تكون
+              // `isAdmin` كاذبة. لذلك تبقى متاحة للجميع، خارج الصفّ الأول.
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                tooltip: 'المزيد',
+                onSelected: (value) async {
+                  if (value == 'refresh') {
+                    await auth.refreshClaims();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(auth.isAdmin
+                            ? 'صلاحية الإدارة مفعّلة'
+                            : 'لا تحمل صلاحية إدارة حالياً'),
+                      ));
+                    }
+                  } else if (value == 'logout') {
+                    final shouldLogout = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('تسجيل الخروج'),
+                        content: const Text(
+                            'هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('إلغاء'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: Text('تسجيل الخروج',
+                                style: TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.error)),
+                          ),
+                        ],
                       ),
                     );
-                  },
-                  tooltip: 'الإعدادات',
-                ),
-              // تسجيل الخروج
-              IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: () async {
-                  final shouldLogout = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('تسجيل الخروج'),
-                      content:
-                          const Text('هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('إلغاء'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: Text('تسجيل الخروج',
-                              style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error)),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  if (shouldLogout == true) {
-                    auth.logout();
+                    if (shouldLogout == true) auth.logout();
                   }
                 },
-                tooltip: 'تسجيل الخروج',
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'refresh',
+                    child: ListTile(
+                      leading: Icon(Icons.sync),
+                      title: Text('تحديث الصلاحيات'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: ListTile(
+                      leading: Icon(Icons.logout),
+                      title: Text('تسجيل الخروج'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+          // على شاشة عريضة كان المحتوى يمتدّ بعرض النافذة: بطاقة «موعدك
+          // القادم» بعرض 1400 بكسل، وصفّ إجراءات متباعد بلا داعٍ. الحصر
+          // يوسّط المحتوى في عرض مقروء ولا يغيّر شيئاً على الهاتف.
           body: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // الترحيب
-                  Text(
-                    'مرحباً',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 13,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    auth.userName ?? 'المستخدم',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                          fontSize: 24,
-                        ),
-                  ),
-                  const SizedBox(height: 36),
+            child: ContentWidthLimit(
+              maxWidth: AppBreakpoints.contentMaxWidth,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.xl),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // الترحيب
+                    Text('مرحباً',
+                        style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      auth.userName ?? 'المستخدم',
+                      style: Theme.of(context).textTheme.displaySmall,
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
 
-                  // بطاقة المعلومات
-                  _buildInfoCard(context, auth),
-                  const SizedBox(height: 24),
+                    // بطاقة رقم الهاتف ونوع الحساب كانت هنا، في أعلى الشاشة.
+                    // معلومتان يعرفهما المستخدم عن نفسه، تحتلّان الموضع الذي
+                    // يستحقّه موعده القادم. نُقلتا إلى الإعدادات حيث تُراجَع
+                    // البيانات فعلاً، وحلّ محلّهما ما يخصّ اليوم.
 
-                  // لوحة الإدارة — تظهر فقط لصاحب Custom Claim صحيح. هذا
-                  // إخفاء عرض لا حماية: الوصول الفعلي محكوم بـ
-                  // firestore.rules والدوال السحابية بمعزل تام عن هذا الشرط.
-                  if (auth.isAdmin) ...[
-                    Material(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(10),
-                      child: InkWell(
+                    // لوحة الإدارة — تظهر فقط لصاحب Custom Claim صحيح. هذا
+                    // إخفاء عرض لا حماية: الوصول الفعلي محكوم بـ
+                    // firestore.rules والدوال السحابية بمعزل تام عن هذا الشرط.
+                    if (auth.isAdmin) ...[
+                      Material(
+                        color: Theme.of(context).colorScheme.primaryContainer,
                         borderRadius: BorderRadius.circular(10),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const AdminHomeScreen()),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              Icon(Icons.admin_panel_settings,
-                                  color: Theme.of(context).colorScheme.primary),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text('لوحة الإدارة',
-                                    textAlign: TextAlign.right,
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16)),
-                              ),
-                              Icon(Icons.chevron_left),
-                            ],
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const AdminHomeScreen()),
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Icon(Icons.admin_panel_settings,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: Text('لوحة الإدارة',
+                                      textAlign: TextAlign.right,
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16)),
+                                ),
+                                const DirectionalForwardIcon(),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // ===== الطبيب =====
+                    if (isDoctor) ...[
+                      // الحالة أولاً: الموقوف كان يرى لوحته كاملة بلا إشارة.
+                      DoctorStatusBanner(
+                        state: doctorAccountStateFrom(auth.userData),
+                      ),
+                      if (doctorAccountStateFrom(auth.userData)
+                              .hasClinicAccess &&
+                          auth.userId != null) ...[
+                        DoctorSummaryCard(doctorId: auth.userId!),
+                        const SizedBox(height: AppSpacing.xl),
+                      ],
+                      const SectionTitle(title: 'أدوات العيادة'),
+                      _buildDoctorServices(
+                        context,
+                        doctorAccountStateFrom(auth.userData),
+                      ),
+                    ]
+
+                    // ===== المريض =====
+                    // الترتيب مقصود: الموعد القادم، ثم البحث، ثم الإجراءات
+                    // السريعة، ثم بقيّة المواعيد. الأهمّ أعلى الشاشة بلا تمرير.
+                    else ...[
+                      if (auth.userId != null)
+                        PatientHomeSection(patientId: auth.userId!),
+                    ],
+
+                    const SizedBox(height: AppSpacing.xxl),
                   ],
-
-                  // الخدمات
-                  Text(
-                    isDoctor ? 'لوحة الطبيب' : 'الخدمات المتاحة',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // حالة حساب الطبيب قبل أدواته: الطبيب الموقوف كان يرى
-                  // لوحته كاملة بلا أي إشارة إلى أن المرضى لا يرونه.
-                  if (isDoctor)
-                    DoctorStatusBanner(
-                      state: doctorAccountStateFrom(auth.userData),
-                    ),
-
-                  // ملخّص حقيقي قبل الأدوات: كم موعداً اليوم، وما أقربها.
-                  // للنشط وحده — الموقوف والمعلَّق لا عيادة لهما تُلخَّص.
-                  if (isDoctor &&
-                      doctorAccountStateFrom(auth.userData).hasClinicAccess &&
-                      auth.userId != null) ...[
-                    DoctorSummaryCard(doctorId: auth.userId!),
-                    const SizedBox(height: 24),
-                  ],
-
-                  if (isDoctor)
-                    _buildDoctorServices(
-                      context,
-                      doctorAccountStateFrom(auth.userData),
-                    )
-                  else
-                    _buildPatientServices(context),
-
-                  const SizedBox(height: 40),
-                ],
+                ),
               ),
             ),
           ),
@@ -209,238 +216,42 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoCard(BuildContext context, FirebaseAuthService auth) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _infoRow(
-            context,
-            icon: Icons.phone,
-            label: 'رقم الجوال',
-            value: auth.userData?['phone'] ?? '-',
-          ),
-          const SizedBox(height: 14),
-          Divider(color: Theme.of(context).colorScheme.outlineVariant),
-          const SizedBox(height: 14),
-          _infoRow(
-            context,
-            icon: Icons.person,
-            label: auth.userRole == 'doctor' ? 'النوع' : 'النوع',
-            value: auth.userRole == 'doctor' ? 'طبيب' : 'مريض',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoRow(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                    ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
-      ],
-    );
-  }
-
+  /// أدوات العيادة.
+  ///
+  /// كانت شبكة بطاقات بارتفاع 165 بكسل لكل منها أيقونة ضخمة وسطران —
+  /// نفس الهدر الذي أُزيل من جانب المريض. صارت صفّ إجراءات مضغوطاً بنفس
+  /// المكوّن، فتُقرأ الشاشتان بوصفهما نظاماً واحداً.
+  ///
+  /// مصفوفة الحالات كما هي: شاشات العيادة للنشط وحده، والإعدادات تبقى
+  /// للموقوف ليصل إلى بياناته وإلى الدعم.
   Widget _buildDoctorServices(BuildContext context, DoctorAccountState state) {
-    // مصفوفة الحالات: شاشات العيادة (الجدول، المرضى، الإحصاءات) للنشط
-    // وحده. الموقوف والمعلَّق يبقى لهما ما يخصّ الحساب نفسه — الإعدادات
-    // ومنها الدعم — ليعرفا سبب الحالة ويتصرّفا. عرضُ زرّ «الجدول» لحساب
-    // موقوف يفتح شاشةً أزرارُها بلا أثر.
     final clinic = state.hasClinicAccess;
-    final services = [
-      if (clinic)
-        {
-          'icon': Icons.calendar_month,
-          'title': 'المواعيد',
-          'subtitle': 'جدول اليوم',
-          'action': 'schedule',
-        },
-      {
-        'icon': Icons.settings,
-        'title': 'الإعدادات',
-        'subtitle': 'إعدادات العيادة',
-        'action': 'settings',
-      },
-      if (clinic)
-        {
-          'icon': Icons.people,
-          'title': 'المرضى',
-          'subtitle': 'قائمة المرضى',
-          'action': 'patients',
-        },
-      if (clinic)
-        {
-          'icon': Icons.trending_up,
-          'title': 'الإحصائيات',
-          'subtitle': 'الأداء والتقارير',
-          'action': 'analytics',
-        },
-    ];
-
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: services.length,
-      itemBuilder: (context, index) {
-        final service = services[index];
-        return _buildServiceCard(
-          context,
-          icon: service['icon'] as IconData,
-          title: service['title'] as String,
-          subtitle: service['subtitle'] as String,
-          action: service['action'] as String,
-        );
-      },
-    );
-  }
-
-  Widget _buildPatientServices(BuildContext context) {
-    final services = [
-      {
-        'icon': Icons.date_range,
-        'title': 'حجز موعد',
-        'subtitle': 'موعد جديد',
-        'action': 'book',
-      },
-      {
-        'icon': Icons.calendar_month,
-        'title': 'مواعيدي',
-        'subtitle': 'مواعيدك',
-        'action': 'appointments',
-      },
-      {
-        'icon': Icons.search,
-        'title': 'البحث',
-        'subtitle': 'البحث عن طبيب',
-        'action': 'search',
-      },
-      {
-        'icon': Icons.folder,
-        'title': 'السجل الطبي',
-        'subtitle': 'سجلاتك الطبية',
-        'action': 'history',
-      },
-      {
-        'icon': Icons.medical_information,
-        'title': 'التقدّم كطبيب',
-        'subtitle': 'انضم كطبيب في DrD',
-        'action': 'doctor_application',
-      },
-    ];
-
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: services.length,
-      itemBuilder: (context, index) {
-        final service = services[index];
-        return _buildServiceCard(
-          context,
-          icon: service['icon'] as IconData,
-          title: service['title'] as String,
-          subtitle: service['subtitle'] as String,
-          action: service['action'] as String,
-        );
-      },
-    );
-  }
-
-  Widget _buildServiceCard(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String action,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _handleServiceTap(context, action),
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon,
-                    size: 40, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                ),
-              ],
-            ),
+    return QuickActionsRow(
+      actions: [
+        if (clinic)
+          QuickAction(
+            icon: Icons.calendar_month,
+            label: 'المواعيد',
+            onTap: () => _handleServiceTap(context, 'schedule'),
           ),
+        if (clinic)
+          QuickAction(
+            icon: Icons.people_outline,
+            label: 'المرضى',
+            onTap: () => _handleServiceTap(context, 'patients'),
+          ),
+        if (clinic)
+          QuickAction(
+            icon: Icons.insights_outlined,
+            label: 'الإحصائيات',
+            onTap: () => _handleServiceTap(context, 'analytics'),
+          ),
+        QuickAction(
+          icon: Icons.settings_outlined,
+          label: 'الإعدادات',
+          onTap: () => _handleServiceTap(context, 'settings'),
         ),
-      ),
+      ],
     );
   }
 

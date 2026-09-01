@@ -1,3 +1,4 @@
+import '../../widgets/app_widgets.dart';
 import '../../widgets/role_guard.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -302,7 +303,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                             textAlign: TextAlign.right,
                           ),
                           subtitle: Text(doc.id, textAlign: TextAlign.right),
-                          trailing: const Icon(Icons.chevron_left),
+                          trailing: const DirectionalForwardIcon(),
                           onTap: () => isApplication
                               ? _openApplicationDetail(doc)
                               : _openUserDetail(doc),

@@ -142,7 +142,7 @@ class BookingConfirmationScreen extends StatelessWidget {
                   padding: AppSpacing.card,
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: AppRadii.card,
+                    borderRadius: AppRadii.cardRadius,
                   ),
                   child: Row(
                     children: [

@@ -211,7 +211,7 @@ class _DateStrip extends StatelessWidget {
             label: DateFormat('EEEE d MMMM', 'ar').format(parsed),
             child: InkWell(
               onTap: hasSlots ? () => onSelected(date) : null,
-              borderRadius: AppRadii.field,
+              borderRadius: AppRadii.fieldRadius,
               child: Container(
                 width: 68,
                 padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -219,7 +219,7 @@ class _DateStrip extends StatelessWidget {
                   color: isSelected
                       ? theme.colorScheme.primary
                       : theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: AppRadii.field,
+                  borderRadius: AppRadii.fieldRadius,
                   border: Border.all(
                     color: isSelected
                         ? theme.colorScheme.primary
@@ -376,7 +376,7 @@ class _SlotChip extends StatelessWidget {
       label: '${slot.displayTime}${note == null ? '' : '، $note'}',
       child: InkWell(
         onTap: onTap,
-        borderRadius: AppRadii.field,
+        borderRadius: AppRadii.fieldRadius,
         child: Container(
           constraints: const BoxConstraints(minWidth: 92, minHeight: 48),
           padding: const EdgeInsets.symmetric(
@@ -385,7 +385,7 @@ class _SlotChip extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: background,
-            borderRadius: AppRadii.field,
+            borderRadius: AppRadii.fieldRadius,
             border: Border.all(
               color: isSelected ? scheme.primary : scheme.outlineVariant,
               width: isSelected ? 2 : 1,

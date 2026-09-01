@@ -180,7 +180,7 @@ class DoctorStatusBanner extends StatelessWidget {
       padding: AppSpacing.card,
       decoration: BoxDecoration(
         color: background,
-        borderRadius: AppRadii.card,
+        borderRadius: AppRadii.cardRadius,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
