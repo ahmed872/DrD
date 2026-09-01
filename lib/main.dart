@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'core/theme/app_theme.dart';
@@ -75,6 +76,9 @@ Future<void> _connectEmulatorsIfRequested() async {
   try {
     await FirebaseAuth.instance.useAuthEmulator(host, 9099);
     FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
+    // المرحلة 8: التحليلات كلها عبر دوال قابلة للاستدعاء، فمراجعتها
+    // بصرياً تتطلّب وصل محاكي الدوال أيضاً.
+    FirebaseFunctions.instance.useFunctionsEmulator(host, 5001);
     AppLogger.warning('متصل بمحاكيات Firebase على $host — ليست بيئة إنتاج');
   } catch (e, s) {
     AppLogger.error('تعذّر الاتصال بالمحاكيات', e, s);

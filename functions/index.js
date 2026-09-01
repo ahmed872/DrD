@@ -12,6 +12,11 @@ const {
 } = require("./admin");
 const { sendAppointmentRemindersCore } = require("./reminders");
 const { createReviewCore, getReviewEligibilityCore } = require("./reviews");
+const {
+  getPatientAnalyticsCore,
+  getDoctorAnalyticsCore,
+  getAdminAnalyticsCore,
+} = require("./analytics");
 
 admin.initializeApp();
 
@@ -303,6 +308,81 @@ exports.suspendDoctor = callable("suspendDoctor", suspendDoctorCore);
  * ```
  */
 exports.restoreDoctor = callable("restoreDoctor", restoreDoctorCore);
+
+// ===================== التحليلات (المرحلة 8) =====================
+//
+// ثلاث نقاط قراءة فقط. لا واحدة منها تكتب شيئاً، ولا رقم منها يدخل في قرار
+// حجز أو سعر أو توثيق: التحليلات رصد لا سلطة.
+//
+// المدى مجموعة مغلقة (`7d`/`30d`/`90d`/`365d`) لا تاريخان يرسلهما العميل،
+// فلا يمكن طلب مسح مفتوح. والتجميع يقع على الخادم، فلا يعبر الشبكة مستند
+// موعد واحد — أرقام فقط.
+
+/**
+ * تحليلات المريض عن نشاطه هو.
+ *
+ * ```
+ * الطلب:  { range?: '7d' | '30d' | '90d' | '365d' }
+ * الرد:   { ok, scope, range, timezone, generatedAt, counts, series, truncated }
+ * ```
+ *
+ * النطاق مشتقّ من `uid` المصادَق عليه: لا يقبل الطلب معرّف مريض إطلاقاً،
+ * فلا صيغة لطلب تحليلات مريض آخر.
+ *
+ * | reason | code |
+ * |---|---|
+ * | `unauthenticated` | unauthenticated |
+ * | `invalid-range` | invalid-argument |
+ */
+exports.getPatientAnalytics =
+  callable("getPatientAnalytics", getPatientAnalyticsCore);
+
+/**
+ * تحليلات الطبيب عن عيادته هو.
+ *
+ * ```
+ * الطلب:  { range?: '7d' | '30d' | '90d' | '365d' }
+ * الرد:   { ok, scope, range, timezone, generatedAt, counts, series,
+ *           quality: { averageRating, reviewCount, completionRate,
+ *                      cancellationRate, noShowRate }, truncated }
+ * ```
+ *
+ * الصفة تُقرأ من `users/{uid}.role` لا مما يرسله الطالب، والنطاق `doctorId
+ * == uid` دائماً.
+ *
+ * | reason | code |
+ * |---|---|
+ * | `unauthenticated` | unauthenticated |
+ * | `not-a-doctor` | permission-denied |
+ * | `invalid-range` | invalid-argument |
+ */
+exports.getDoctorAnalytics =
+  callable("getDoctorAnalytics", getDoctorAnalyticsCore);
+
+/**
+ * تحليلات المنصّة — للإدارة وحدها.
+ *
+ * ```
+ * الطلب:  { range?: '7d' | '30d' | '90d' | '365d' }
+ * الرد:   { ok, scope, range, timezone, generatedAt, platform, counts,
+ *           series, specialties, quality, truncated }
+ * ```
+ *
+ * الصلاحية من `token.admin` — Custom Claim موقَّع لا حقل Firestore، فلا
+ * يمنحها أحد لنفسه بكتابة مستند. وكانت لوحة الإدارة تحسب أعدادها من العميل
+ * بـ `count()`، وهي استعلامات تنجح لأي مستخدم مسجَّل لأن القواعد تسمح
+ * بقراءة مستندات الأطباء؛ فصار العدّ هنا خلف فحص الصلاحية.
+ *
+ * الرد تجميعي بحت: أعداد وأسماء تخصصات. لا اسم مريض ولا طبيب ولا معرّف.
+ *
+ * | reason | code |
+ * |---|---|
+ * | `unauthenticated` | unauthenticated |
+ * | `permission-denied` | permission-denied |
+ * | `invalid-range` | invalid-argument |
+ */
+exports.getAdminAnalytics =
+  callable("getAdminAnalytics", getAdminAnalyticsCore);
 
 // ملاحظة أمنية (المرحلة صفر):
 //

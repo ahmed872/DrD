@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/role_guard.dart';
+import 'admin_analytics_screen.dart';
 import 'admin_doctors_screen.dart';
 
 /// أساس لوحة الإدارة — عدّادات سريعة وروابط. وظيفية لا تصميماً نهائياً؛
@@ -81,6 +82,17 @@ class _AdminHomeBody extends StatelessWidget {
                   _openDoctors(context, initialFilter: DoctorFilter.suspended),
             ),
             const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AdminAnalyticsScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.insights_outlined),
+              label: const Text('تحليلات المنصّة'),
+            ),
+            const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: () =>
                   _openDoctors(context, initialFilter: DoctorFilter.pending),

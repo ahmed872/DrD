@@ -28,6 +28,10 @@ const {
   runTransaction,
   arrayUnion,
   arrayRemove,
+  collection,
+  query,
+  where,
+  getDocs,
 } = require('firebase/firestore');
 
 let testEnv;
@@ -905,6 +909,72 @@ describe('إعدادات العيادة — حدود لا يكسرها العم�
     await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
       sessionDuration: 20, isVerified: true, role: 'admin',
     }));
+  });
+});
+
+describe('التحليلات — لا مسار قراءة جانبي (المرحلة 8)', () => {
+  // تحليلات المنصّة تمرّ عبر `getAdminAnalytics` وهي تفحص `token.admin`.
+  // هذه الاختبارات تحرس ألّا يوجد **طريق التفاف** عبر القواعد: أي أن
+  // المستخدم العادي لا يستطيع جمع نفس الأرقام بقراءة مباشرة.
+
+  test('المستخدم العادي لا يقرأ مستندات المرضى الآخرين', async () => {
+    // عدّ المرضى أو تصفّحهم من العميل مستحيل ما دامت القراءة محصورة.
+    await assertFails(getDoc(doc(asOther(), 'users', PATIENT)));
+  });
+
+  test('المستخدم العادي لا يقرأ طلبات التوثيق', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'doctorApplications', 'app1'), {
+        uid: PATIENT, status: 'pending', submittedAt: new Date(),
+      });
+    });
+    await assertFails(getDoc(doc(asPatient(), 'doctorApplications', 'app1')));
+    await assertFails(getDoc(doc(asDoctor(), 'doctorApplications', 'app1')));
+  });
+
+  test('المدير يقرأ طلبات التوثيق', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'doctorApplications', 'app1'), {
+        uid: PATIENT, status: 'pending', submittedAt: new Date(),
+      });
+    });
+    await assertSucceeds(getDoc(doc(asAdminUser(), 'doctorApplications', 'app1')));
+  });
+
+  test('المريض لا يقرأ مواعيد مريض آخر — ولو باستعلام مجموعة', async () => {
+    // أساس تحليلات المريض: النطاق على الخادم `patientId == uid`، وهنا
+    // نتحقّق أن القراءة المباشرة لا تفتح باباً موازياً.
+    await assertFails(getDocs(query(
+      collection(asOther(), 'appointments'),
+      where('patientId', '==', PATIENT),
+    )));
+  });
+
+  test('الطبيب لا يقرأ مواعيد طبيب آخر', async () => {
+    await assertFails(getDocs(query(
+      collection(asPatient(), 'appointments'),
+      where('doctorId', '==', DOCTOR),
+    )));
+  });
+
+  test('صاحب النطاق يقرأ نطاقه هو', async () => {
+    await assertSucceeds(getDocs(query(
+      collection(asPatient(), 'appointments'),
+      where('patientId', '==', PATIENT),
+    )));
+    await assertSucceeds(getDocs(query(
+      collection(asDoctor(), 'appointments'),
+      where('doctorId', '==', DOCTOR),
+    )));
+  });
+
+  test('التحليلات لا تفتح أي مسار كتابة', async () => {
+    // التحليلات رصد لا سلطة: لا شيء فيها يكتب، والقواعد تبقى كما هي.
+    await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      rating: 5, reviews: 999,
+    }));
+    await assertFails(updateDoc(
+      doc(asDoctor(), 'appointments', BOOKED_APPT), { price: 1 }));
   });
 });
 

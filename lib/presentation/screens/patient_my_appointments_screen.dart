@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../data/services/booking_service.dart';
 import '../../data/services/review_service.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/patient_activity_strip.dart';
 import 'reschedule_appointment_screen.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/utils/app_logger.dart';
@@ -611,6 +612,8 @@ class _PatientMyAppointmentsScreenState
             ),
           ),
           const Divider(height: 1),
+          // شريط نشاط مضغوط (المرحلة 8) — أربعة أرقام لا لوحة.
+          const PatientActivityStrip(),
 
           // List
           Expanded(
