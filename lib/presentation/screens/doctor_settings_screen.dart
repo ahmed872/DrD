@@ -43,6 +43,14 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 17, minute: 0);
 
+  /// أيام إغلاق مفردة (`yyyy-MM-dd`). محرّك الإتاحة يقرأ `closedDates` منذ
+  /// المرحلة 3 (`isClosedDate` في `functions/availability.js`) لكن لم تكن
+  /// له أي واجهة — فبقيت الإجازات تُدار بإطفاء يوم العمل كلّه أسبوعياً.
+  ///
+  /// الاتجاه طرحي بحته: الإغلاق يُنقص الإتاحة ولا يزيدها، فلا يمسّ أي
+  /// ثابتة من ثوابت الحجز، ولا يحتاج تغييراً في الخادم.
+  List<String> _closedDates = [];
+
   final Map<String, bool> _workingDays = {
     'السبت (Saturday)': true,
     'الأحد (Sunday)': true,
@@ -133,6 +141,12 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           _maxPatientsPerSlotController.text =
               (data['maxPatientsPerSlot'] ?? '4').toString();
           _bookingSystemType = data['bookingSystemType'] ?? 'Individual';
+
+          final rawClosed = data['closedDates'];
+          _closedDates = rawClosed is List
+              ? rawClosed.map((e) => e.toString()).toList()
+              : <String>[];
+          _closedDates.sort();
 
           // Load working hours - Parse '09:00 AM - 05:00 PM' format
           if (data['workingHours'] != null) {
@@ -480,6 +494,12 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
               const SizedBox(height: 24),
 
+              _buildSectionTitle('🚫 أيام الإغلاق / Closed Dates'),
+              const SizedBox(height: 12),
+              _buildClosedDatesSection(),
+
+              const SizedBox(height: 24),
+
               // === زر الحفظ ===
               SizedBox(
                 width: double.infinity,
@@ -493,6 +513,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.tertiary,
+                    foregroundColor: Theme.of(context).colorScheme.onTertiary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -522,6 +543,83 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         ),
       ),
     );
+  }
+
+  /// أقصى عدد أيام إغلاق — مطابق للحدّ في `firestore.rules`.
+  static const int maxClosedDates = 366;
+
+  Widget _buildClosedDatesSection() {
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'الأيام التي لا تستقبل فيها حجوزات (إجازة، عطلة، ظرف طارئ). '
+            'المواعيد المحجوزة مسبقاً لا تُلغى تلقائياً — ألغِها من شاشة '
+            'المواعيد إن لزم.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_closedDates.isEmpty)
+            Text(
+              'لا أيام إغلاق',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _closedDates
+                  .map((date) => InputChip(
+                        label: Text(date),
+                        onDeleted: () =>
+                            setState(() => _closedDates.remove(date)),
+                        deleteButtonTooltipMessage: 'إزالة $date',
+                      ))
+                  .toList(),
+            ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed:
+                _closedDates.length >= maxClosedDates ? null : _pickClosedDate,
+            icon: const Icon(Icons.event_busy),
+            label: const Text('إضافة يوم إغلاق'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickClosedDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year, now.month, now.day),
+      // نافذة الحجز على الخادم 90 يوماً؛ إغلاق ما بعدها بلا أثر عملي،
+      // لكن السنة تسمح بتسجيل إجازة مخطَّطة.
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked == null) return;
+    final key = '${picked.year.toString().padLeft(4, '0')}-'
+        '${picked.month.toString().padLeft(2, '0')}-'
+        '${picked.day.toString().padLeft(2, '0')}';
+    if (_closedDates.contains(key)) return;
+    setState(() {
+      _closedDates
+        ..add(key)
+        ..sort();
+    });
   }
 
   Widget _buildSectionTitle(String title) {
@@ -675,6 +773,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           'price': price,
           'workingHours': formattedWorkingHours,
           'workingDays': _workingDays,
+          'closedDates': _closedDates,
         }, SetOptions(merge: true));
 
         if (mounted) {

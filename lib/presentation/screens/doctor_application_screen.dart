@@ -266,6 +266,7 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
                   : () => _submit(uid, isResubmit: isResubmit),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               child: _isSubmitting

@@ -58,6 +58,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor:
                               Theme.of(context).colorScheme.primary,
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onPrimary,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -71,8 +73,14 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                           child: ElevatedButton(
                             onPressed: () => _cancelEdit(),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.outlineVariant,
+                              // زرّ ثانوي: سطح محايد ونصّ عليه. بلا
+                              // `foregroundColor` يجعل Material 3 النصّ
+                              // بلون primary فوق رمادي باهت.
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                              foregroundColor:
+                                  Theme.of(context).colorScheme.onSurface,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -107,6 +115,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor:
                                   Theme.of(context).colorScheme.primary,
+                              foregroundColor:
+                                  Theme.of(context).colorScheme.onPrimary,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -430,6 +440,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           label: const Text('تسجيل الخروج'),
           style: ElevatedButton.styleFrom(
             backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),

@@ -87,12 +87,24 @@ void main() {
   });
 
   group('ما تسمح به كل حالة', () {
-    test('وصول العيادة للنشط والموقوف فقط', () {
+    test('وصول العيادة للنشط وحده', () {
+      // تغيّر في المرحلة 6: كان الموقوف يرى شاشات العيادة للقراءة. مصفوفة
+      // الحالات المعتمدة تحصره في الحالة وإجراءات الحساب، وشاشات العيادة
+      // تحمل أزرار كتابة لا معنى لها لحساب موقوف.
       expect(DoctorAccountState.active.hasClinicAccess, isTrue);
-      expect(DoctorAccountState.suspended.hasClinicAccess, isTrue);
+      expect(DoctorAccountState.suspended.hasClinicAccess, isFalse);
       expect(DoctorAccountState.pending.hasClinicAccess, isFalse);
       expect(DoctorAccountState.rejected.hasClinicAccess, isFalse);
       expect(DoctorAccountState.notADoctor.hasClinicAccess, isFalse);
+    });
+
+    test('إجراءات الحساب تبقى للموقوف', () {
+      // عليه أن يصل إلى إعداداته وإلى الدعم ليعرف سبب الإيقاف.
+      expect(DoctorAccountState.suspended.hasAccountActions, isTrue);
+      expect(DoctorAccountState.active.hasAccountActions, isTrue);
+      expect(DoctorAccountState.pending.hasAccountActions, isFalse);
+      expect(DoctorAccountState.rejected.hasAccountActions, isFalse);
+      expect(DoctorAccountState.notADoctor.hasAccountActions, isFalse);
     });
 
     test('الحجوزات الجديدة للنشط وحده', () {

@@ -27,11 +27,25 @@ enum DoctorAccountState {
   active;
 
   /// هل يظهر له جدول ومرضى وحجوزات قادمة؟
-  bool get hasClinicAccess =>
-      this == DoctorAccountState.active || this == DoctorAccountState.suspended;
+  ///
+  /// المرحلة 6: الموقوف لم يعد ضمنهم. كانت المرحلة 5ب تُبقي له وصول العيادة
+  /// للقراءة، لأن مواعيده القائمة تبقى قائمة. لكن مصفوفة الحالات المعتمدة
+  /// تحصر الموقوف في «الحالة + إجراءات الحساب المسموحة»، وذلك أسلم: شاشات
+  /// العيادة تحمل أزرار كتابة (إنهاء موعد، ملاحظة، فتح خانة) لا معنى لها
+  /// لحساب قرّرت الإدارة إيقافه، وإظهارها معطَّلةً أو عاملةً كلاهما مُربك.
+  ///
+  /// وهذا عرضٌ لا تفويض: الخادم يرفض الحجز عند الموقوف أصلاً
+  /// (`fetchBookableDoctor`)، وقواعد Firestore هي التي تحرس الكتابة.
+  bool get hasClinicAccess => this == DoctorAccountState.active;
 
   /// هل يستقبل حجوزات جديدة الآن؟
   bool get acceptsNewBookings => this == DoctorAccountState.active;
+
+  /// إجراءات الحساب (الإعدادات، الدعم، تسجيل الخروج) تبقى متاحة لكل من
+  /// يملك حساب طبيب — بما فيهم الموقوف: عليه أن يصل إلى بياناته وإلى
+  /// الدعم ليعرف سبب الإيقاف.
+  bool get hasAccountActions =>
+      this == DoctorAccountState.active || this == DoctorAccountState.suspended;
 
   String get arabicLabel => switch (this) {
         DoctorAccountState.notADoctor => 'حساب مريض',

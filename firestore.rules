@@ -214,7 +214,43 @@ service cloud.firestore {
 
       // صاحب الحساب وحده، وبلا مساس بالحقول المحمية. لا استثناء لأحد —
       // كل ما عدا ذلك يمرّ عبر دوال الخادم.
-      allow update: if isUser(userId) && keepsProtectedFields();
+      // ===== المرحلة 6: حدود إعدادات العيادة =====
+      //
+      // الطبيب يملك تعديل `sessionDuration` و`maxPatientsPerSlot` و`price`،
+      // وهي حقول تقرأها القواعد والخادم لبناء الخانات وسعتها
+      // (`allowedCapacity` هنا، و`slotCapacity`/`slotDurationMinutes` في
+      // `functions/availability.js`). الجانب السفلي محروس أصلاً — القيم
+      // ≤ 0 تسقط إلى الافتراضي — لكن لا سقف عليها: `maxPatientsPerSlot`
+      // بمليون يجعل قفل الخانة يقبل مليون معرّف مريض في مستند واحد.
+      // التحقّق في الواجهة موجود لكنه ناقص (لا يفحص السعة في النمط الفردي
+      // ولا المدة في الجماعي) وهو على العميل — أي ليس تفويضاً.
+      //
+      // تُفرض الحدود على الأرقام فقط: المستندات القديمة قد تحمل نصوصاً،
+      // والخادم يعاملها أصلاً كقيمة غائبة فيسقط إلى الافتراضي.
+      function inRange(field, low, high) {
+        let v = request.resource.data.get(field, null);
+        return !(v is number) || (v >= low && v <= high);
+      }
+
+      // `closedDates` أيام إغلاق مفردة، يقرأها محرّك الإتاحة
+      // (`isClosedDate`). اتجاهها طرحي — تُنقص الإتاحة ولا تزيدها — فلا
+      // ثابتة حجز تتأثر بها. الحدّ هنا على الحجم وحده: مصفوفة بلا سقف
+      // تُضخّم مستند الطبيب الذي يُقرأ في كل استعلام إتاحة.
+      function saneClosedDates() {
+        let v = request.resource.data.get('closedDates', []);
+        return !(v is list) || v.size() <= 366;
+      }
+
+      function sanePracticeSettings() {
+        return inRange('sessionDuration', 5, 240)
+            && inRange('maxPatientsPerSlot', 1, 50)
+            && inRange('price', 0, 1000000)
+            && saneClosedDates();
+      }
+
+      allow update: if isUser(userId)
+                    && keepsProtectedFields()
+                    && sanePracticeSettings();
 
       // الحذف ممنوع من العميل — يمر عبر Cloud Function حتى تُنظَّف
       // البيانات المرتبطة (المواعيد، الفهرس، التقييمات) معاً.
@@ -571,21 +607,83 @@ service cloud.firestore {
     // الحقول هنا `fromUserId` و`toUserId` و`ratingType` مطابقةً لـ
     // `lib/data/models/rating_model.dart`.
     match /ratings/{ratingId} {
+      // ===== المرحلة 6: إصلاح أمني =====
+      //
+      // كانت قاعدة الإنشاء تشترط شيئين فقط: أن يكون الكاتب مسجَّلاً، وألّا
+      // ينتحل `fromUserId`. أي أن **أي مستخدم مسجَّل** كان يستطيع كتابة
+      // مستند `doctor_to_patient` — أي تقييم للحالة الصحية لمريض — باسمه
+      // هو، موجَّهاً إلى أي `toUserId` يختاره، بلا إثبات أنه طبيب ولا أنّ
+      // بينه وبين ذلك المستخدم أي موعد. القراءة محصورة بالطرفين، فالتسريب
+      // ليس هو الخطر؛ الخطر أن يصل إلى مستخدم مستندٌ يبدو ملاحظةً طبية
+      // كتبها «طبيبه».
+      //
+      // العلاقة العلاجية ليست مخترعة هنا: مستند التقييم يحمل أصلاً
+      // `appointmentId` (انظر `lib/data/models/rating_model.dart`)، ومستند
+      // الموعد يحمل `doctorId` و`patientId` كما يكتبهما الخادم
+      // (`functions/booking.js`). فالتحقّق يتم بالموعد الحقيقي نفسه.
+      //
+      // ملاحظة نطاق: هذا إغلاق للثغرة فقط. منظومة `ratings` تبقى غير موصولة
+      // بأي واجهة، ولم تُوسَّع (انظر رؤوس ملفاتها).
+
+      // الموعد الذي يدّعي هذا التقييم أنه ناتج عنه.
+      function ratedAppointment() {
+        return get(/databases/$(database)/documents/appointments/
+                   $(request.resource.data.appointmentId)).data;
+      }
+
+      // الكاتب طبيب فعلاً بحسب مستنده هو، لا بحسب ما يرسله.
+      //
+      // `disabled` وليس `isVerified`: الطبيب الموقوف هو تحديداً الحساب الذي
+      // قرّر المدير إيقافه، فلا يكتب ملاحظات طبية جديدة. أما `isVerified`
+      // فلا يُشترط هنا لأن الأطباء السابقين للمرحلة 2 قد لا يحملونه، ولا
+      // يمكن أن يوجد لهم موعد أصلاً بغير توثيق (`isBookableDoctor`).
+      function writerIsDoctor() {
+        let d = userData(request.auth.uid);
+        return d.role == 'doctor' && d.get('disabled', false) != true;
+      }
+
+      // الطرفان مطابقان لطرفَي الموعد، كلٌّ في اتجاهه الصحيح.
+      function partiesMatchAppointment() {
+        let appt = ratedAppointment();
+        let from = request.resource.data.fromUserId;
+        let to = request.resource.data.toUserId;
+        return request.resource.data.ratingType == 'doctor_to_patient'
+          ? (writerIsDoctor() && appt.doctorId == from && appt.patientId == to)
+          : (appt.patientId == from && appt.doctorId == to);
+      }
+
+      // تقييم المريض للخدمة لا يحمل حقولاً صحّية — وإلا صار بابَ تسريبٍ
+      // معكوس: مستند «طبي» كتبه غير طبيب.
+      function healthFieldsOnlyFromDoctor() {
+        return request.resource.data.ratingType == 'doctor_to_patient'
+          || !request.resource.data.keys().hasAny(
+               ['healthConditionRating', 'healthConditionComment']);
+      }
+
       allow read: if isSignedIn() && (
                     isUser(resource.data.fromUserId)
                     || isUser(resource.data.toUserId)
                   );
 
-      // الكاتب لا يستطيع انتحال شخصية غيره.
       allow create: if isSignedIn()
                     && request.resource.data.fromUserId == request.auth.uid
                     && request.resource.data.ratingType in
-                       ['doctor_to_patient', 'patient_to_doctor'];
+                       ['doctor_to_patient', 'patient_to_doctor']
+                    && request.resource.data.appointmentId is string
+                    && partiesMatchAppointment()
+                    && healthFieldsOnlyFromDoctor();
 
+      // `ratingType` و`appointmentId` مثبَّتان أيضاً: بدونهما يستطيع مريضٌ
+      // كتب تقييم خدمة مشروعاً أن يحوّله بالتعديل إلى `doctor_to_patient`
+      // على موعد آخر — فيلتفّ على قاعدة الإنشاء كلها. الطرفان وحدهما لا
+      // يكفيان لأنهما يبقيان كما هما في هذا الالتفاف.
       allow update: if isSignedIn()
                     && isUser(resource.data.fromUserId)
                     && unchanged('fromUserId')
-                    && unchanged('toUserId');
+                    && unchanged('toUserId')
+                    && unchanged('ratingType')
+                    && unchanged('appointmentId')
+                    && healthFieldsOnlyFromDoctor();
 
       allow delete: if isSignedIn() && isUser(resource.data.fromUserId);
     }

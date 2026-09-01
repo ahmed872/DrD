@@ -92,34 +92,37 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
         lastVisit ??= DateTime.now();
 
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(patientId)
-            .get();
-        final userData = userDoc.data() ?? {};
-
-        String fallbackName = 'مريض غير معروف';
-        try {
-          fallbackName =
-              (apps.first.data() as Map<String, dynamic>)['patientName'] ??
-                  fallbackName;
-        } catch (e) {}
-
-        final patientName =
-            userData['name'] ?? userData['userName'] ?? fallbackName;
+        // ===== المرحلة 6: أقلّ صلاحية + إصلاح استعلام فاشل =====
+        //
+        // كان هنا `users/{patientId}.get()` **داخل الحلقة**: استعلام لكل
+        // مريض. وكل واحد منها كانت القواعد ترفضه أصلاً — الطبيب لا يقرأ
+        // مستند مريض (`allow read: isUser(userId) || role == 'doctor'`).
+        // فالنتيجة: عشرات الرحلات الفاشلة، ثم «غير متوفر» في كل حقل.
+        //
+        // البيانات التي يحتاجها الطبيب لتشغيل الموعد يكتبها الخادم في
+        // مستند الموعد نفسه (`functions/booking.js`): الاسم والهاتف. وهي
+        // القناة الصحيحة: تقتصر على المرضى الذين حجزوا عند هذا الطبيب،
+        // وعلى الحقول التي اختار الخادم إتاحتها.
+        //
+        // حُذف البريد الإلكتروني: لا مصدر له هنا ولا حاجة إليه لتشغيل
+        // الموعد. وحُذف العمر: لم يكن يُقرأ من أي مكان، بل ثابتاً `30`
+        // لكل مريض — رقم ملفَّق يظهر كأنه بيانات.
+        final latest = _latestData(apps);
 
         loadedPatients.add({
           'id': patientId,
-          'name': patientName,
-          'nameEn': userData['nameEn'] ?? 'Unknown Patient',
-          'phone': userData['phone'] ?? 'غير متوفر / N/A',
-          'email': userData['email'] ?? 'غير متوفر / N/A',
-          'age': userData['age'] ?? 30, // Default if missing
+          'name': (latest['patientName'] ?? '').toString().trim().isEmpty
+              ? 'مريض غير معروف'
+              : latest['patientName'].toString(),
+          'phone': (latest['patientPhone'] ?? '').toString().trim().isEmpty
+              ? 'غير متوفر'
+              : latest['patientPhone'].toString(),
           'lastVisit': lastVisit,
           'totalVisits': totalVisits,
           'nextAppointment': nextAppointment,
           'nextTime': nextTime,
-          'notes': 'لا توجد ملاحظات / No notes',
+          // الملاحظة الحقيقية من آخر موعد، لا نصّ ثابت.
+          'notes': (latest['notes'] ?? '').toString().trim(),
           'status': nextAppointment != null ? 'active' : 'inactive',
         });
       }
@@ -138,15 +141,27 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
     }
   }
 
+  /// بيانات أحدث موعد في المجموعة — مصدر الاسم والهاتف والملاحظة.
+  static Map<String, dynamic> _latestData(List<QueryDocumentSnapshot> apps) {
+    Map<String, dynamic>? best;
+    String bestKey = '';
+    for (final doc in apps) {
+      final data = doc.data() as Map<String, dynamic>;
+      final key = '${data['appointmentDate'] ?? ''} ${data['startTime'] ?? ''}';
+      if (best == null || key.compareTo(bestKey) > 0) {
+        best = data;
+        bestKey = key;
+      }
+    }
+    return best ?? const {};
+  }
+
   List<Map<String, dynamic>> _getFilteredAndSortedPatients() {
     var filtered = _allPatients.where((patient) {
       final matchesSearch = patient['name']
               .toLowerCase()
               .contains(_searchController.text.toLowerCase()) ||
-          patient['phone'].contains(_searchController.text) ||
-          patient['email']
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase());
+          patient['phone'].contains(_searchController.text);
       return matchesSearch;
     }).toList();
 
@@ -438,86 +453,42 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // Status Badge
+                // نفس عطب المرحلة 5ب: الخلفية والنصّ باللون ذاته، فالشارة
+                // غير مقروءة. لم يلتقطه حارس `color_usage_lint_test` لأن
+                // اللون هنا داخل شرط ثلاثي لا استدعاءً مباشراً — وُسّع
+                // الحارس ليغطّي هذه الصيغة أيضاً.
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isActive
-                        ? Theme.of(context).colorScheme.tertiary
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                    border: Border.all(
-                      color: isActive
-                          ? Theme.of(context).colorScheme.tertiary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                      width: 1,
-                    ),
+                        ? Theme.of(context).colorScheme.tertiaryContainer
+                        : Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     isActive ? '✨ نشط' : '⏳ غير نشط',
                     style: TextStyle(
                       color: isActive
-                          ? Theme.of(context).colorScheme.tertiary
+                          ? Theme.of(context).colorScheme.onTertiaryContainer
                           : Theme.of(context).colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
                   ),
                 ),
-                // Name and Age
+                // اسم المريض وحده: العمر كان ثابتاً `30` لكل مريض،
+                // و«nameEn» لم يكن له مصدر بعد إسقاط قراءة مستند المريض.
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            ' سنة',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant),
-                          ),
-                          Text(
-                            patient['age'].toString(),
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                          ),
-                          Text(
-                            ' • ',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant),
-                          ),
-                          Text(
-                            patient['name'],
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        patient['nameEn'],
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant),
-                      ),
-                    ],
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      patient['name'],
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
               ],
@@ -532,14 +503,6 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               icon: Icons.phone,
               label: 'الهاتف / Phone',
               value: patient['phone'],
-            ),
-            const SizedBox(height: 10),
-
-            _patientDetailRow(
-              context,
-              icon: Icons.email,
-              label: 'البريد الإلكتروني / Email',
-              value: patient['email'],
             ),
             const SizedBox(height: 10),
 
@@ -677,6 +640,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                 label: const Text('عرض التفاصيل / View Details'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
               ),
             ),

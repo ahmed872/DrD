@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../../core/constants/appointment_status.dart';
 
 class DoctorAnalyticsScreen extends StatefulWidget {
   const DoctorAnalyticsScreen({super.key});
@@ -21,7 +22,6 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
     'completedAppointments': 0,
     'cancelledAppointments': 0,
     'totalPatients': 0,
-    'newPatients': 0,
     'avgRating': 0.0,
     'totalRevenue': 0,
     'avgSessionDuration': 0,
@@ -84,6 +84,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
       int completed = 0;
       int cancelled = 0;
       double revenue = 0;
+      int noShowCount = 0;
       Set<String> uniquePatients = {};
       Map<String, int> reasonCounts = {};
 
@@ -121,14 +122,21 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         weekdayCounts[appDate.weekday] =
             (weekdayCounts[appDate.weekday] ?? 0) + 1;
 
-        final status = data['status'] ?? '';
-        if (status == 'Completed') {
+        // عبر `AppointmentStatus.parse` لا بمقارنة نصّية: قاعدة البيانات
+        // تحمل سبع صيغ للحالة، وكانت المقارنة هنا تفوّت `done` و`no_show`
+        // و`upcoming` — فتظهر مواعيد مكتملة كأنها لا شيء في الإحصاءات.
+        final status = AppointmentStatus.parse(data['status']);
+        if (status == AppointmentStatus.completed) {
           completed++;
           revenue += (data['price'] ?? 0).toDouble();
-        } else if (status == 'Canceled' ||
-            status == 'Cancelled' ||
-            status == 'Rejected' ||
-            status == 'NoShow') {
+        } else if (status == AppointmentStatus.noShow) {
+          // `NoShow` حالة قائمة بذاتها في النموذج. كانت تُجمع مع الإلغاء في
+          // عدّاد واحد، ثم يُعرض ناتج ذلك العدّاد تحت عنوان «عدم الحضور» —
+          // فمريض ألغى موعده قبل أسبوع كان يُحسب متغيّباً.
+          noShowCount++;
+          cancelled++;
+        } else if (status == AppointmentStatus.cancelled ||
+            status == AppointmentStatus.expired) {
           cancelled++;
         }
       }
@@ -160,7 +168,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         7: 'Sun'
       };
 
-      double noShow = total == 0 ? 0.0 : (cancelled / total) * 100;
+      double noShow = total == 0 ? 0.0 : (noShowCount / total) * 100;
 
       var sortedReasons = reasonCounts.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
@@ -197,7 +205,6 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
           'completedAppointments': completed,
           'cancelledAppointments': cancelled,
           'totalPatients': uniquePatients.length,
-          'newPatients': uniquePatients.length, // approximation
           'avgRating': avgRating,
           'reviewCount': reviewCount,
           'totalRevenue': revenue.toInt(),
@@ -626,7 +633,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
       children: [
         _quickStatCard(
           '🕐',
-          'متوسط المدة',
+          'مدة الجلسة',
           '${_analyticsData["avgSessionDuration"]} دقيقة',
           Colors.blue.shade700,
         ),
@@ -635,12 +642,6 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
           'الإيرادات',
           '${_analyticsData["totalRevenue"]} جنيه',
           Colors.green.shade600,
-        ),
-        _quickStatCard(
-          '👤',
-          'مرضى جدد',
-          '${_analyticsData["newPatients"]}',
-          Colors.purple.shade600,
         ),
         _quickStatCard(
           '📅',

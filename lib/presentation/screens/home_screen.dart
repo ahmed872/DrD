@@ -6,6 +6,7 @@ import '../providers/firebase_auth_service.dart';
 import '../widgets/role_guard.dart';
 import 'admin/admin_home_screen.dart';
 import 'notifications_screen.dart';
+import '../widgets/doctor_summary_card.dart';
 import 'doctor_application_screen.dart';
 import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
@@ -181,8 +182,20 @@ class HomeScreen extends StatelessWidget {
                       state: doctorAccountStateFrom(auth.userData),
                     ),
 
+                  // ملخّص حقيقي قبل الأدوات: كم موعداً اليوم، وما أقربها.
+                  // للنشط وحده — الموقوف والمعلَّق لا عيادة لهما تُلخَّص.
+                  if (isDoctor &&
+                      doctorAccountStateFrom(auth.userData).hasClinicAccess &&
+                      auth.userId != null) ...[
+                    DoctorSummaryCard(doctorId: auth.userId!),
+                    const SizedBox(height: 24),
+                  ],
+
                   if (isDoctor)
-                    _buildDoctorServices(context)
+                    _buildDoctorServices(
+                      context,
+                      doctorAccountStateFrom(auth.userData),
+                    )
                   else
                     _buildPatientServices(context),
 
@@ -264,32 +277,40 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDoctorServices(BuildContext context) {
+  Widget _buildDoctorServices(BuildContext context, DoctorAccountState state) {
+    // مصفوفة الحالات: شاشات العيادة (الجدول، المرضى، الإحصاءات) للنشط
+    // وحده. الموقوف والمعلَّق يبقى لهما ما يخصّ الحساب نفسه — الإعدادات
+    // ومنها الدعم — ليعرفا سبب الحالة ويتصرّفا. عرضُ زرّ «الجدول» لحساب
+    // موقوف يفتح شاشةً أزرارُها بلا أثر.
+    final clinic = state.hasClinicAccess;
     final services = [
-      {
-        'icon': Icons.calendar_month,
-        'title': 'المواعيد',
-        'subtitle': 'جدول اليوم',
-        'action': 'schedule',
-      },
+      if (clinic)
+        {
+          'icon': Icons.calendar_month,
+          'title': 'المواعيد',
+          'subtitle': 'جدول اليوم',
+          'action': 'schedule',
+        },
       {
         'icon': Icons.settings,
         'title': 'الإعدادات',
         'subtitle': 'إعدادات العيادة',
         'action': 'settings',
       },
-      {
-        'icon': Icons.people,
-        'title': 'المرضى',
-        'subtitle': 'قائمة المرضى',
-        'action': 'patients',
-      },
-      {
-        'icon': Icons.trending_up,
-        'title': 'الإحصائيات',
-        'subtitle': 'الأداء والتقارير',
-        'action': 'analytics',
-      },
+      if (clinic)
+        {
+          'icon': Icons.people,
+          'title': 'المرضى',
+          'subtitle': 'قائمة المرضى',
+          'action': 'patients',
+        },
+      if (clinic)
+        {
+          'icon': Icons.trending_up,
+          'title': 'الإحصائيات',
+          'subtitle': 'الأداء والتقارير',
+          'action': 'analytics',
+        },
     ];
 
     return GridView.builder(

@@ -172,10 +172,10 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   _runAction(() => _adminService.approveDoctor(doc.id));
                 },
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.tertiary),
-                child: Text('قبول',
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimary)),
+                    backgroundColor: Theme.of(context).colorScheme.tertiary,
+                    foregroundColor: Theme.of(context).colorScheme.onTertiary),
+                // النصّ كان `onPrimary` فوق خلفية `tertiary` — الزوج الخاطئ.
+                child: const Text('قبول'),
               ),
               const SizedBox(height: 8),
               OutlinedButton(
@@ -236,10 +236,10 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   _runAction(() => _adminService.restoreDoctor(doc.id));
                 },
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.tertiary),
-                child: Text('استعادة',
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimary)),
+                    backgroundColor: Theme.of(context).colorScheme.tertiary,
+                    foregroundColor: Theme.of(context).colorScheme.onTertiary),
+                // النصّ كان `onPrimary` فوق خلفية `tertiary` — الزوج الخاطئ.
+                child: const Text('استعادة'),
               ),
           ],
         ),
