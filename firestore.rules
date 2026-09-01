@@ -250,6 +250,48 @@ service cloud.firestore {
             && request.resource.data.startTime.matches('\\d{2}:\\d{2}');
       }
 
+      // المرحلة 1ج — تشديد أمني: ماذا يستطيع الطبيب فعلاً أن يفعل بخانته؟
+      //
+      // كانت القاعدة السابقة (`|| isUser(resource.data.doctorId)`) تمنح
+      // الطبيب حرية **مطلقة** على أي حقل في الخانة: `bookedCount` لأي رقم
+      // (بما فيه سالب أو أكبر من السعة)، و`patientIds` لأي قائمة (إضافة
+      // مريض لم يحجز، حذف مريض حقيقي). أُثبت هذا فعلياً على المحاكي أثناء
+      // بوابة التحقق قبل النشر: `bookedCount: 999` على خانة سعتها 1 نجحت،
+      // وكذلك `bookedCount: -5`، وكذلك حقن `patientIds: ['شخص لم يحجز']`.
+      // القيمة السالبة تحديداً تفتح حجزاً مضاعفاً فعلياً: خانة سعتها 1
+      // بـ bookedCount = -5 تقبل ستة حجوزات متتالية قبل أن يعود العدّاد
+      // فوق الصفر — نقض مباشر لضمان «لا حجز مضاعف أبداً».
+      //
+      // فحص الكود الفعلي (`grep` على `lib/` كاملة) يُثبت أن مكاناً واحداً
+      // فقط يكتب على `slots`: `BookingService.cancelAsDoctor`، وشكل كتابته
+      // ثابت دائماً: إنقاص `bookedCount` بواحد بالضبط (بحد أدنى صفر)، وحذف
+      // مريض واحد بعينه من `patientIds` — تماماً كما يفعل فرع إلغاء المريض
+      // نفسه أعلاه، لكن الطبيب يملك حذف أيٍّ من مرضاه لا نفسه فقط. لا توجد
+      // شاشة طبيب تنشئ خانة أو تغلقها أو تحذفها — «الحقول التي يديرها
+      // الطبيب» (ساعات العمل، أيام العمل، مدة الكشف) كلها على مستند
+      // `users/{doctorId}`، لا على `slots` إطلاقاً.
+      //
+      // الشرط هنا نسخة طبق الأصل من انضباط فرع إلغاء المريض، معمَّم لأي
+      // مريض بدل صاحب الطلب وحده، مع مطابقة صريحة لسلوك `.clamp(0, ...)`
+      // في الكود: لو كان العدّاد صفراً بالفعل (حالة تكرار إلغاء نادرة) فهو
+      // يبقى صفراً بدل أن يصبح سالباً.
+      function doctorRemovesOnePatient() {
+        let oldCount = resource.data.bookedCount;
+        let newCount = request.resource.data.bookedCount;
+        let oldPatients = resource.data.patientIds;
+        let newPatients = request.resource.data.patientIds;
+        return isUser(resource.data.doctorId)
+            && newCount == (oldCount > 0 ? oldCount - 1 : 0)
+            && newCount >= 0
+            // لا إضافة: كل عنصر في القائمة الجديدة كان موجوداً في القديمة.
+            && oldPatients.hasAll(newPatients)
+            // حذف مريض واحد بالضبط، أو لا حذف فعلي (حالة العدّاد الصفري
+            // المتكرر أعلاه، حيث لم يكن المريض موجوداً أصلاً فتبقى القائمة
+            // كما هي).
+            && (oldPatients.size() == newPatients.size() + 1
+                || oldPatients.size() == newPatients.size());
+      }
+
       allow read: if isSignedIn();
 
       allow create: if clientDirectBookingEnabled()
@@ -305,11 +347,18 @@ service cloud.firestore {
                         && request.resource.data.patientIds.hasAll(
                              resource.data.patientIds.removeAll([request.auth.uid]))
                       )
-                      // الطبيب يدير خانات عيادته بحرية.
-                      || isUser(resource.data.doctorId)
+                      // الطبيب يلغي حجز أحد مرضاه من شاشة جدوله — راجع
+                      // `doctorRemovesOnePatient()` أعلاه لماذا هذا الشكل
+                      // تحديداً لا حرية مطلقة.
+                      || doctorRemovesOnePatient()
                     );
 
-      allow delete: if isUser(resource.data.doctorId);
+      // الحذف مقيَّد بخانة فارغة فعلاً. لا مسار في التطبيق يحذف خانة
+      // إطلاقاً اليوم (`grep` على `lib/` كاملة لا يُظهر أي استدعاء حذف على
+      // `slots`)، فهذا القيد لا يكسر شيئاً قائماً؛ هدفه إغلاق الباب أمام
+      // اختفاء خانة عليها حجوزات فعلية دون المرور بإلغائها أولاً.
+      allow delete: if isUser(resource.data.doctorId)
+                    && resource.data.bookedCount == 0;
     }
 
     // ===================== المواعيد =====================

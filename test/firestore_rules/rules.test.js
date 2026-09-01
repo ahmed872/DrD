@@ -363,6 +363,143 @@ describe('slots — منع الحجز المزدوج', () => {
     }));
   });
 
+  describe('تشديد صلاحيات الطبيب على خانته (المرحلة 1ج)', () => {
+    // الاكتشاف: `|| isUser(resource.data.doctorId)` كانت تمنح الطبيب حرية
+    // مطلقة على `bookedCount` و`patientIds` — لا حد أعلى، ولا حد أدنى، ولا
+    // تحقق من أن أي مريض مُزال كان محجوزاً فعلاً. أُثبت هذا بكتابة فعلية
+    // على المحاكي قبل الإصلاح (نجحت كل الحالات أدناه)، وبعده (تُرفض كلها
+    // إلا ما يطابق الاستخدام الحقيقي في `cancelAsDoctor`).
+    const gslot = slotId(GROUP_DOCTOR, '2030-04-05', '11:00');
+    const asGroupDoctor = () =>
+      testEnv.authenticatedContext(GROUP_DOCTOR).firestore();
+
+    beforeEach(async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'slots', gslot), {
+          doctorId: GROUP_DOCTOR, appointmentDate: '2030-04-05',
+          startTime: '11:00', capacity: 4, bookedCount: 2,
+          patientIds: [PATIENT, OTHER],
+        });
+      });
+    });
+
+    test('الطبيب لا يستطيع تعيين bookedCount بقيمة عشوائية', async () => {
+      // BOOKED_SLOT: capacity 1, bookedCount 1 فعلاً.
+      await assertFails(updateDoc(doc(asDoctor(), 'slots', BOOKED_SLOT), {
+        bookedCount: 999,
+      }));
+    });
+
+    test('الطبيب لا يستطيع تعيين bookedCount سالباً', async () => {
+      await assertFails(updateDoc(doc(asDoctor(), 'slots', BOOKED_SLOT), {
+        bookedCount: -1,
+      }));
+    });
+
+    test('الطبيب لا يستطيع زيادة bookedCount بلا حجز مقابل', async () => {
+      // لا يضيف نفسه كمريض (وإلا لطابق فرع الحجز الشرعي — أي مستخدم مسجَّل
+      // يحق له حجز نفسه كمريض عند طبيب آخر)؛ فقط يرفع العدّاد وحده.
+      await assertFails(updateDoc(doc(asGroupDoctor(), 'slots', gslot), {
+        bookedCount: 3,
+      }));
+    });
+
+    test('الطبيب لا ينقص العدّاد بأكثر من واحد دفعة واحدة', async () => {
+      // خانة مجموعة فيها اثنان — محاولة إخلائها بالكامل في تحديث واحد.
+      await assertFails(updateDoc(doc(asGroupDoctor(), 'slots', gslot), {
+        bookedCount: 0, patientIds: [],
+      }));
+    });
+
+    test('الطبيب لا يستطيع حقن مريض لم يحجز', async () => {
+      await assertFails(updateDoc(doc(asGroupDoctor(), 'slots', gslot), {
+        bookedCount: 3, patientIds: [PATIENT, OTHER, 'شخص_لم_يحجز'],
+      }));
+    });
+
+    test('الطبيب لا يستطيع استبدال patientIds بقائمة أخرى بنفس الطول', async () => {
+      await assertFails(updateDoc(doc(asGroupDoctor(), 'slots', gslot), {
+        patientIds: ['شخص_مزيَّف_١', 'شخص_مزيَّف_٢'],
+      }));
+    });
+
+    test('الطبيب لا يستطيع تفريغ الخانة برقم عدّاد لا يطابق الحذف الفعلي', async () => {
+      // يحذف مريضاً واحداً من القائمة، لكن يترك bookedCount كما هو —
+      // يكسر تطابق bookedCount مع طول patientIds.
+      await assertFails(updateDoc(doc(asGroupDoctor(), 'slots', gslot), {
+        bookedCount: 2, patientIds: [OTHER],
+      }));
+    });
+
+    test('الطبيب يزيل مريضاً واحداً بعينه — نفس شكل cancelAsDoctor بالضبط', async () => {
+      await assertSucceeds(updateDoc(doc(asGroupDoctor(), 'slots', gslot), {
+        bookedCount: 1, patientIds: arrayRemove(PATIENT),
+      }));
+    });
+
+    test('آخر مريض يغادر يُعيد الخانة صفراً بالكامل', async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'slots', gslot), {
+          doctorId: GROUP_DOCTOR, appointmentDate: '2030-04-05',
+          startTime: '11:00', capacity: 4, bookedCount: 1,
+          patientIds: [OTHER],
+        });
+      });
+      await assertSucceeds(updateDoc(doc(asGroupDoctor(), 'slots', gslot), {
+        bookedCount: 0, patientIds: arrayRemove(OTHER),
+      }));
+    });
+
+    test('طبيب آخر لا يستطيع تعديل خانة ليست له', async () => {
+      // GROUP_DOCTOR هو صاحب gslot — DOCTOR طبيب آخر تماماً.
+      await assertFails(updateDoc(doc(asDoctor(), 'slots', gslot), {
+        bookedCount: 1, patientIds: arrayRemove(PATIENT),
+      }));
+    });
+
+    test('طبيب آخر لا يستطيع حذف خانة ليست له', async () => {
+      await assertFails(deleteDoc(doc(asDoctor(), 'slots', gslot)));
+    });
+
+    test('حذف خانة فارغة يملكها الطبيب مقبول', async () => {
+      const emptySlot = slotId(DOCTOR, '2030-04-06', '09:00');
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'slots', emptySlot), {
+          doctorId: DOCTOR, appointmentDate: '2030-04-06', startTime: '09:00',
+          capacity: 1, bookedCount: 0, patientIds: [],
+        });
+      });
+      await assertSucceeds(deleteDoc(doc(asDoctor(), 'slots', emptySlot)));
+    });
+
+    test('حذف خانة عليها حجز فعلي مرفوض', async () => {
+      // BOOKED_SLOT محجوزة فعلاً (bookedCount: 1) — لا يجوز أن تختفي دون
+      // المرور بإلغاء الحجز أولاً.
+      await assertFails(deleteDoc(doc(asDoctor(), 'slots', BOOKED_SLOT)));
+    });
+
+    test('معاملة cancelAsDoctor الحقيقية (موعد + خانة معاً) تنجح بعد التشديد', async () => {
+      // نفس المعاملة حرفياً التي تنفّذها BookingService.cancelAsDoctor:
+      // قراءة الموعد، ثم تحديث الخانة والموعد معاً في معاملة واحدة. تُثبت
+      // أن التشديد لم يكسر الاستخدام الحقيقي، لا مجرّد استدعاءات معزولة.
+      const db = asDoctor();
+      await assertSucceeds(runTransaction(db, async (tx) => {
+        const apptRef = doc(db, 'appointments', BOOKED_APPT);
+        const apptSnap = await tx.get(apptRef);
+        const slotRef = doc(db, 'slots', apptSnap.data().slotId);
+        const slotSnap = await tx.get(slotRef);
+        const bookedCount = slotSnap.data().bookedCount;
+        tx.update(slotRef, {
+          bookedCount: Math.max(0, bookedCount - 1),
+          patientIds: arrayRemove(PATIENT),
+        });
+        tx.update(apptRef, {
+          status: 'Cancelled', cancelledAt: new Date(), cancelledBy: 'doctor',
+        });
+      }));
+    });
+  });
+
   test('لا يمكن إنشاء خانة محجوزة باسم شخص آخر', async () => {
     await assertFails(setDoc(
       doc(asOther(), 'slots', slotId(DOCTOR, '2030-03-03', '10:00')), {
