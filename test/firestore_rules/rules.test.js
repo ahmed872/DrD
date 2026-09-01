@@ -41,6 +41,7 @@ const GROUP_DOCTOR = 'doctor_grouped';
 const UNVERIFIED = 'doctor_unverified';
 const PATIENT = 'patient_1';
 const OTHER = 'patient_2';
+const ADMIN = 'admin_1';
 
 const PATIENT_EMAIL = 'p@example.com';
 const OTHER_EMAIL = 'o@example.com';
@@ -160,6 +161,10 @@ const asOther = () =>
   testEnv.authenticatedContext(OTHER, { email: OTHER_EMAIL }).firestore();
 const asDoctor = () => testEnv.authenticatedContext(DOCTOR).firestore();
 const asAnon = () => testEnv.unauthenticatedContext().firestore();
+// المرحلة 2: `admin` هنا Custom Claim، يُمرَّر كخيار مصادقة تماماً كالبريد —
+// نفس ما يحمله رمز Firebase Auth الحقيقي بعد `create_admin.js`.
+const asAdminUser = () =>
+  testEnv.authenticatedContext(ADMIN, { admin: true }).firestore();
 
 /**
  * حجز كما يفعله التطبيق تماماً: القفل والموعد في معاملة واحدة.
@@ -865,6 +870,205 @@ describe('notifications', () => {
     await assertFails(setDoc(doc(asOther(), 'notifications', 'n1'), {
       userId: PATIENT, title: 'رسالة مزيّفة', body: 'احضر الآن', read: false,
     }));
+  });
+});
+
+describe('users — لا ترقية ذاتية عبر حقول توثيق الطبيب الجديدة (المرحلة 2)', () => {
+  // `role` و`isVerified` كانا محميين بالفعل. هذه تُثبت أن `disabled` و
+  // `verificationStatus` — الحقلين اللذين يقرّران الأهلية الفعلية للحجز —
+  // محميان بنفس الصرامة، وأن لا مسار عميل يعيد تفعيل طبيب موقوف بنفسه.
+  test('طبيب موقوف لا يستطيع إعادة تفعيل نفسه بتحديث ملفه', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', DOCTOR), {
+        role: 'doctor', name: 'د. أحمد', isVerified: true, disabled: true,
+        verificationStatus: 'suspended', suspensionReason: 'شكوى',
+      });
+    });
+    await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      disabled: false,
+    }));
+    await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      verificationStatus: 'approved',
+    }));
+  });
+
+  test('طبيب لا يستطيع تزوير سجل التحقق (verifiedBy) لنفسه', async () => {
+    await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      verifiedBy: DOCTOR, verifiedAt: new Date(),
+    }));
+  });
+
+  test('تعديل حقل عادي (الاسم) لا يزال يعمل رغم الحماية الجديدة', async () => {
+    await assertSucceeds(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      name: 'د. أحمد المحدَّث',
+    }));
+  });
+});
+
+describe('doctorApplications — طلب توثيق الطبيب (المرحلة 2)', () => {
+  test('مريض يقدّم طلباً صحيحاً', async () => {
+    await assertSucceeds(setDoc(doc(asPatient(), 'doctorApplications', PATIENT), {
+      uid: PATIENT, status: 'pending', specialization: 'أسنان',
+      note: 'خبرة 5 سنوات', submittedAt: new Date(),
+    }));
+  });
+
+  test('لا يمكن التقديم بمعرّف مستخدم آخر', async () => {
+    await assertFails(setDoc(doc(asOther(), 'doctorApplications', PATIENT), {
+      uid: PATIENT, status: 'pending', specialization: 'أسنان',
+    }));
+  });
+
+  test('لا يمكن التقديم بحالة غير pending (تجاوز المراجعة مباشرة)', async () => {
+    await assertFails(setDoc(doc(asPatient(), 'doctorApplications', PATIENT), {
+      uid: PATIENT, status: 'approved', specialization: 'أسنان',
+    }));
+  });
+
+  test('التخصص إلزامي', async () => {
+    await assertFails(setDoc(doc(asPatient(), 'doctorApplications', PATIENT), {
+      uid: PATIENT, status: 'pending', specialization: '',
+    }));
+  });
+
+  test('لا يمكن تمرير حقل إداري عند التقديم الأول', async () => {
+    await assertFails(setDoc(doc(asPatient(), 'doctorApplications', PATIENT), {
+      uid: PATIENT, status: 'pending', specialization: 'أسنان',
+      reviewedBy: PATIENT, // محاولة اعتماد نفسه مسبقاً.
+    }));
+  });
+
+  describe('طلب قائم', () => {
+    beforeEach(async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'doctorApplications', PATIENT), {
+          uid: PATIENT, status: 'pending', specialization: 'أسنان',
+          submittedAt: new Date(),
+        });
+      });
+    });
+
+    test('صاحب الطلب يقرأ طلبه', async () => {
+      await assertSucceeds(getDoc(doc(asPatient(), 'doctorApplications', PATIENT)));
+    });
+
+    test('مستخدم آخر لا يقرأ طلب غيره', async () => {
+      await assertFails(getDoc(doc(asOther(), 'doctorApplications', PATIENT)));
+    });
+
+    test('الإدارة تقرأ أي طلب', async () => {
+      await assertSucceeds(getDoc(doc(asAdminUser(), 'doctorApplications', PATIENT)));
+    });
+
+    test('صاحب الطلب يعدّل نص طلبه أثناء الانتظار', async () => {
+      await assertSucceeds(updateDoc(doc(asPatient(), 'doctorApplications', PATIENT), {
+        specialization: 'عظام', status: 'pending',
+      }));
+    });
+
+    // «application cannot self-approve» — لا مسار عميل، حتى صاحب الطلب
+    // نفسه، يستطيع كتابة status: approved مباشرة.
+    test('صاحب الطلب لا يستطيع اعتماد طلبه لنفسه', async () => {
+      await assertFails(updateDoc(doc(asPatient(), 'doctorApplications', PATIENT), {
+        status: 'approved',
+      }));
+    });
+
+    test('طرف آخر لا يستطيع تعديل طلب ليس له', async () => {
+      await assertFails(updateDoc(doc(asOther(), 'doctorApplications', PATIENT), {
+        specialization: 'عظام',
+      }));
+    });
+
+    test('الإدارة (عبر العميل مباشرة) لا تستطيع اعتماد الطلب — الاعتماد عبر Admin SDK فقط', async () => {
+      // `isAdmin()` يمنح القراءة فقط هنا؛ الكتابة الإدارية تمر حصراً بـ
+      // `approveDoctor`/`rejectDoctor` اللتين تعملان بـ Admin SDK وتتجاوزان
+      // القواعد أصلاً — لا حاجة لفتح مسار كتابة إداري مباشر في القواعد.
+      await assertFails(updateDoc(doc(asAdminUser(), 'doctorApplications', PATIENT), {
+        status: 'approved',
+      }));
+    });
+
+    test('حذف الطلب ممنوع', async () => {
+      await assertFails(deleteDoc(doc(asPatient(), 'doctorApplications', PATIENT)));
+    });
+  });
+
+  describe('طلب مرفوض سابقاً', () => {
+    beforeEach(async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'doctorApplications', PATIENT), {
+          uid: PATIENT, status: 'rejected', specialization: 'أسنان',
+          submittedAt: new Date(), reviewedAt: new Date(),
+          reviewedBy: ADMIN, rejectionReason: 'بيانات ناقصة',
+        });
+      });
+    });
+
+    test('صاحب الطلب يعيد التقديم فتعود الحالة pending', async () => {
+      await assertSucceeds(updateDoc(doc(asPatient(), 'doctorApplications', PATIENT), {
+        status: 'pending', specialization: 'أسنان وفكّ',
+      }));
+    });
+
+    test('إعادة التقديم لا تمسّ سجل الرفض السابق', async () => {
+      await updateDoc(doc(asPatient(), 'doctorApplications', PATIENT), {
+        status: 'pending', specialization: 'أسنان وفكّ',
+      });
+      // صاحب الطلب نفسه يقرأ — لا حاجة لتعطيل القواعد لمجرد القراءة.
+      const snap = await getDoc(doc(asPatient(), 'doctorApplications', PATIENT));
+      expect(snap.data().rejectionReason).toBe('بيانات ناقصة');
+      expect(snap.data().reviewedBy).toBe(ADMIN);
+    });
+
+    test('محاولة تزوير سجل الرفض أثناء إعادة التقديم مرفوضة', async () => {
+      await assertFails(updateDoc(doc(asPatient(), 'doctorApplications', PATIENT), {
+        status: 'pending', rejectionReason: 'لم يُرفض أصلاً',
+      }));
+    });
+  });
+});
+
+describe('auditLogs — سجل التدقيق (المرحلة 2)', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'auditLogs', 'log_1'), {
+        actorAdminId: ADMIN, action: 'doctor.approved',
+        targetType: 'doctor', targetId: PATIENT, metadata: {},
+      });
+    });
+  });
+
+  test('الإدارة تقرأ السجل', async () => {
+    await assertSucceeds(getDoc(doc(asAdminUser(), 'auditLogs', 'log_1')));
+  });
+
+  test('مستخدم عادي لا يقرأ السجل', async () => {
+    await assertFails(getDoc(doc(asPatient(), 'auditLogs', 'log_1')));
+  });
+
+  test('طبيب لا يقرأ السجل', async () => {
+    await assertFails(getDoc(doc(asDoctor(), 'auditLogs', 'log_1')));
+  });
+
+  // client cannot fabricate/modify/delete — حتى صاحب claim إداري لا يكتب
+  // من العميل، لأن الكتابة الحقيقية تمر بـ Admin SDK داخل المعاملة نفسها
+  // التي تنفّذ الإجراء، لا بكتابة منفصلة يمكن تزييفها.
+  test('لا أحد — ولا حتى الإدارة من العميل — يستطيع إنشاء سجل تدقيق', async () => {
+    await assertFails(setDoc(doc(asAdminUser(), 'auditLogs', 'fake'), {
+      actorAdminId: ADMIN, action: 'doctor.approved',
+      targetType: 'doctor', targetId: OTHER, metadata: {},
+    }));
+  });
+
+  test('لا يمكن تعديل سجل قائم', async () => {
+    await assertFails(updateDoc(doc(asAdminUser(), 'auditLogs', 'log_1'), {
+      action: 'doctor.rejected',
+    }));
+  });
+
+  test('لا يمكن حذف سجل', async () => {
+    await assertFails(deleteDoc(doc(asAdminUser(), 'auditLogs', 'log_1')));
   });
 });
 

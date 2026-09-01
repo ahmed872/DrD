@@ -36,6 +36,16 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    // المرحلة 2: صلاحية الإدارة.
+    //
+    // `admin` هنا Custom Claim موقَّع داخل رمز Firebase Auth
+    // (`request.auth.token.admin`) — لا حقل Firestore. يُكتب حصراً بـ
+    // Admin SDK عبر `scripts/create_admin.js`؛ لا يوجد أي مسار عميل يكتبه
+    // أو يقرأه كحقيقة. مصدر الثقة توقيع Firebase نفسه، لا قاعدة البيانات.
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
     function userData(uid) {
       return get(/databases/$(database)/documents/users/$(uid)).data;
     }
@@ -146,6 +156,14 @@ service cloud.firestore {
       // - `rating` و`reviews`: حقول مجمَّعة تُحسب من مراجعات المرضى. لو تُركت
       //   لصاحب الحساب لاستطاع الطبيب أن يكتب لنفسه 5 نجوم و500 مراجعة.
       //   تحديثها الشرعي يمرّ عبر `isReviewAggregateUpdate()` وحدها.
+      // - `disabled` و`verificationStatus` (المرحلة 2): هما ما يقرّر أهلية
+      //   الحجز الفعلية (`fetchBookableDoctor` في `availability.js`) وحالة
+      //   العرض في لوحة الإدارة. بدون حمايتهما يستطيع طبيب موقوف أن يعيد
+      //   تفعيل نفسه بتحديث ملفه الشخصي مباشرة.
+      // - بقية حقول دورة توثيق الطبيب (`verifiedAt/By`, `suspendedAt/By`,
+      //   `suspensionReason`, `restoredAt/By`, `verificationSubmittedAt`):
+      //   سجل تاريخي يكتبه `approveDoctor`/`suspendDoctor`/`restoreDoctor`
+      //   وحدها — تزويره لا يغيّر الأهلية الفعلية، لكنه يفسد سجلاً إدارياً.
       //
       // `phone` غير محمي هنا عمداً: شاشة إعدادات الطبيب تسمح بتعديل الرقم،
       // ومنعه كان سيكسر ميزة قائمة. (مزامنة `phone_index` مسؤولية التطبيق.)
@@ -158,7 +176,27 @@ service cloud.firestore {
             && request.resource.data.get('rating', 0)
                == resource.data.get('rating', 0)
             && request.resource.data.get('reviews', 0)
-               == resource.data.get('reviews', 0);
+               == resource.data.get('reviews', 0)
+            && request.resource.data.get('disabled', false)
+               == resource.data.get('disabled', false)
+            && request.resource.data.get('verificationStatus', '')
+               == resource.data.get('verificationStatus', '')
+            && request.resource.data.get('verifiedAt', null)
+               == resource.data.get('verifiedAt', null)
+            && request.resource.data.get('verifiedBy', '')
+               == resource.data.get('verifiedBy', '')
+            && request.resource.data.get('verificationSubmittedAt', null)
+               == resource.data.get('verificationSubmittedAt', null)
+            && request.resource.data.get('suspendedAt', null)
+               == resource.data.get('suspendedAt', null)
+            && request.resource.data.get('suspendedBy', '')
+               == resource.data.get('suspendedBy', '')
+            && request.resource.data.get('suspensionReason', '')
+               == resource.data.get('suspensionReason', '')
+            && request.resource.data.get('restoredAt', null)
+               == resource.data.get('restoredAt', null)
+            && request.resource.data.get('restoredBy', '')
+               == resource.data.get('restoredBy', '');
       }
 
       // القراءة: صاحب الحساب يقرأ مستنده. الأطباء بحاجة لأن يكونوا مرئيين
@@ -186,6 +224,78 @@ service cloud.firestore {
       // الحذف ممنوع من العميل — يمر عبر Cloud Function حتى تُنظَّف
       // البيانات المرتبطة (المواعيد، الفهرس، التقييمات) معاً.
       allow delete: if false;
+    }
+
+    // ===================== طلبات توثيق الأطباء (المرحلة 2) =====================
+    //
+    // مستخدم عادي (role: patient) يتقدّم بطلب ليصبح طبيباً. الكتابة هنا لا
+    // تمنح أي صلاحية طبيب بذاتها — `role` على `users/{uid}` يبقى `patient`
+    // حتى يقبل الإدارة الطلب عبر `approveDoctor` (تعمل بـ Admin SDK، تتجاوز
+    // هذه القواعد). معرّف المستند = معرّف المتقدّم، فطلب ثانٍ لنفس المستخدم
+    // يعدّل نفس المستند بدل إنشاء طلب مواز — يحلّ التكرار ببساطة البنية لا
+    // بمنطق إضافي.
+    match /doctorApplications/{uid} {
+      // الحقول الإدارية (`reviewedAt/By`, `rejectionReason`) لا تتغيّر بيد
+      // صاحب الطلب — تُقارَن بـ `.get(field, null)` على الطرفين حتى لا تنهار
+      // المقارنة عند غياب الحقل في طلب لم يُرفض بعد.
+      function adminFieldsUnchanged() {
+        return request.resource.data.get('reviewedAt', null)
+                 == resource.data.get('reviewedAt', null)
+            && request.resource.data.get('reviewedBy', null)
+                 == resource.data.get('reviewedBy', null)
+            && request.resource.data.get('rejectionReason', null)
+                 == resource.data.get('rejectionReason', null);
+      }
+
+      function validApplicationFields() {
+        return request.resource.data.uid == uid
+            && request.resource.data.specialization is string
+            && request.resource.data.specialization.size() > 0
+            && request.resource.data.specialization.size() <= 200
+            && request.resource.data.get('note', '') is string
+            && request.resource.data.get('note', '').size() <= 1000
+            && request.resource.data.keys().hasOnly([
+                 'uid', 'status', 'specialization', 'note', 'submittedAt',
+                 'reviewedAt', 'reviewedBy', 'rejectionReason'
+               ]);
+      }
+
+      // صاحب الطلب يقرأ طلبه، والإدارة تقرأ كل الطلبات لمراجعتها.
+      allow read: if isUser(uid) || isAdmin();
+
+      // التقديم الأول: بحالة `pending` حصراً، ومعرّف يطابق صاحب الطلب، وبلا
+      // أي حقل من حقول المراجعة الإدارية — طلب أول لم تنظر فيه الإدارة بعد
+      // لا يجوز أن يولد ومعه سجل مراجعة أو سبب رفض جاهز.
+      allow create: if isUser(uid)
+                    && request.resource.data.status == 'pending'
+                    && validApplicationFields()
+                    && !('reviewedAt' in request.resource.data)
+                    && !('reviewedBy' in request.resource.data)
+                    && !('rejectionReason' in request.resource.data);
+
+      // إعادة التقديم: فقط من حالة `pending` (تعديل نص الطلب قبل المراجعة)
+      // أو `rejected` (تقديم جديد بعد رفض سابق) — وفي الحالتين إلى `pending`
+      // مجدداً. لا يمسّ سجل المراجعة السابق.
+      allow update: if isUser(uid)
+                    && resource.data.status in ['pending', 'rejected']
+                    && request.resource.data.status == 'pending'
+                    && validApplicationFields()
+                    && adminFieldsUnchanged();
+
+      // لا حذف — يبقى سجل كل طلب، مقبولاً كان أو مرفوضاً.
+      allow delete: if false;
+    }
+
+    // ===================== سجل تدقيق الإجراءات الإدارية (المرحلة 2) =====================
+    //
+    // append-only حصراً، ومن Admin SDK فقط — الدوال السحابية
+    // (`approveDoctor`, `rejectDoctor`, `suspendDoctor`, `restoreDoctor`)
+    // تكتب هنا مباشرة عبر Admin SDK، فتتجاوز هذه القواعد بطبيعتها. القاعدة
+    // `allow write: if false` هنا ليست تكراراً بلا فائدة: هي ما يمنع أي عميل
+    // — حتى مدير — من كتابة سجل مزوَّر أو تعديل/حذف سجل موجود.
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // ===================== فهرس أرقام الجوال =====================

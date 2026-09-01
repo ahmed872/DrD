@@ -4,12 +4,23 @@ const admin = require("firebase-admin");
 const { bookAppointmentCore } = require("./booking");
 const { cancelAppointmentCore, rescheduleAppointmentCore } = require("./lifecycle");
 const { AppError, getAvailabilityCore } = require("./availability");
+const {
+  approveDoctorCore,
+  rejectDoctorCore,
+  suspendDoctorCore,
+  restoreDoctorCore,
+} = require("./admin");
 
 admin.initializeApp();
 
 /**
  * يُشغّل دالة نطاق (`*Core`) خلف تحقق مصادقة موحَّد، ويترجم `AppError` إلى
- * `HttpsError` بنفس الآلية للجميع — الحجز، الإلغاء، إعادة الجدولة، والتوفّر.
+ * `HttpsError` بنفس الآلية للجميع — الحجز، الإلغاء، إعادة الجدولة، التوفّر،
+ * وإجراءات الإدارة.
+ *
+ * `auth` الكامل (`context.auth`) يمرّ مع `uid` — دوال الإدارة تحتاج
+ * `auth.token.admin` (الـ Custom Claim الموقَّع) للتحقق من الصلاحية، وبقية
+ * الدوال تتجاهله ببساطة.
  *
  * الرسالة الداخلية لأي خطأ غير متوقع لا تصل العميل أبداً؛ تُسجَّل فقط.
  */
@@ -27,6 +38,7 @@ function callable(name, core) {
       const result = await core({
         db: admin.firestore(),
         uid: context.auth.uid,
+        auth: context.auth,
         data,
       });
       return { ok: true, ...result };
@@ -172,6 +184,75 @@ exports.rescheduleAppointment = callable("rescheduleAppointment", rescheduleAppo
  * عدّادات تُرسَل من العميل — الرد وحده يحملها من Firestore.
  */
 exports.getAvailability = callable("getAvailability", getAvailabilityCore);
+
+// ===================== المرحلة 2: الإدارة وتوثيق الأطباء =====================
+//
+// الأربعة أدناه إدارية حصراً — تتحقق من `context.auth.token.admin` (راجع
+// `admin.js`)، وهو Custom Claim لا يُكتب إلا بـ Admin SDK
+// (`scripts/create_admin.js`). لا مسار عميل يمنح نفسه هذه الصلاحية.
+
+/**
+ * قبول طلب توثيق طبيب — يرقّي المتقدّم إلى طبيب نشط وقابل للحجز.
+ *
+ * ```
+ * الطلب:  { uid: <معرّف المتقدّم> }
+ * الرد:   { ok, doctorId, alreadyApproved }
+ * ```
+ *
+ * يكتب على `users/{uid}`: `role: 'doctor'`, `isVerified: true`,
+ * `disabled: false` — نفس الحقلين اللذين يفحصهما محرّك الحجز أصلاً منذ
+ * المرحلة 1أ، فيصبح الطبيب قابلاً للحجز فوراً بلا أي تعديل على `booking.js`.
+ * طلب مكرَّر على نفس المتقدّم بعد قبوله بنجاح يُعيد `alreadyApproved: true`
+ * بدل خطأ أو قبول مضاعف.
+ *
+ * | reason | code | المعنى |
+ * |---|---|---|
+ * | `permission-denied` | permission-denied | ليس Admin |
+ * | `invalid-argument` | invalid-argument | معرّف مستخدم غير صالح |
+ * | `application-not-found` | not-found | لا طلب توثيق بهذا المعرّف |
+ * | `user-not-found` | not-found | حساب المتقدّم غير موجود |
+ * | `application-rejected` | failed-precondition | الطلب مرفوض — يحتاج إعادة تقديم |
+ * | `application-not-pending` | failed-precondition | حالة الطلب لا تسمح بالقبول |
+ */
+exports.approveDoctor = callable("approveDoctor", approveDoctorCore);
+
+/**
+ * رفض طلب توثيق طبيب — لا يمسّ حساب المتقدّم، يبقى `role: 'patient'`.
+ *
+ * ```
+ * الطلب:  { uid: <معرّف المتقدّم>, reason: <سبب الرفض، إلزامي> }
+ * الرد:   { ok, doctorId, alreadyRejected }
+ * ```
+ *
+ * السجل التاريخي للطلب يبقى (`doctorApplications/{uid}` لا يُحذف)، ويستطيع
+ * المتقدّم إعادة التقديم لاحقاً فتعود حالته `pending` من جديد.
+ */
+exports.rejectDoctor = callable("rejectDoctor", rejectDoctorCore);
+
+/**
+ * إيقاف طبيب موثَّق مؤقتاً — لا يقبل حجوزات جديدة، دون فقدان توثيقه أو
+ * تاريخه.
+ *
+ * ```
+ * الطلب:  { uid: <معرّف الطبيب>, reason: <سبب الإيقاف، إلزامي> }
+ * الرد:   { ok, doctorId, alreadySuspended }
+ * ```
+ *
+ * `isVerified` يبقى `true` — تمييز متعمَّد بين «غير موثَّق» و«موثَّق لكن
+ * موقوف». `disabled: true` وحده هو ما يمنع الحجز الجديد (`fetchBookableDoctor`
+ * في `availability.js`)؛ المواعيد القائمة والمراجعات لا تُلمَس إطلاقاً.
+ */
+exports.suspendDoctor = callable("suspendDoctor", suspendDoctorCore);
+
+/**
+ * استعادة طبيب موقوف إلى النشاط — يعود قابلاً للحجز فوراً.
+ *
+ * ```
+ * الطلب:  { uid: <معرّف الطبيب> }
+ * الرد:   { ok, doctorId, alreadyActive }
+ * ```
+ */
+exports.restoreDoctor = callable("restoreDoctor", restoreDoctorCore);
 
 // ملاحظة أمنية (المرحلة صفر):
 //

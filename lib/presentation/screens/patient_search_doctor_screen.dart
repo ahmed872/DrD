@@ -48,7 +48,17 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
           .where('isVerified', isEqualTo: true)
           .get();
 
-      final doctors = snapshot.docs.map((doc) {
+      // المرحلة 2: طبيب موقوف (`disabled: true`) يبقى `isVerified: true` —
+      // تمييز متعمَّد بين «غير موثَّق» و«موثَّق لكن موقوف مؤقتاً» (راجع
+      // `functions/admin.js`). لا فلترة على `disabled` في الاستعلام نفسه
+      // عمداً: الأطباء القدامى ليس لديهم الحقل إطلاقاً، و
+      // `where('disabled', isEqualTo: false)` في Firestore يستبعد أي مستند
+      // بلا الحقل بدل معاملته كـ false — فيختفي كل طبيب سابق للمرحلة 2 من
+      // البحث. الفلترة هنا بعد القراءة على نفس البيانات الحقيقية تتجنّب هذا.
+      final visibleDocs =
+          snapshot.docs.where((doc) => doc.data()['disabled'] != true);
+
+      final doctors = visibleDocs.map((doc) {
         final data = doc.data();
         return {
           'id': doc.id,

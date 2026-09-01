@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
+import 'admin/admin_home_screen.dart';
+import 'doctor_application_screen.dart';
 import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
 import 'doctor_patients_screen.dart';
@@ -27,6 +29,23 @@ class HomeScreen extends StatelessWidget {
             elevation: 1,
             backgroundColor: const Color(0xFF0097A7),
             actions: [
+              // تحديث صلاحية الإدارة — لازم بعد منحها بـ create_admin.js لأن
+              // الجلسة الحالية تحمل رمزاً صدر قبل المنح. راجع
+              // FirebaseAuthService.refreshClaims.
+              IconButton(
+                icon: const Icon(Icons.sync),
+                tooltip: 'تحديث الصلاحيات',
+                onPressed: () async {
+                  await auth.refreshClaims();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(auth.isAdmin
+                          ? 'صلاحية الإدارة مفعّلة'
+                          : 'لا تحمل صلاحية إدارة حالياً'),
+                    ));
+                  }
+                },
+              ),
               // رابط الإعدادات للمرضى
               if (auth.userRole == 'patient')
                 IconButton(
@@ -100,7 +119,44 @@ class HomeScreen extends StatelessWidget {
 
                   // بطاقة المعلومات
                   _buildInfoCard(context, auth),
-                  const SizedBox(height: 36),
+                  const SizedBox(height: 24),
+
+                  // لوحة الإدارة — تظهر فقط لصاحب Custom Claim صحيح. هذا
+                  // إخفاء عرض لا حماية: الوصول الفعلي محكوم بـ
+                  // firestore.rules والدوال السحابية بمعزل تام عن هذا الشرط.
+                  if (auth.isAdmin) ...[
+                    Material(
+                      color: Colors.teal[50],
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AdminHomeScreen()),
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Icon(Icons.admin_panel_settings,
+                                  color: Color(0xFF0097A7)),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text('لوحة الإدارة',
+                                    textAlign: TextAlign.right,
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16)),
+                              ),
+                              Icon(Icons.chevron_left),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
 
                   // الخدمات
                   Text(
@@ -272,6 +328,12 @@ class HomeScreen extends StatelessWidget {
         'subtitle': 'سجلاتك الطبية',
         'action': 'history',
       },
+      {
+        'icon': Icons.medical_information,
+        'title': 'التقدّم كطبيب',
+        'subtitle': 'انضم كطبيب في DrD',
+        'action': 'doctor_application',
+      },
     ];
 
     return GridView.builder(
@@ -398,6 +460,12 @@ class HomeScreen extends StatelessWidget {
           context,
           MaterialPageRoute(
               builder: (_) => const PatientMedicalHistoryScreen()),
+        );
+        break;
+      case 'doctor_application':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const DoctorApplicationScreen()),
         );
         break;
     }

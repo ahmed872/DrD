@@ -33,6 +33,14 @@ class FirebaseAuthService extends ChangeNotifier {
   bool _isLoading = false;
   bool _emailVerified = false;
 
+  /// صلاحية الإدارة — من Custom Claim موقَّع داخل رمز Firebase Auth
+  /// (`admin: true`)، لا من أي حقل Firestore.
+  ///
+  /// المصدر الوحيد لهذه القيمة هو `scripts/create_admin.js` عبر Admin SDK؛
+  /// لا مسار عميل يكتبها. تُقرأ من الرمز المخزَّن محلياً عند كل تغيّر لحالة
+  /// الدخول، وتبقى كما هي حتى يُحدَّث الرمز — راجع [refreshClaims].
+  bool _isAdmin = false;
+
   /// تصبح `true` بعد أول رد من Firebase عن حالة الجلسة.
   ///
   /// شاشة البداية تنتظرها حتى لا تومض شاشة تسجيل الدخول للحظة قبل استعادة
@@ -51,6 +59,7 @@ class FirebaseAuthService extends ChangeNotifier {
       _userId = null;
       _userData = null;
       _emailVerified = false;
+      _isAdmin = false;
     } else {
       _userId = user.uid;
       _emailVerified = true;
@@ -60,8 +69,34 @@ class FirebaseAuthService extends ChangeNotifier {
       } catch (e) {
         AppLogger.error('تعذّر تحميل بيانات المستخدم', e);
       }
+      await _loadAdminClaim(user, forceRefresh: false);
     }
     _sessionRestored = true;
+    notifyListeners();
+  }
+
+  /// يقرأ `admin` من رمز المصادقة الحالي (مخزَّن محلياً، بلا اتصال شبكة
+  /// إضافي ما لم يُطلَب [forceRefresh]).
+  Future<void> _loadAdminClaim(User user, {required bool forceRefresh}) async {
+    try {
+      final tokenResult = await user.getIdTokenResult(forceRefresh);
+      _isAdmin = tokenResult.claims?['admin'] == true;
+    } catch (e) {
+      // فشل قراءة الرمز لا يجوز أن يكسر تسجيل الدخول كله — يبقى المستخدم
+      // بلا صلاحية إدارة، وهو الافتراض الآمن دائماً.
+      AppLogger.error('تعذّرت قراءة صلاحيات الرمز', e);
+      _isAdmin = false;
+    }
+  }
+
+  /// يجبر تحديث رمز المصادقة من خوادم Firebase ليعكس صلاحية admin مُنحت أو
+  /// سُحبت للتو (`create_admin.js`). جلسة قائمة لا ترى صلاحية جديدة تلقائياً
+  /// إلا بعد هذا الاستدعاء، أو تسجيل خروج ودخول، أو التحديث التلقائي الدوري
+  /// لرمز Firebase (كل ساعة تقريباً).
+  Future<void> refreshClaims() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) return;
+    await _loadAdminClaim(user, forceRefresh: true);
     notifyListeners();
   }
 
@@ -71,6 +106,7 @@ class FirebaseAuthService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _userId != null;
   bool get emailVerified => _emailVerified;
+  bool get isAdmin => _isAdmin;
   String? get userRole => _userData?['role'];
   String? get userName => _userData?['name'];
   String? get userPhone => _userData?['phone'];

@@ -183,6 +183,44 @@ function keepsProtectedFields() {
 معدَّل مستند موعد مباشرة بلا مرور على أي قفل، والطبيب يراه في جدوله لأن
 الجدول يُقرأ من `appointments` لا من `slots`.
 
+### 3.07 من يقرّر صلاحية الإدارة وتوثيق الأطباء؟ (المرحلة 2)
+
+صلاحية `admin` **Custom Claim** داخل رمز Firebase Auth الموقَّع
+(`request.auth.token.admin` في القواعد، `context.auth.token.admin` في
+الدوال السحابية) — لا حقل Firestore إطلاقاً. لا يكتبها إلا Admin SDK عبر
+`scripts/create_admin.js`، ولا يوجد أي مسار عميل يمنحها لنفسه أو لغيره.
+
+دورة حياة توثيق الطبيب:
+
+```
+تسجيل كمستخدم عادي (role: patient)
+        │
+        ▼
+doctorApplications/{uid}.status = 'pending'   (كتابة مباشرة من العميل،
+        │                                       تحكمها القواعد وحدها)
+        ├── approveDoctor ──► users/{uid}: role='doctor', isVerified=true,
+        │                     disabled=false
+        └── rejectDoctor ──► doctorApplications/{uid}.status='rejected'
+                              (لا يُلمس users/{uid} إطلاقاً)
+
+طبيب نشط (role=doctor, isVerified=true, disabled=false)
+        ├── suspendDoctor ──► disabled=true   («موثَّق لكن موقوف»)
+        └── restoreDoctor ──► disabled=false
+```
+
+`isVerified` و`disabled` هما الحقلان اللذان تفحصهما `fetchBookableDoctor`
+في `availability.js` — وهي دالة موجودة منذ المرحلة 1أ، وكانت تفحص
+`doctor.disabled` بلا أن يكتبه أي كود قط. المرحلة 2 لم تُعدِّل محرّك الحجز
+إطلاقاً؛ هي أول من يكتب هذا الحقل فعلياً.
+
+الحقول الأربعة (`approveDoctor`/`rejectDoctor`/`suspendDoctor`/
+`restoreDoctor`) دوال سحابية فقط — Firestore Rules تمنع أي كتابة عميل على
+`disabled` أو `verificationStatus` أو أي حقل من حقول سجل التوثيق (حتى من
+صاحب الحساب نفسه)، وتمنع أي كتابة على `doctorApplications/{uid}.status`
+خارج `pending`، فلا مسار عميل — ولو حمل صلاحية admin — يستطيع تغيير هذه
+الحالة مباشرة عبر Firestore؛ فقط الدوال السحابية، وكل إجراء منها يُسجَّل في
+`auditLogs` (append-only، قراءة للإدارة فقط، كتابة من Admin SDK حصراً).
+
 ### 4. لماذا الإشعارات لا تُنشأ من العميل؟
 
 `allow create: if false;` — لأن Cloud Functions تتجاوز قواعد الأمان، بينما

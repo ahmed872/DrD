@@ -32,7 +32,17 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           .where('role', isEqualTo: 'doctor')
           .where('isVerified', isEqualTo: true)
           .get();
-      _allDoctors = snapshot.docs.map((doc) {
+
+      // المرحلة 2: طبيب موقوف (`disabled: true`) يبقى `isVerified: true`
+      // فيمرّ من الاستعلام أعلاه، لكن `bookAppointment` سيرفضه
+      // (`doctor-disabled`) — فيُستبعَد هنا قبل أن يصل المريض لشاشة التأكيد
+      // ويُفاجأ برفض غامض. لا فلترة `disabled` داخل الاستعلام نفسه عمداً:
+      // Firestore تستبعد أي مستند بلا الحقل من `isEqualTo: false`، فتختفي
+      // كل الحسابات القديمة قبل هذه المرحلة.
+      final visibleDocs =
+          snapshot.docs.where((doc) => doc.data()['disabled'] != true);
+
+      _allDoctors = visibleDocs.map((doc) {
         final data = doc.data();
         return {
           'id': doc.id,
