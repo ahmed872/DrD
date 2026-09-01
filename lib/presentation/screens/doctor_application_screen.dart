@@ -61,7 +61,7 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
       AppLogger.error('فشل إرسال طلب التوثيق', e, s);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('تعذّر إرسال الطلب: $e'),
+          content: const Text('تعذّر إرسال الطلب، حاول مرة أخرى'),
           backgroundColor: Colors.red,
         ));
       }

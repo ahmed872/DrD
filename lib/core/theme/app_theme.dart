@@ -36,7 +36,11 @@ class AppTheme {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: AppColors.primary,
       brightness: brightness,
-      error: AppColors.danger,
+      // الأحمر الداكن يصلح خلفيةً لنص أبيض في الوضع الفاتح، لكن فرضه في
+      // الوضع الليلي أنتج تبايناً 2:1 بين `onError` و`error` — أي نص غير
+      // مقروء على أهم رسالة في التطبيق. في الليلي يشتق Material أحمر أفتح
+      // يحقق الحد المطلوب. (يحرسه `test/theme_widgets_test.dart`.)
+      error: isDark ? null : AppColors.danger,
     );
 
     return ThemeData(

@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../../core/utils/error_messages.dart';
 
 /// سبب فشل كتابة المراجعة — يُترجم لرسالة عربية في الواجهة.
 enum ReviewFailure {
@@ -33,17 +34,6 @@ const Map<String, ReviewFailure> _failureByReason = {
   'appointment-not-completed': ReviewFailure.notCompleted,
   'invalid-argument': ReviewFailure.invalidInput,
   'doctor-not-found': ReviewFailure.doctorNotFound,
-};
-
-const Map<ReviewFailure, String> _fallbackMessages = {
-  ReviewFailure.notSignedIn: 'انتهت الجلسة، سجّل الدخول ثم حاول مرة أخرى',
-  ReviewFailure.notYourAppointment: 'هذا ليس موعدك',
-  ReviewFailure.appointmentNotFound: 'لم نعثر على هذا الموعد',
-  ReviewFailure.notCompleted: 'يمكنك التقييم بعد اكتمال الكشف فقط',
-  ReviewFailure.invalidInput: 'تحقق من التقييم والتعليق ثم حاول مرة أخرى',
-  ReviewFailure.doctorNotFound: 'حساب الطبيب غير متاح حالياً',
-  ReviewFailure.unknown:
-      'تعذّر إرسال التقييم، تأكد من اتصالك بالإنترنت وحاول مرة أخرى',
 };
 
 /// نتيجة إرسال مراجعة.
@@ -144,19 +134,18 @@ class ReviewService {
     } on FirebaseFunctionsException catch (e) {
       final reasonCode = _reasonOf(e);
       final failure = _failureByReason[reasonCode] ?? ReviewFailure.unknown;
-      final serverMessage = (e.message ?? '').trim();
-      final message = serverMessage.isNotEmpty
-          ? serverMessage
-          : _fallbackMessages[failure]!;
+      // الرسالة تمرّ عبر المصدر المركزي، فلا يصل المستخدم رمز خطأ ولا نص
+      // استثناء مهما أرسل الخادم.
+      final message = AppErrorMessages.resolve(
+        reason: reasonCode,
+        serverMessage: e.message,
+      );
 
       AppLogger.warning('فشل إرسال التقييم ($reasonCode): $message');
       return ReviewResult.failed(failure, message);
     } catch (e, s) {
       AppLogger.error('خطأ غير متوقع أثناء إرسال التقييم', e, s);
-      return ReviewResult.failed(
-        ReviewFailure.unknown,
-        _fallbackMessages[ReviewFailure.unknown]!,
-      );
+      return const ReviewResult.failed(ReviewFailure.unknown, unknownMessage);
     }
   }
 

@@ -29,7 +29,6 @@ class HomeScreen extends StatelessWidget {
             title: const Text('الرئيسية'),
             centerTitle: true,
             elevation: 1,
-            backgroundColor: const Color(0xFF0097A7),
             actions: [
               if (auth.userId != null) _NotificationBell(uid: auth.userId!),
               // تحديث صلاحية الإدارة — لازم بعد منحها بـ create_admin.js لأن
@@ -80,8 +79,9 @@ class HomeScreen extends StatelessWidget {
                         ),
                         TextButton(
                           onPressed: () => Navigator.pop(context, true),
-                          child: const Text('تسجيل الخروج',
-                              style: TextStyle(color: Colors.red)),
+                          child: Text('تسجيل الخروج',
+                              style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error)),
                         ),
                       ],
                     ),
@@ -105,7 +105,7 @@ class HomeScreen extends StatelessWidget {
                   Text(
                     'مرحباً',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[500],
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 13,
                         ),
                   ),
@@ -114,7 +114,7 @@ class HomeScreen extends StatelessWidget {
                     auth.userName ?? 'المستخدم',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: const Color(0xFF0097A7),
+                          color: Theme.of(context).colorScheme.primary,
                           fontSize: 24,
                         ),
                   ),
@@ -129,7 +129,7 @@ class HomeScreen extends StatelessWidget {
                   // firestore.rules والدوال السحابية بمعزل تام عن هذا الشرط.
                   if (auth.isAdmin) ...[
                     Material(
-                      color: Colors.teal[50],
+                      color: Theme.of(context).colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(10),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(10),
@@ -138,12 +138,12 @@ class HomeScreen extends StatelessWidget {
                           MaterialPageRoute(
                               builder: (_) => const AdminHomeScreen()),
                         ),
-                        child: const Padding(
+                        child: Padding(
                           padding: EdgeInsets.all(16),
                           child: Row(
                             children: [
                               Icon(Icons.admin_panel_settings,
-                                  color: Color(0xFF0097A7)),
+                                  color: Theme.of(context).colorScheme.primary),
                               SizedBox(width: 12),
                               Expanded(
                                 child: Text('لوحة الإدارة',
@@ -167,7 +167,7 @@ class HomeScreen extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
-                          color: Colors.grey[800],
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                   ),
                   const SizedBox(height: 16),
@@ -190,8 +190,8 @@ class HomeScreen extends StatelessWidget {
   Widget _buildInfoCard(BuildContext context, FirebaseAuthService auth) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        border: Border.all(color: Colors.grey[200]!, width: 1),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(10),
       ),
       padding: const EdgeInsets.all(18),
@@ -205,7 +205,7 @@ class HomeScreen extends StatelessWidget {
             value: auth.userData?['phone'] ?? '-',
           ),
           const SizedBox(height: 14),
-          Divider(color: Colors.grey[300]),
+          Divider(color: Theme.of(context).colorScheme.outlineVariant),
           const SizedBox(height: 14),
           _infoRow(
             context,
@@ -234,7 +234,7 @@ class HomeScreen extends StatelessWidget {
               Text(
                 label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[500],
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
               ),
@@ -243,14 +243,14 @@ class HomeScreen extends StatelessWidget {
                 value,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w500,
-                      color: Colors.grey[800],
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
               ),
             ],
           ),
         ),
         const SizedBox(width: 12),
-        Icon(icon, color: const Color(0xFF0097A7), size: 20),
+        Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
       ],
     );
   }
@@ -370,8 +370,8 @@ class HomeScreen extends StatelessWidget {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey[200]!, width: 1),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Material(
@@ -385,7 +385,8 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 40, color: const Color(0xFF0097A7)),
+                Icon(icon,
+                    size: 40, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(height: 12),
                 Text(
                   title,
@@ -393,7 +394,7 @@ class HomeScreen extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
-                        color: Colors.grey[800],
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                 ),
                 const SizedBox(height: 6),
@@ -401,7 +402,7 @@ class HomeScreen extends StatelessWidget {
                   subtitle,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[500],
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                       ),
                 ),
@@ -519,15 +520,15 @@ class _NotificationBell extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   decoration: BoxDecoration(
-                    color: Colors.red,
+                    color: Theme.of(context).colorScheme.error,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   constraints: const BoxConstraints(minWidth: 16),
                   child: Text(
                     unread >= _countCap ? '$_countCap+' : '$unread',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Colors.white,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onError,
                         fontSize: 10,
                         fontWeight: FontWeight.bold),
                   ),

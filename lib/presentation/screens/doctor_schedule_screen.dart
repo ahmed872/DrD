@@ -782,7 +782,9 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: const Text('تعذّر إتمام العملية، حاول مرة أخرى'),
+              backgroundColor: Theme.of(context).colorScheme.error),
         );
       }
     }
@@ -818,7 +820,9 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: const Text('تعذّر إتمام العملية، حاول مرة أخرى'),
+              backgroundColor: Theme.of(context).colorScheme.error),
         );
       }
     }

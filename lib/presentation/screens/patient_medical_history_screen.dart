@@ -70,7 +70,7 @@ class _PatientMedicalHistoryScreenState
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ في جلب السجل الطبي: $e')),
+          const SnackBar(content: Text('تعذّر تحميل سجلك الطبي')),
         );
       }
     }

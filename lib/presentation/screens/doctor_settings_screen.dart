@@ -168,7 +168,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       } catch (e) {
         debugPrint('Error loading doctor profile: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load profile: $e')),
+          const SnackBar(content: Text('تعذّر تحميل بيانات العيادة')),
         );
       }
     }
@@ -677,7 +677,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error saving settings: $e'),
+              content: const Text('تعذّر حفظ الإعدادات، حاول مرة أخرى'),
               backgroundColor: Colors.red,
             ),
           );

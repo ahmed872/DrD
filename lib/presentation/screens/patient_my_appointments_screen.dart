@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../data/services/booking_service.dart';
 import '../../data/services/review_service.dart';
+import '../widgets/app_widgets.dart';
+import 'reschedule_appointment_screen.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/utils/app_logger.dart';
 
@@ -72,6 +74,7 @@ class _PatientMyAppointmentsScreenState
             'status': data['status'] ?? 'Scheduled',
             'price': data['price'] ?? 0,
             'doctorId': data['doctorId'],
+            'slotId': data['slotId'],
             'notes': data['notes'] ?? '',
             'clinicLocation': data['clinicLocation'] ?? '',
             'clinicPhone': data['clinicPhone'] ?? '',
@@ -97,8 +100,8 @@ class _PatientMyAppointmentsScreenState
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('حدث خطأ أثناء تحميل المواعيد: $e'),
-              backgroundColor: Colors.red,
+              content: const Text('تعذّر تحميل مواعيدك، تحقق من الإنترنت'),
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
         }
@@ -125,6 +128,29 @@ class _PatientMyAppointmentsScreenState
     }
   }
 
+  /// يفتح شاشة تغيير الموعد ويعيد تحميل القائمة عند النجاح.
+  Future<void> _openReschedule(Map<String, dynamic> appointment) async {
+    final doctorId = appointment['doctorId']?.toString();
+    if (doctorId == null || doctorId.isEmpty) return;
+
+    final date = appointment['date'] as DateTime;
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RescheduleAppointmentScreen(
+          appointmentId: appointment['id'] as String,
+          doctorId: doctorId,
+          doctorName: appointment['doctorName']?.toString() ?? 'الطبيب',
+          currentDate: DateFormat('yyyy-MM-dd').format(date),
+          currentTime: appointment['time']?.toString() ?? '',
+          currentSlotId: appointment['slotId']?.toString(),
+        ),
+      ),
+    );
+
+    if (changed == true && mounted) _fetchMyAppointments();
+  }
+
   Future<void> _cancelAppointment(String appointmentId) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -139,8 +165,8 @@ class _PatientMyAppointmentsScreenState
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('تأكيد الإلغاء',
-                style: TextStyle(color: Colors.red)),
+            child: Text('تأكيد الإلغاء',
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ),
         ],
       ),
@@ -158,7 +184,9 @@ class _PatientMyAppointmentsScreenState
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(result.message),
-              backgroundColor: result.isSuccess ? Colors.green : Colors.red,
+              backgroundColor: result.isSuccess
+                  ? Theme.of(context).colorScheme.tertiary
+                  : Theme.of(context).colorScheme.error,
             ),
           );
           _fetchMyAppointments();
@@ -167,8 +195,8 @@ class _PatientMyAppointmentsScreenState
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('حدث خطأ أثناء الإلغاء: $e'),
-              backgroundColor: Colors.red,
+              content: const Text('تعذّر إلغاء الموعد، حاول مرة أخرى'),
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
         }
@@ -187,19 +215,8 @@ class _PatientMyAppointmentsScreenState
       'Rejected': 'مرفوض',
     };
 
-    final statusColorMap = {
-      'upcoming': Colors.blue,
-      'Scheduled': Colors.blue,
-      'Booked': Colors.blue,
-      'pending': Colors.orange,
-      'Completed': Colors.green,
-      'Cancelled': Colors.red,
-      'Rejected': Colors.red,
-    };
-
     final currentStatusText = appointment['status'] as String;
     final statusStr = statusMap[currentStatusText] ?? currentStatusText;
-    final statusColor = statusColorMap[currentStatusText] ?? Colors.grey;
 
     final dateStr =
         DateFormat('yyyy-MM-dd', 'ar').format(appointment['date'] as DateTime);
@@ -217,8 +234,8 @@ class _PatientMyAppointmentsScreenState
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('تفاصيل الموعد', textAlign: TextAlign.right),
-        titleTextStyle: const TextStyle(
-          color: Color(0xFF0097A7),
+        titleTextStyle: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
           fontSize: 20,
           fontWeight: FontWeight.bold,
         ),
@@ -228,22 +245,9 @@ class _PatientMyAppointmentsScreenState
             mainAxisSize: MainAxisSize.min,
             children: [
               // Status Badge
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: statusColor.withOpacity(0.5)),
-                ),
-                child: Text(
-                  statusStr,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: statusColor,
-                  ),
-                ),
+              StatusChip(
+                label: statusStr,
+                tone: _toneForStatus(currentStatusText),
               ),
               const SizedBox(height: 16),
 
@@ -252,7 +256,7 @@ class _PatientMyAppointmentsScreenState
                 'معلومات الطبيب',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                 textAlign: TextAlign.right,
               ),
@@ -268,7 +272,7 @@ class _PatientMyAppointmentsScreenState
                 'موعد الزيارة',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                 textAlign: TextAlign.right,
               ),
@@ -286,7 +290,7 @@ class _PatientMyAppointmentsScreenState
                 'تفاصيل الموعد',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                 textAlign: TextAlign.right,
               ),
@@ -302,7 +306,7 @@ class _PatientMyAppointmentsScreenState
                   'معلومات العيادة',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: const Color(0xFF0097A7),
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                   textAlign: TextAlign.right,
                 ),
@@ -315,11 +319,11 @@ class _PatientMyAppointmentsScreenState
 
               if (currentStatusText == 'Completed') ...[
                 const SizedBox(height: 16),
-                const Center(
+                Center(
                   child: Text(
                     'الحمد لله على السلامة، نتمنى لك دوام الصحة والعافية',
                     style: TextStyle(
-                      color: Colors.green,
+                      color: Theme.of(context).colorScheme.tertiary,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -339,8 +343,10 @@ class _PatientMyAppointmentsScreenState
                           icon: const Icon(Icons.star_rate),
                           label: const Text('تقييم الطبيب'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber,
-                            foregroundColor: Colors.white,
+                            backgroundColor:
+                                Theme.of(context).colorScheme.tertiary,
+                            foregroundColor:
+                                Theme.of(context).colorScheme.onTertiary,
                           ),
                         ),
                 ),
@@ -387,7 +393,7 @@ class _PatientMyAppointmentsScreenState
               ? 'يمكنك التقييم بعد اكتمال الكشف فقط'
               : 'تعذّر فتح التقييم الآن، حاول مرة أخرى',
         ),
-        backgroundColor: Colors.orange,
+        backgroundColor: Theme.of(context).colorScheme.secondary,
       ));
       return;
     }
@@ -420,7 +426,7 @@ class _PatientMyAppointmentsScreenState
                     tooltip: '${index + 1} من 5',
                     icon: Icon(
                       index < rating ? Icons.star : Icons.star_border,
-                      color: Colors.amber,
+                      color: Theme.of(context).colorScheme.tertiary,
                       size: 32,
                     ),
                     onPressed: isSubmitting
@@ -503,7 +509,9 @@ class _PatientMyAppointmentsScreenState
 
     messenger.showSnackBar(SnackBar(
       content: Text(result.message),
-      backgroundColor: result.isSuccess ? Colors.green : Colors.red,
+      backgroundColor: result.isSuccess
+          ? Theme.of(context).colorScheme.tertiary
+          : Theme.of(context).colorScheme.error,
     ));
   }
 
@@ -518,7 +526,7 @@ class _PatientMyAppointmentsScreenState
               value,
               style: TextStyle(
                 fontSize: 14,
-                color: Colors.grey[700],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.right,
               maxLines: 2,
@@ -528,10 +536,10 @@ class _PatientMyAppointmentsScreenState
           const SizedBox(width: 8),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Colors.black87,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
         ],
@@ -562,7 +570,6 @@ class _PatientMyAppointmentsScreenState
       appBar: AppBar(
         title: const Text('مواعيدي'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
         elevation: 1,
       ),
       body: Column(
@@ -570,7 +577,7 @@ class _PatientMyAppointmentsScreenState
           // Custom Tab Bar
           Container(
             padding: const EdgeInsets.all(16),
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.onPrimary,
             child: Row(
               children: [
                 _buildTab('المواعيد السابقة', 1),
@@ -613,17 +620,23 @@ class _PatientMyAppointmentsScreenState
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF0097A7) : Colors.grey[100],
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? const Color(0xFF0097A7) : Colors.grey[300]!,
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.outlineVariant,
             ),
           ),
           child: Text(
             title,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey[700],
+              color: isSelected
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
           ),
@@ -638,7 +651,7 @@ class _PatientMyAppointmentsScreenState
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.calendar_today_outlined,
-              size: 80, color: Colors.grey[300]),
+              size: 80, color: Theme.of(context).colorScheme.outline),
           const SizedBox(height: 16),
           Text(
             _selectedFilterIndex == 0
@@ -646,7 +659,7 @@ class _PatientMyAppointmentsScreenState
                 : 'لا توجد مواعيد سابقة',
             style: TextStyle(
               fontSize: 18,
-              color: Colors.grey[600],
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -657,7 +670,7 @@ class _PatientMyAppointmentsScreenState
                 : 'لم تقم بزيارة أي طبيب من قبل',
             style: TextStyle(
               fontSize: 14,
-              color: Colors.grey[400],
+              color: Theme.of(context).colorScheme.outline,
             ),
           ),
         ],
@@ -729,19 +742,8 @@ class _PatientMyAppointmentsScreenState
       'Rejected': 'مرفوض',
     };
 
-    final statusColorMap = {
-      'upcoming': Colors.blue,
-      'Scheduled': Colors.blue,
-      'Booked': Colors.blue,
-      'pending': Colors.orange,
-      'Completed': Colors.green,
-      'Cancelled': Colors.red,
-      'Rejected': Colors.red,
-    };
-
     final currentStatusText = appointment['status'] as String;
     final statusStr = statusMap[currentStatusText] ?? currentStatusText;
-    final statusColor = statusColorMap[currentStatusText] ?? Colors.grey;
 
     final dateStr =
         DateFormat('yyyy-MM-dd', 'ar').format(appointment['date'] as DateTime);
@@ -757,8 +759,8 @@ class _PatientMyAppointmentsScreenState
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
             color: isUpcoming
-                ? Colors.blue.withOpacity(0.2)
-                : Colors.grey.withOpacity(0.2),
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.outlineVariant,
           ),
         ),
         child: Padding(
@@ -770,22 +772,9 @@ class _PatientMyAppointmentsScreenState
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   // Status Badge
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: statusColor.withOpacity(0.5)),
-                    ),
-                    child: Text(
-                      statusStr,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: statusColor,
-                      ),
-                    ),
+                  StatusChip(
+                    label: statusStr,
+                    tone: _toneForStatus(currentStatusText),
                   ),
 
                   Row(
@@ -794,15 +783,19 @@ class _PatientMyAppointmentsScreenState
                         timeStr,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      const Icon(Icons.access_time,
-                          size: 16, color: Colors.grey),
+                      Icon(Icons.access_time,
+                          size: 16,
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 8),
                       Text(
                         dateStr,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      const Icon(Icons.calendar_today,
-                          size: 16, color: Colors.grey),
+                      Icon(Icons.calendar_today,
+                          size: 16,
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
                     ],
                   ),
                 ],
@@ -828,7 +821,7 @@ class _PatientMyAppointmentsScreenState
                         appointment['specialization'] ?? 'تخصص عام',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.grey[600],
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -836,9 +829,11 @@ class _PatientMyAppointmentsScreenState
                   const SizedBox(width: 16),
                   CircleAvatar(
                     radius: 25,
-                    backgroundColor: Colors.blue[50],
-                    child:
-                        const Icon(Icons.person, color: Colors.blue, size: 30),
+                    backgroundColor:
+                        Theme.of(context).colorScheme.primaryContainer,
+                    child: Icon(Icons.person,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        size: 30),
                   ),
                 ],
               ),
@@ -847,15 +842,30 @@ class _PatientMyAppointmentsScreenState
               // ✅ عرض زر الإلغاء فقط إذا كان الموعد لم يمضِ بعد
               if (isUpcoming && canCancel) ...[
                 const SizedBox(height: 16),
+                // تغيير الموعد قبل إلغائه: `rescheduleAppointment` موجودة على
+                // الخادم منذ المرحلة 1ب بلا أي واجهة، فكان على المريض أن يُلغي
+                // ثم يحجز من جديد — ويخاطر بألا يجد مكاناً بعد أن ترك مكانه.
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openReschedule(appointment),
+                    icon: const Icon(Icons.swap_horiz),
+                    label: const Text('تغيير الموعد'),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: () => _cancelAppointment(appointment['id']),
-                    icon: const Icon(Icons.cancel, color: Colors.red),
-                    label: const Text('إلغاء الموعد',
-                        style: TextStyle(color: Colors.red)),
+                    icon: Icon(Icons.cancel_outlined,
+                        color: Theme.of(context).colorScheme.error),
+                    label: Text('إلغاء الموعد',
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error)),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.red),
+                      side: BorderSide(
+                          color: Theme.of(context).colorScheme.error),
                     ),
                   ),
                 ),
@@ -866,19 +876,22 @@ class _PatientMyAppointmentsScreenState
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
+                    color: Theme.of(context).colorScheme.secondaryContainer,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                    border: Border.all(
+                        color: Theme.of(context).colorScheme.secondary),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                      Icon(Icons.info_outline,
+                          color: Theme.of(context).colorScheme.secondary,
+                          size: 18),
                       SizedBox(width: 8),
                       Text(
                         'لا يمكن إلغاء الموعد (انقضى الوقت)',
                         style: TextStyle(
-                          color: Colors.orange,
+                          color: Theme.of(context).colorScheme.secondary,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -900,12 +913,15 @@ class _PatientMyAppointmentsScreenState
                       ? const _ReviewedBadge()
                       : ElevatedButton.icon(
                           onPressed: () => _openRatingFlow(appointment),
-                          icon:
-                              const Icon(Icons.star_rate, color: Colors.amber),
+                          icon: Icon(Icons.star_rate,
+                              color: Theme.of(context).colorScheme.tertiary),
                           label: const Text('تقييم الطبيب'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue[50],
-                            foregroundColor: Colors.blue[800],
+                            backgroundColor:
+                                Theme.of(context).colorScheme.primaryContainer,
+                            foregroundColor: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
                           ),
                         ),
                 ),
@@ -930,25 +946,47 @@ class _ReviewedBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.green[50],
+        color: Theme.of(context).colorScheme.tertiaryContainer,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.green.shade200),
+        border: Border.all(color: Theme.of(context).colorScheme.tertiary),
       ),
-      child: const Row(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.star, color: Colors.amber, size: 18),
+          Icon(Icons.star,
+              color: Theme.of(context).colorScheme.onTertiaryContainer,
+              size: 18),
           SizedBox(width: 8),
           Text(
             'تم التقييم',
             style: TextStyle(
-              color: Colors.green,
+              color: Theme.of(context).colorScheme.onTertiaryContainer,
               fontWeight: FontWeight.w600,
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+/// نغمة الحالة — تُشتق من `ColorScheme` فتتبدّل مع الوضع الليلي، بدل خريطة
+/// ألوان ثابتة كانت مكرّرة حرفياً في موضعين داخل هذه الشاشة.
+StatusTone _toneForStatus(String status) {
+  switch (status) {
+    case 'Completed':
+      return StatusTone.success;
+    case 'Cancelled':
+    case 'Rejected':
+      return StatusTone.danger;
+    case 'pending':
+      return StatusTone.warning;
+    case 'upcoming':
+    case 'Scheduled':
+    case 'Booked':
+      return StatusTone.info;
+    default:
+      return StatusTone.neutral;
   }
 }

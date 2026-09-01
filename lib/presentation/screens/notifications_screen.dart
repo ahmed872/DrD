@@ -154,7 +154,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       appBar: AppBar(
         title: const Text('الإشعارات'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
       ),
       body: RefreshIndicator(
         onRefresh: _loadFirstPage,
@@ -183,10 +182,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   final type = data['type'] as String? ?? '';
 
                   return Container(
-                    color: isRead ? null : const Color(0xFFE0F7FA),
+                    // غير المقروء يُبرز بحاوية النسق لا بلون فيروزي ثابت
+                    // كان يبقى فاتحاً في الوضع الليلي فيبتلع النص.
+                    color: isRead
+                        ? null
+                        : Theme.of(context).colorScheme.primaryContainer,
                     child: ListTile(
-                      leading:
-                          Icon(_iconFor(type), color: const Color(0xFF0097A7)),
+                      leading: Icon(_iconFor(type),
+                          color: Theme.of(context).colorScheme.primary),
                       title: Text(
                         data['title'] as String? ?? '',
                         textAlign: TextAlign.right,
@@ -204,7 +207,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           Text(_formatTime(data['createdAt']),
                               textAlign: TextAlign.right,
                               style: TextStyle(
-                                  fontSize: 11, color: Colors.grey[500])),
+                                  fontSize: 11,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant)),
                         ],
                       ),
                       isThreeLine: true,

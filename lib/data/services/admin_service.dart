@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../../core/utils/error_messages.dart';
 
 /// سبب فشل إجراء إداري — يُترجم لرسالة عربية في الواجهة.
 enum AdminActionFailure {
@@ -34,16 +35,6 @@ const Map<String, AdminActionFailure> _failureByReason = {
   'application-not-pending': AdminActionFailure.invalidState,
   'doctor-not-active': AdminActionFailure.invalidState,
   'not-a-doctor': AdminActionFailure.invalidState,
-};
-
-const Map<AdminActionFailure, String> _fallbackMessages = {
-  AdminActionFailure.notAdmin:
-      'هذا الإجراء متاح للإدارة فقط — إن مُنحت الصلاحية للتو، حدّث الصلاحيات من شاشة حسابك',
-  AdminActionFailure.notFound: 'لا يوجد طلب أو حساب بهذا المعرّف',
-  AdminActionFailure.invalidState: 'الحالة الحالية لا تسمح بهذا الإجراء',
-  AdminActionFailure.invalidRequest: 'طلب غير صالح',
-  AdminActionFailure.notSignedIn: 'انتهت الجلسة، سجّل الدخول ثم حاول مرة أخرى',
-  AdminActionFailure.unknown: 'تعذّر إتمام الإجراء، تأكد من اتصالك بالإنترنت',
 };
 
 /// نتيجة إجراء إداري (قبول/رفض/إيقاف/استعادة طبيب).
@@ -94,17 +85,17 @@ class AdminService {
       final reasonCode = _reasonOf(e);
       final failure =
           _failureByReason[reasonCode] ?? AdminActionFailure.unknown;
-      final serverMessage = (e.message ?? '').trim();
-      final message = serverMessage.isNotEmpty
-          ? serverMessage
-          : _fallbackMessages[failure]!;
+      final message = AppErrorMessages.resolve(
+        reason: reasonCode,
+        serverMessage: e.message,
+      );
       AppLogger.warning('فشل $name ($reasonCode): $message');
       return AdminActionResult.failed(failure, message);
     } catch (e, s) {
       AppLogger.error('خطأ غير متوقع في $name', e, s);
       return AdminActionResult.failed(
         AdminActionFailure.unknown,
-        _fallbackMessages[AdminActionFailure.unknown]!,
+        unknownMessage,
       );
     }
   }

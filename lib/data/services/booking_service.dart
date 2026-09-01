@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../core/constants/appointment_status.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/utils/error_messages.dart';
 import '../../core/utils/slot_id.dart';
 
 /// سبب فشل الحجز — يُترجم لرسالة عربية في الواجهة.
@@ -113,24 +114,6 @@ const Map<String, LifecycleFailure> _lifecycleFailureByReason = {
   'already-booked-same-day': LifecycleFailure.duplicateSameDay,
 };
 
-const Map<LifecycleFailure, String> _lifecycleFallbackMessages = {
-  LifecycleFailure.appointmentNotFound: 'تعذّر العثور على هذا الموعد',
-  LifecycleFailure.notOwner: 'هذا الموعد ليس لك',
-  LifecycleFailure.alreadyCompleted: 'تم الكشف في هذا الموعد بالفعل',
-  LifecycleFailure.notEligible: 'حالة هذا الموعد لا تسمح بهذا الإجراء',
-  LifecycleFailure.appointmentPast: 'فات وقت هذا الموعد',
-  LifecycleFailure.deadlinePassed: 'الوقت المتبقي على الموعد أقل من المسموح به',
-  LifecycleFailure.destinationUnavailable:
-      'هذا الوقت لم يعد متاحاً، اختر وقتاً آخر',
-  LifecycleFailure.duplicateSameDay:
-      'لديك موعد آخر عند هذا الطبيب في نفس اليوم',
-  LifecycleFailure.notSignedIn: 'انتهت الجلسة، سجّل الدخول ثم حاول مرة أخرى',
-  LifecycleFailure.invalidRequest:
-      'تعذّر إتمام الطلب، حدّث التطبيق وحاول مجدداً',
-  LifecycleFailure.unknown:
-      'تعذّر إتمام الطلب، تأكد من اتصالك بالإنترنت وحاول مرة أخرى',
-};
-
 /// نتيجة محاولة الإلغاء.
 class CancelResult {
   const CancelResult.success({this.alreadyCancelled = false})
@@ -171,19 +154,6 @@ class RescheduleResult {
 
   bool get isSuccess => failure == null;
 }
-
-const Map<BookingFailure, String> _fallbackMessages = {
-  BookingFailure.slotTaken: 'للأسف تم حجز هذا الموعد للتو، اختر وقتاً آخر',
-  BookingFailure.alreadyBookedBySamePatient: 'أنت حاجز هذا الموعد بالفعل',
-  BookingFailure.duplicateSameDay:
-      'لديك موعد محجوز مسبقاً عند هذا الطبيب في نفس اليوم',
-  BookingFailure.slotInThePast: 'لا يمكن الحجز في هذا الوقت، اختر موعداً آخر',
-  BookingFailure.doctorUnavailable: 'هذا الطبيب غير متاح للحجز حالياً',
-  BookingFailure.notSignedIn: 'انتهت الجلسة، سجّل الدخول ثم حاول مرة أخرى',
-  BookingFailure.invalidRequest: 'تعذّر إتمام الحجز، حدّث التطبيق وحاول مجدداً',
-  BookingFailure.unknown:
-      'تعذّر إتمام الحجز، تأكد من اتصالك بالإنترنت وحاول مرة أخرى',
-};
 
 /// نتيجة محاولة الحجز.
 class BookingResult {
@@ -265,10 +235,10 @@ class BookingService {
       final reasonCode = _reasonOf(e);
       final failure = _failureByReason[reasonCode] ?? BookingFailure.unknown;
       // رسالة الخادم عربية وجاهزة للعرض؛ الاحتياطية لانقطاع غير متوقع.
-      final serverMessage = (e.message ?? '').trim();
-      final message = serverMessage.isNotEmpty
-          ? serverMessage
-          : _fallbackMessages[failure]!;
+      final message = AppErrorMessages.resolve(
+        reason: reasonCode,
+        serverMessage: e.message,
+      );
 
       AppLogger.warning('فشل الحجز ($reasonCode): $message');
       return BookingResult.failed(failure, message);
@@ -276,7 +246,7 @@ class BookingService {
       AppLogger.error('خطأ غير متوقع أثناء الحجز', e, s);
       return BookingResult.failed(
         BookingFailure.unknown,
-        _fallbackMessages[BookingFailure.unknown]!,
+        unknownMessage,
       );
     }
   }
@@ -322,10 +292,10 @@ class BookingService {
       final reasonCode = _reasonOf(e);
       final failure =
           _lifecycleFailureByReason[reasonCode] ?? LifecycleFailure.unknown;
-      final serverMessage = (e.message ?? '').trim();
-      final message = serverMessage.isNotEmpty
-          ? serverMessage
-          : _lifecycleFallbackMessages[failure]!;
+      final message = AppErrorMessages.resolve(
+        reason: reasonCode,
+        serverMessage: e.message,
+      );
 
       AppLogger.warning('فشل إلغاء الموعد ($reasonCode): $message');
       return CancelResult.failed(failure, message);
@@ -333,7 +303,7 @@ class BookingService {
       AppLogger.error('خطأ غير متوقع أثناء إلغاء الموعد', e, s);
       return CancelResult.failed(
         LifecycleFailure.unknown,
-        _lifecycleFallbackMessages[LifecycleFailure.unknown]!,
+        unknownMessage,
       );
     }
   }
@@ -422,10 +392,10 @@ class BookingService {
       final reasonCode = _reasonOf(e);
       final failure =
           _lifecycleFailureByReason[reasonCode] ?? LifecycleFailure.unknown;
-      final serverMessage = (e.message ?? '').trim();
-      final message = serverMessage.isNotEmpty
-          ? serverMessage
-          : _lifecycleFallbackMessages[failure]!;
+      final message = AppErrorMessages.resolve(
+        reason: reasonCode,
+        serverMessage: e.message,
+      );
 
       AppLogger.warning('فشل تعديل الموعد ($reasonCode): $message');
       return RescheduleResult.failed(failure, message);
@@ -433,7 +403,7 @@ class BookingService {
       AppLogger.error('خطأ غير متوقع أثناء تعديل الموعد', e, s);
       return RescheduleResult.failed(
         LifecycleFailure.unknown,
-        _lifecycleFallbackMessages[LifecycleFailure.unknown]!,
+        unknownMessage,
       );
     }
   }
