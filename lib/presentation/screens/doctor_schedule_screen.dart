@@ -35,6 +35,37 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     _fetchAppointments();
   }
 
+  /// نافذة التواريخ التي يمكن أن يعرضها الفلتر الحالي، بصيغة `yyyy-MM-dd`.
+  ///
+  /// تُبقى أوسع قليلاً من اللازم عمداً (يوم قبل ويوم بعد) حتى لا يقع
+  /// موعد على حافة النافذة خارجها بسبب فارق منطقة زمنية.
+  (String, String) _visibleDateRange() {
+    final fmt = DateFormat('yyyy-MM-dd');
+    final now = DateTime.now();
+
+    DateTime from;
+    DateTime to;
+    switch (_selectedFilterIndex) {
+      case 0: // اليوم
+        from = now;
+        to = now;
+      case 1: // الغد
+        from = now.add(const Duration(days: 1));
+        to = from;
+      case 2: // هذا الأسبوع
+        from = now.subtract(Duration(days: now.weekday % 7));
+        to = from.add(const Duration(days: 6));
+      default: // تاريخ مخصص
+        from = _selectedDate;
+        to = _selectedDate;
+    }
+
+    return (
+      fmt.format(from.subtract(const Duration(days: 1))),
+      fmt.format(to.add(const Duration(days: 1))),
+    );
+  }
+
   Future<void> _fetchAppointments() async {
     setState(() => _isLoading = true);
     try {
@@ -45,10 +76,25 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
         return;
       }
 
-      // جلب جميع المواعيد للطبيب فقط (بدون composite index)
-      Query query = FirebaseFirestore.instance
+      // ===== المرحلة 7: حصر القراءة بالنافذة المعروضة =====
+      //
+      // كان الاستعلام يسحب **كل** مواعيد الطبيب منذ بداية حسابه، ثم يفلتر
+      // في Dart إلى يوم واحد أو أسبوع على الأكثر. طبيب قديم بآلاف المواعيد
+      // كان يدفع ثمن قراءتها كلها ليرى جدول اليوم — وفي كل مرة يبدّل فيها
+      // الفلتر، لأن كل تبديل يستدعي هذه الدالة من جديد.
+      //
+      // النافذة تُشتقّ من الفلتر المختار نفسه، والفلترة في Dart تبقى كما
+      // هي حرفياً — فالمعروض لا يتغيّر، وحده عدد المستندات المقروءة.
+      //
+      // `appointmentDate` نصّ بصيغة `yyyy-MM-dd` يفرضها `isValidDateStr`
+      // على كل كتابة خادمية، والمقارنة المعجمية عليها تطابق الزمنية.
+      // الفهرس `doctorId + appointmentDate` موجود مسبقاً.
+      final range = _visibleDateRange();
+      final Query query = FirebaseFirestore.instance
           .collection('appointments')
-          .where('doctorId', isEqualTo: auth.userId);
+          .where('doctorId', isEqualTo: auth.userId)
+          .where('appointmentDate', isGreaterThanOrEqualTo: range.$1)
+          .where('appointmentDate', isLessThanOrEqualTo: range.$2);
 
       final snapshot = await query.get();
 
@@ -680,12 +726,15 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
+                // القراءة قبل الإغلاق: بعده يصير المتحكّم مرشَّحاً للتخلّص
+                // في نهاية هذه الدالة، فلا يُقرأ منه شيء بعد ذلك.
+                final note = noteController.text.trim();
                 Navigator.pop(context);
                 try {
                   await FirebaseFirestore.instance
                       .collection('appointments')
                       .doc(appointmentId)
-                      .update({'notes': noteController.text.trim()});
+                      .update({'notes': note});
                   await _fetchAppointments();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -701,6 +750,10 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
         );
       },
     );
+    // ===== المرحلة 7: تخلّص من متحكّم الحوار =====
+    // كان يُنشأ متحكّم جديد في كل فتح لهذا الحوار ولا يُتخلَّص منه أبداً،
+    // فيتراكم مع كل ملاحظة يكتبها الطبيب خلال الجلسة.
+    noteController.dispose();
   }
 
   Widget _buildActionButtons(Map<String, dynamic> appointment) {

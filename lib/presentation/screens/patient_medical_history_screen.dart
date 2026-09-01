@@ -12,6 +12,9 @@ class PatientMedicalHistoryScreen extends StatefulWidget {
 
 class _PatientMedicalHistoryScreenState
     extends State<PatientMedicalHistoryScreen> {
+  /// سقف سجلات السجل الطبي المقروءة.
+  static const int _historyCap = 200;
+
   int _selectedFilter = 0; // 0: All
   bool _isLoading = true;
   List<Map<String, dynamic>> _medicalRecords = [];
@@ -33,6 +36,9 @@ class _PatientMedicalHistoryScreenState
           .collection('appointments')
           .where('patientId', isEqualTo: user.uid)
           .where('status', isEqualTo: 'Completed')
+          // المرحلة 7: السجل يعرض الأحدث، والقراءة تُحدَّد بذلك بدل أن
+          // تنمو مع عمر الحساب. الفهرس `patientId + status + ...` قائم.
+          .limit(_historyCap)
           .get();
 
       List<Map<String, dynamic>> records = [];

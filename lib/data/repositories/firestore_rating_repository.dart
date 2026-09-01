@@ -24,6 +24,12 @@ import '../../core/utils/app_logger.dart';
 
 /// تنفيذ Firestore لـ Rating Repository
 class FirestoreRatingRepository implements RatingRepository {
+  /// سقف قراءة.
+  ///
+  /// المنظومة غير موصولة بأي مسار (انظر الرأس)، لكن استعلاماً مفتوحاً في
+  /// الشيفرة فخّ جاهز: من يصلها لاحقاً يرث قراءة تنمو بلا حدّ.
+  static const int _scanCap = 200;
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const String _ratingsCollection = 'ratings';
@@ -126,6 +132,7 @@ class FirestoreRatingRepository implements RatingRepository {
           .where('toUserId', isEqualTo: patientId)
           .where('ratingType', isEqualTo: 'doctor_to_patient')
           .orderBy('createdAt', descending: true)
+          .limit(_scanCap)
           .get();
 
       return query.docs
@@ -145,6 +152,7 @@ class FirestoreRatingRepository implements RatingRepository {
           .where('toUserId', isEqualTo: doctorId)
           .where('ratingType', isEqualTo: 'patient_to_doctor')
           .orderBy('createdAt', descending: true)
+          .limit(_scanCap)
           .get();
 
       return query.docs
@@ -172,6 +180,7 @@ class FirestoreRatingRepository implements RatingRepository {
           .where('createdAt', isGreaterThanOrEqualTo: startOfDay)
           .where('createdAt', isLessThan: endOfDay)
           .where('healthConditionRating', isEqualTo: null)
+          .limit(_scanCap)
           .get();
 
       return query.docs

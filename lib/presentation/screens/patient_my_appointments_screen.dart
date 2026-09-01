@@ -19,6 +19,10 @@ class PatientMyAppointmentsScreen extends StatefulWidget {
 
 class _PatientMyAppointmentsScreenState
     extends State<PatientMyAppointmentsScreen> {
+  /// سقف المواعيد المقروءة. المريض لا يتصفّح تاريخاً بلا نهاية في هذه
+  /// الشاشة؛ الأحدث هو المقصود، والسقف يجعل التكلفة ثابتة مع عمر الحساب.
+  static const int _appointmentCap = 200;
+
   final BookingService _bookingService = BookingService();
   final ReviewService _reviewService = ReviewService();
 
@@ -46,6 +50,16 @@ class _PatientMyAppointmentsScreenState
         final snap = await FirebaseFirestore.instance
             .collection('appointments')
             .where('patientId', isEqualTo: auth.userId)
+            // ===== المرحلة 7: قراءة محدودة ومرتّبة =====
+            //
+            // كانت الشاشة تقرأ كل مواعيد المريض منذ إنشاء حسابه ثم تفرزها
+            // في Dart. الترتيب على الخادم مع سقف يجعل التكلفة ثابتة ويُبقي
+            // الأحدث — وهو ما تعرضه الشاشة أصلاً في أعلى القائمة.
+            //
+            // `orderBy` لا نطاق `where`: الترتيب لا يُقصي أي مستند مهما كان
+            // نوع حقله. الفهرس `patientId + appointmentDate DESC` موجود.
+            .orderBy('appointmentDate', descending: true)
+            .limit(_appointmentCap)
             .get();
 
         _allAppointments = snap.docs.map((doc) {
@@ -119,6 +133,9 @@ class _PatientMyAppointmentsScreenState
       final snap = await FirebaseFirestore.instance
           .collection('reviews')
           .where('patientId', isEqualTo: patientId)
+          // محدود بنفس سقف المواعيد: لا فائدة من معرفة مراجعة لموعد لم
+          // يُقرأ أصلاً في هذه الشاشة.
+          .limit(_appointmentCap)
           .get();
       return snap.docs.map((d) => d.id).toSet();
     } catch (e) {
@@ -410,6 +427,10 @@ class _PatientMyAppointmentsScreenState
     var isSubmitting = false;
     final TextEditingController commentController = TextEditingController();
 
+    // ===== المرحلة 7: تخلّص من متحكّم الحوار =====
+    // كان يُنشأ متحكّم في كل فتح لحوار التقييم ولا يُتخلَّص منه، فيتراكم
+    // مع كل مراجعة يكتبها المريض. `whenComplete` يضمن التخلّص سواء أُرسل
+    // التقييم أم أُغلق الحوار.
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -481,7 +502,7 @@ class _PatientMyAppointmentsScreenState
           ],
         ),
       ),
-    );
+    ).whenComplete(commentController.dispose);
   }
 
   Future<void> _submitRating(

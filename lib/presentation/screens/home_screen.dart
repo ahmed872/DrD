@@ -321,22 +321,58 @@ class HomeScreen extends StatelessWidget {
 /// كاملة للمجموعة، ومحصور بمساواتين على `recipientId`/`isRead` فلا يحتاج
 /// فهرساً مركّباً جديداً (Firestore يدمج فهارس الحقل المفرد تلقائياً لمثل
 /// هذا الاستعلام).
-class _NotificationBell extends StatelessWidget {
+class _NotificationBell extends StatefulWidget {
   const _NotificationBell({required this.uid});
 
   final String uid;
 
+  @override
+  State<_NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<_NotificationBell> {
   static const _countCap = 50;
 
+  /// ===== المرحلة 7: البثّ يُنشأ مرّة واحدة =====
+  ///
+  /// كان `stream:` يُبنى داخل `build()`. الجرس يقع في شريط الرئيسية، وهي
+  /// شاشة تُعيد البناء عند كل تغيّر في `FirebaseAuthService` — وكل إعادة
+  /// بناء كانت تُنشئ استعلاماً جديداً، فيُغلق `StreamBuilder` المستمع
+  /// القديم ويفتح آخر. أي أن كل إعادة بناء تُكلّف دورة إنصات كاملة على
+  /// Firestore بدل أن تُعاد قراءة نتيجة قائمة.
+  ///
+  /// البثّ الآن حقل في الحالة، يُنشأ عند التركيب فقط. الاستعلام كما هو:
+  /// محدود بـ `limit`، ومحصور بمساواتين على `recipientId`/`isRead`، والبثّ
+  /// الحيّ مبرَّر لأن العدّاد يجب أن يتغيّر لحظة وصول إشعار.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _unread;
+
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
+  void initState() {
+    super.initState();
+    _unread = _buildStream(widget.uid);
+  }
+
+  @override
+  void didUpdateWidget(covariant _NotificationBell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // المعرّف لا يتغيّر عملياً (تسجيل الخروج يهدم الشجرة)، لكن تركه بلا
+    // معالجة يعني بثّاً لمستخدم سابق لو تغيّر يوماً.
+    assert(oldWidget.uid == widget.uid,
+        'تغيّر معرّف المستخدم دون إعادة بناء الجرس');
+  }
+
+  static Stream<QuerySnapshot<Map<String, dynamic>>> _buildStream(String uid) =>
+      FirebaseFirestore.instance
           .collection('notifications')
           .where('recipientId', isEqualTo: uid)
           .where('isRead', isEqualTo: false)
           .limit(_countCap)
-          .snapshots(),
+          .snapshots();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _unread,
       builder: (context, snapshot) {
         final unread = snapshot.data?.docs.length ?? 0;
         return Stack(

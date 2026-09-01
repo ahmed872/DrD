@@ -12,7 +12,10 @@ process.env.FIRESTORE_EMULATOR_HOST =
   process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
 
 const admin = require('firebase-admin');
-const { sendAppointmentRemindersCore, maybeSendReminder, REMINDER_WINDOWS } = require('../reminders');
+const {
+  sendAppointmentRemindersCore, maybeSendReminder, REMINDER_WINDOWS,
+  MAX_APPOINTMENTS_PER_RUN, REMINDER_CONCURRENCY,
+} = require('../reminders');
 const { NOTIFICATION_TYPES, notificationIdFor } = require('../notifications');
 
 if (!admin.apps.length) {
@@ -218,6 +221,92 @@ describe('sendAppointmentReminders — حدود المنطقة الزمنية', 
 });
 
 describe('sendAppointmentReminders — الأداء وحدود الاستعلام', () => {
+  // ===== المرحلة 7: حدود الدفعة والتوازي =====
+
+  test('الدفعة محدودة بسقف صريح ولا تُترك مفتوحة', () => {
+    // بلا سقف يسحب الاستعلام كل مواعيد المنصّة في مدى التواريخ، وهو ما
+    // يتحوّل على منصّة كبيرة إلى استدعاء يتجاوز مهلته قبل إتمام الإرسال.
+    expect(Number.isInteger(MAX_APPOINTMENTS_PER_RUN)).toBe(true);
+    expect(MAX_APPOINTMENTS_PER_RUN).toBeGreaterThan(0);
+    expect(MAX_APPOINTMENTS_PER_RUN).toBeLessThanOrEqual(5000);
+  });
+
+  test('التوازي مقيَّد ولا يُطلق الدفعة كاملة دفعةً واحدة', () => {
+    expect(REMINDER_CONCURRENCY).toBeGreaterThan(1);
+    expect(REMINDER_CONCURRENCY).toBeLessThanOrEqual(50);
+  });
+
+  test('دفعة أكبر من حدّ التوازي تُعالَج كاملة بلا تكرار', async () => {
+    // الانتقال من حلقة متسلسلة إلى دفعات متوازية هو التغيير الجوهري في
+    // هذه المرحلة؛ هذا الاختبار يثبت أنه لم يُسقط موعداً ولم يضاعف تذكيراً.
+    const count = REMINDER_CONCURRENCY * 2 + 3;
+    const now = new Date('2030-03-01T06:00:00Z');
+    for (let i = 0; i < count; i++) {
+      await seedAppointment(`bulk${i}`, { date: '2030-03-02', time: '07:57' });
+    }
+
+    const first = await sendAppointmentRemindersCore({
+      db, now, messaging: fakeMessaging(),
+    });
+    expect(first.sent).toBe(count);
+
+    // التشغيل الثاني على نفس الدفعة لا يُرسل شيئاً — الحماية على مستوى
+    // المستند لا على ترتيب الحلقة.
+    const second = await sendAppointmentRemindersCore({
+      db, now, messaging: fakeMessaging(),
+    });
+    expect(second.sent).toBe(0);
+
+    for (let i = 0; i < count; i++) {
+      const note = await getNotification(
+        `bulk${i}`, NOTIFICATION_TYPES.REMINDER_24H, 'patient');
+      expect(note).not.toBeNull();
+    }
+  }, 60000);
+
+  test('طبيب واحد لمواعيد كثيرة يُقرأ مرّة واحدة رغم التوازي', async () => {
+    // كاش الأطباء كان يخزّن القيمة **بعد** الانتظار: عشرة مواعيد متوازية
+    // لنفس الطبيب تجد الكاش فارغاً كلها فتقرأ المستند عشر مرات. تخزين
+    // الوعد فور إطلاقه يجعل التالين ينتظرون القراءة الجارية.
+    //
+    // العدّ هنا حقيقي: غلاف رفيع حول `db` يحصي قراءات `users` فعلياً بدل
+    // افتراض أن الكاش يعمل.
+    const now = new Date('2030-03-01T06:00:00Z');
+    const count = REMINDER_CONCURRENCY * 2;
+    for (let i = 0; i < count; i++) {
+      await seedAppointment(`same${i}`, { date: '2030-03-02', time: '07:57' });
+    }
+
+    let userDocReads = 0;
+    const countingDb = {
+      collection(name) {
+        const col = db.collection(name);
+        if (name !== 'users') return col;
+        return {
+          ...col,
+          doc(id) {
+            const ref = col.doc(id);
+            return {
+              ...ref,
+              get: (...args) => {
+                userDocReads++;
+                return ref.get(...args);
+              },
+            };
+          },
+        };
+      },
+    };
+
+    const result = await sendAppointmentRemindersCore({
+      db: countingDb, now, messaging: fakeMessaging(),
+    });
+
+    expect(result.sent).toBe(count);
+    // طبيب واحد في البذور، فقراءة واحدة تكفي مهما بلغ عدد المواعيد.
+    expect(userDocReads).toBe(1);
+  }, 60000);
+
   test('لا تقرأ مواعيد بعيدة تماماً خارج مدى الاستعلام', async () => {
     const now = new Date('2030-03-01T06:00:00Z');
     // موعد بعد شهر كامل — خارج أي نافذة استعلام منطقية.

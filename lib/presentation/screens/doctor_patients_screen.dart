@@ -14,6 +14,13 @@ class DoctorPatientsScreen extends StatefulWidget {
 }
 
 class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
+  /// سقف المواعيد التي تُقرأ لبناء قائمة المرضى.
+  ///
+  /// ليس ترقيماً للصفحات: الشاشة تجمّع المواعيد في مرضى، والترقيم على
+  /// المواعيد يعطي صفحات مرضى غير مستقرّة. السقف يجعل التكلفة ثابتة،
+  /// والواجهة تذكر أن القائمة تغطّي الأحدث حين يُبلغ السقف.
+  static const int _appointmentScanCap = 400;
+
   late TextEditingController _searchController;
   int _selectedSortIndex = 0; // 0: Recent, 1: Name, 2: Visits
 
@@ -40,9 +47,20 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
     try {
       final auth = Provider.of<FirebaseAuthService>(context, listen: false);
 
+      // ===== المرحلة 7: قراءة محدودة =====
+      //
+      // كانت الشاشة تقرأ كل مواعيد الطبيب منذ بداية حسابه لتبني منها قائمة
+      // المرضى. الترتيب تنازلياً بالتاريخ مع سقف يجعل التكلفة ثابتة بدل أن
+      // تنمو مع عمر الحساب، ويُبقي أحدث المرضى — وهم المقصودون بالشاشة.
+      //
+      // `orderBy` لا `where` على التاريخ: الترتيب لا يُقصي مستنداً مهما كان
+      // نوع حقله، بينما نطاق نصّي كان سيُسقط أي مستند قديم بنوع مختلف.
+      // الفهرس `doctorId + appointmentDate` موجود مسبقاً.
       final appointmentsSnapshot = await FirebaseFirestore.instance
           .collection('appointments')
           .where('doctorId', isEqualTo: auth.userId)
+          .orderBy('appointmentDate', descending: true)
+          .limit(_appointmentScanCap)
           .get();
 
       Map<String, List<QueryDocumentSnapshot>> patientAppointments = {};

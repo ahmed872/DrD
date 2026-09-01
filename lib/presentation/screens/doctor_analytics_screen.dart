@@ -14,6 +14,9 @@ class DoctorAnalyticsScreen extends StatefulWidget {
 }
 
 class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
+  /// سقف أمان لعدد المواعيد المقروءة للإحصاءات.
+  static const int _analyticsScanCap = 2000;
+
   int _selectedTimeRange = 0;
   bool _isLoading = true;
 
@@ -75,9 +78,28 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         startDate = DateTime(now.year, 1, 1);
       }
 
+      // ===== المرحلة 7: حصر القراءة بالنافذة المعروضة =====
+      //
+      // كان الاستعلام يسحب **كل** مواعيد الطبيب منذ بداية حسابه، ثم يسقط
+      // في Dart كل ما يسبق `startDate` بالسطر `if (appDate.isBefore(...))`.
+      // أي أن طبيباً بعشرة آلاف موعد كان يدفع ثمن قراءتها كلها ليعرض
+      // إحصاءات شهر واحد — وفي كل مرة يفتح فيها الشاشة أو يبدّل المدى.
+      //
+      // النقل إلى الخادم يعطي **نفس المجموعة تماماً**: `appointmentDate`
+      // مخزَّن نصّاً بصيغة `yyyy-MM-dd` يفرضها `isValidDateStr` على كل
+      // كتابة خادمية، والمقارنة المعجمية على هذه الصيغة تطابق المقارنة
+      // الزمنية. والمستندات التي لا تحمل نصّاً كانت تُسقَط أصلاً في السطر
+      // `data['appointmentDate'] as String?`، فلا شيء يختفي بهذا التغيير.
+      //
+      // الفهرس `doctorId + appointmentDate` موجود في `firestore.indexes.json`.
+      final startKey = DateFormat('yyyy-MM-dd').format(startDate);
       final apSnapshot = await FirebaseFirestore.instance
           .collection('appointments')
           .where('doctorId', isEqualTo: user.uid)
+          .where('appointmentDate', isGreaterThanOrEqualTo: startKey)
+          // سقف أمان فوق نطاق التاريخ: عيادة بالغة الازدحام في مدى «هذا
+          // العام» يجب ألّا تتحوّل إلى قراءة مفتوحة.
+          .limit(_analyticsScanCap)
           .get();
 
       int total = 0;

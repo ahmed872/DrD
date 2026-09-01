@@ -18,6 +18,10 @@ class PatientBookingScreen extends StatefulWidget {
 }
 
 class _PatientBookingScreenState extends State<PatientBookingScreen> {
+  /// سقف قائمة اختيار الطبيب في شاشة الحجز.
+  /// البحث الكامل بترقيم صفحات في `PatientSearchDoctorScreen`.
+  static const int _doctorPickerCap = 100;
+
   final BookingService _bookingService = BookingService();
 
   List<Map<String, dynamic>> _allDoctors = [];
@@ -32,6 +36,11 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           .collection('users')
           .where('role', isEqualTo: 'doctor')
           .where('isVerified', isEqualTo: true)
+          // المرحلة 7: قائمة اختيار لا فهرس كامل. بلا سقف كانت تقرأ
+          // مجموعة الأطباء كلها في كل فتح للشاشة. الترتيب بالاسم يجعل
+          // السقف قطعاً مستقرّاً لا عيّنة عشوائية.
+          .orderBy('name')
+          .limit(_doctorPickerCap)
           .get();
 
       // المرحلة 2: طبيب موقوف (`disabled: true`) يبقى `isVerified: true`

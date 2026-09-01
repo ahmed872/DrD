@@ -51,6 +51,25 @@ const {
 /** طول نافذة الرصد بالدقائق — يطابق دورية التشغيل (كل 5 دقائق). */
 const WINDOW_MINUTES = 5;
 
+/**
+ * أقصى عدد مواعيد تُفحص في استدعاء واحد.
+ *
+ * حاجز أمان لا هدف: الدفعة الواقعية أصغر من هذا بكثير لأن المدى أربعة
+ * تواريخ فقط. وجوده يمنع أن تتحوّل قفزة في الحجم إلى استدعاء يتجاوز مهلته.
+ */
+const MAX_APPOINTMENTS_PER_RUN = 2000;
+
+/**
+ * عدد المواعيد التي تُعالَج معاً.
+ *
+ * المعالجة كانت متسلسلة تماماً: `await` لكل موعد، وداخله `await` لكل نافذة
+ * تذكير. دفعة من ألف موعد كانت ألف رحلة متعاقبة إلى Firestore.
+ *
+ * والتوازي محدود عمداً: إطلاق آلاف الكتابات دفعةً واحدة يستهلك اتصالات
+ * Firestore ويستدعي تقييد المعدّل، فيصير أبطأ لا أسرع.
+ */
+const REMINDER_CONCURRENCY = 10;
+
 const REMINDER_WINDOWS = [
   { targetMinutes: 24 * 60, type: NOTIFICATION_TYPES.REMINDER_24H, recipient: 'patient' },
   { targetMinutes: 2 * 60, type: NOTIFICATION_TYPES.REMINDER_2H, recipient: 'patient' },
@@ -83,8 +102,22 @@ async function sendAppointmentRemindersCore({ db, now = new Date(), messaging })
     shiftDateStr(todayUtc, 2),
   ];
 
+  // ===== المرحلة 7: عمل محدود في الاستدعاء الواحد =====
+  //
+  // المدى التقويمي كان ضيّقاً أصلاً (أربعة تواريخ)، لكن بلا سقف: الاستعلام
+  // يسحب **كل** مواعيد المنصّة في تلك التواريخ. على منصّة بمئات الأطباء
+  // تصير الدفعة عشرات الآلاف من المستندات في استدعاء واحد، ثم تُعالَج
+  // بحلقة متسلسلة فيها `await` لكل موعد — وهو ما ينتهي بانتهاء مهلة الدالة
+  // قبل إرسال التذكيرات الأخيرة، فتضيع بلا أثر ظاهر.
+  //
+  // السقف يجعل الدفعة محدودة، والمعالجة تجري على دفعات صغيرة متوازية.
+  // الدالة تعمل كل خمس دقائق ونافذة الرصد خمس دقائق، فما يتجاوز السقف في
+  // دورة يلتقطه ترتيب `appointmentDate` في الدورة التالية ما دام ضمن
+  // نافذته. والحدّ مرفوع بما يكفي ليكون ذلك نظرياً على المدى المنظور.
   const snap = await db.collection('appointments')
     .where('appointmentDate', 'in', dateCandidates)
+    .orderBy('appointmentDate')
+    .limit(MAX_APPOINTMENTS_PER_RUN)
     .get();
 
   const candidates = snap.docs.filter((doc) => {
@@ -92,47 +125,85 @@ async function sendAppointmentRemindersCore({ db, now = new Date(), messaging })
     return ACTIVE_STATUSES.has(status);
   });
 
+  if (snap.size === MAX_APPOINTMENTS_PER_RUN) {
+    // إشارة تشغيلية: بلغت الدفعة سقفها، فقد تكون هناك مواعيد لم تُفحص.
+    console.warn('sendAppointmentReminders: بلغت الدفعة سقفها', {
+      cap: MAX_APPOINTMENTS_PER_RUN,
+    });
+  }
+
   // كاش أطباء الدفعة — لا قراءة الطبيب نفسه أكثر من مرة واحدة مهما تكرّر
   // في مواعيد كثيرة.
+  //
+  // المرحلة 7: يُخزَّن **الوعد** لا القيمة. بعد أن صارت المعالجة متوازية،
+  // كان فحصُ الوجود ثم الانتظار يترك ثغرة: عشرة مواعيد لنفس الطبيب تنطلق
+  // معاً، فتجد الكاش فارغاً كلها وتقرأ المستند عشر مرات. تخزين الوعد فور
+  // إطلاقه يجعل التالين ينتظرون القراءة الجارية بدل بدء أخرى.
   const doctorCache = new Map();
-  async function getDoctor(doctorId) {
+  function getDoctor(doctorId) {
     if (doctorCache.has(doctorId)) return doctorCache.get(doctorId);
-    const doctorSnap = await db.collection('users').doc(doctorId).get();
-    const data = doctorSnap.exists ? doctorSnap.data() : null;
-    doctorCache.set(doctorId, data);
-    return data;
+    const pending = db.collection('users').doc(doctorId).get()
+      .then((doctorSnap) => (doctorSnap.exists ? doctorSnap.data() : null))
+      .catch((e) => {
+        // قراءة فاشلة لا تُخزَّن: المحاولة التالية تعيدها بدل أن ترث الفشل.
+        doctorCache.delete(doctorId);
+        throw e;
+      });
+    doctorCache.set(doctorId, pending);
+    return pending;
   }
 
   let sent = 0;
   let skipped = 0;
 
-  for (const doc of candidates) {
+  /** يعالج موعداً واحداً ويُرجع ما أُرسل وما تُخطّي. */
+  async function processOne(doc) {
     const appt = doc.data();
     const appointmentId = doc.id;
+    let localSent = 0;
+    let localSkipped = 0;
 
     try {
       const doctor = await getDoctor(appt.doctorId);
-      if (!doctor) { skipped++; continue; }
+      if (!doctor) return { sent: 0, skipped: 1 };
 
       const nowInfo = nowForDoctor(doctor, now);
       const minutesUntil = minutesBetween(
         nowInfo.date, nowInfo.time, appt.appointmentDate, appt.startTime);
-      if (minutesUntil <= 0) { skipped++; continue; }
+      if (minutesUntil <= 0) return { sent: 0, skipped: 1 };
 
+      // النوافذ تبقى متسلسلة داخل الموعد الواحد: ثلاث نوافذ على الأكثر،
+      // وتسلسلها يحفظ ترتيب الكتابة على نفس الموعد.
       for (const window of REMINDER_WINDOWS) {
         if (!inWindow(minutesUntil, window.targetMinutes)) continue;
 
         const didSend = await maybeSendReminder({
           db, messaging, appointmentId, appt, window,
         });
-        if (didSend) sent++; else skipped++;
+        if (didSend) localSent++; else localSkipped++;
       }
     } catch (e) {
       // موعد واحد فاسد أو طبيبه غير موجود لا يوقف بقية الدفعة.
       console.error('sendAppointmentReminders: فشل معالجة موعد', {
         appointmentId, error: e && e.message,
       });
-      skipped++;
+      localSkipped++;
+    }
+    return { sent: localSent, skipped: localSkipped };
+  }
+
+  // معالجة على دفعات محدودة التوازي بدل حلقة متسلسلة.
+  //
+  // لا أثر على منع التكرار: `maybeSendReminder` تعيد قراءة الموعد ثم تكتب
+  // علامة التذكير عبر `createReminderIfAbsent` بمعرّف مشتقّ من
+  // (الموعد + النوع)، أي أن الحماية على مستوى المستند لا على ترتيب الحلقة.
+  // وكل موعد هنا مستند مستقلّ، فلا تتسابق دفعتان على نفس العلامة.
+  for (let i = 0; i < candidates.length; i += REMINDER_CONCURRENCY) {
+    const chunk = candidates.slice(i, i + REMINDER_CONCURRENCY);
+    const results = await Promise.all(chunk.map(processOne));
+    for (const r of results) {
+      sent += r.sent;
+      skipped += r.skipped;
     }
   }
 
@@ -179,4 +250,8 @@ module.exports = {
   maybeSendReminder,
   WINDOW_MINUTES,
   REMINDER_WINDOWS,
+  // مُصدَّران للاختبارات: إثبات أن الدفعة محدودة وأن التوازي مقيَّد يحتاج
+  // معرفة القيمتين لا تخمينهما.
+  MAX_APPOINTMENTS_PER_RUN,
+  REMINDER_CONCURRENCY,
 };

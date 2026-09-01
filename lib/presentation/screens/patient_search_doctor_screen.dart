@@ -40,22 +40,50 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
   List<Map<String, dynamic>> _allDoctors = [];
   bool _isLoadingDoctors = true;
 
+  // ===== المرحلة 7: ترقيم صفحات الأطباء =====
+  //
+  // كان الاستعلام يقرأ **مجموعة الأطباء كاملة** في كل مرة تُفتح فيها
+  // الشاشة. التكلفة تنمو مع عدد أطباء المنصّة كلها لا مع ما يراه المريض.
+  //
+  // الفلترة (تخصص، تقييم، سعر، نصّ) تقع على العميل بحكم التصميم القائم،
+  // فتقييد القراءة يعني أن الفلاتر تعمل على المحمَّل فقط. لذلك لا يُخفى
+  // ذلك: زرّ «تحميل المزيد» ظاهر ما بقيت صفحات، والعدّاد يقول «من أصل
+  // المحمَّل». إسقاط نتيجة بصمت أسوأ من تكلفة القراءة.
+  static const int _pageSize = 25;
+  DocumentSnapshot<Map<String, dynamic>>? _lastDoctorDoc;
+  bool _hasMoreDoctors = false;
+  bool _isLoadingMore = false;
+
   @override
   void initState() {
     super.initState();
     _fetchRealDoctors();
   }
 
-  Future<void> _fetchRealDoctors() async {
-    setState(() => _isLoadingDoctors = true);
+  Future<void> _fetchRealDoctors({bool loadMore = false}) async {
+    setState(() {
+      if (loadMore) {
+        _isLoadingMore = true;
+      } else {
+        _isLoadingDoctors = true;
+        _lastDoctorDoc = null;
+      }
+    });
     try {
       // الأطباء الموثَّقون فقط — مطابق لما تسمح به `firestore.rules` عند
       // الحجز، حتى لا يظهر في البحث طبيب لا يمكن الحجز عنده.
-      final snapshot = await FirebaseFirestore.instance
+      // الترتيب بالاسم يعطي صفحات مستقرّة (مؤشّر لا إزاحة).
+      // الفهرس `role + isVerified + name` مُعلَن في `firestore.indexes.json`.
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: 'doctor')
           .where('isVerified', isEqualTo: true)
-          .get();
+          .orderBy('name')
+          .limit(_pageSize);
+      if (loadMore && _lastDoctorDoc != null) {
+        query = query.startAfterDocument(_lastDoctorDoc!);
+      }
+      final snapshot = await query.get();
 
       // المرحلة 2: طبيب موقوف (`disabled: true`) يبقى `isVerified: true` —
       // تمييز متعمَّد بين «غير موثَّق» و«موثَّق لكن موقوف مؤقتاً» (راجع
@@ -97,14 +125,26 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
 
       if (mounted) {
         setState(() {
-          _allDoctors = doctors;
+          if (loadMore) {
+            _allDoctors = [..._allDoctors, ...doctors];
+          } else {
+            _allDoctors = doctors;
+          }
+          // المؤشّر من **المستندات** لا من المرشَّح بعد إسقاط الموقوفين،
+          // وإلا انقطع التسلسل عند صفحة كلّها موقوفون.
+          if (snapshot.docs.isNotEmpty) _lastDoctorDoc = snapshot.docs.last;
+          _hasMoreDoctors = snapshot.docs.length == _pageSize;
           _isLoadingDoctors = false;
+          _isLoadingMore = false;
         });
       }
     } catch (e) {
       AppLogger.info('Error fetching doctors: $e');
       if (mounted) {
-        setState(() => _isLoadingDoctors = false);
+        setState(() {
+          _isLoadingDoctors = false;
+          _isLoadingMore = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('حدث خطأ في تحميل الأطباء'),
@@ -442,11 +482,35 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'النتائج (${filteredDoctors.length})',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          _hasMoreDoctors
+              ? 'النتائج (${filteredDoctors.length} من المحمَّل)'
+              : 'النتائج (${filteredDoctors.length})',
+          style: Theme.of(context).textTheme.titleSmall,
         ),
-        const SizedBox(height: 12),
-        ...filteredDoctors.map((doctor) => _buildDoctorCard(doctor)).toList(),
+        const SizedBox(height: AppSpacing.md),
+        ...filteredDoctors.map(_buildDoctorCard),
+        // الفلاتر تعمل على المحمَّل فقط، فبقاء صفحات يُقال صراحةً بدل أن
+        // يظنّ المريض أن هذا كل ما في المنصّة.
+        if (_hasMoreDoctors) ...[
+          const SizedBox(height: AppSpacing.sm),
+          if (_isLoadingMore)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(AppSpacing.lg),
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: () => _fetchRealDoctors(loadMore: true),
+              icon: const Icon(Icons.expand_more),
+              label: const Text('تحميل المزيد من الأطباء'),
+            ),
+        ],
       ],
     );
   }
