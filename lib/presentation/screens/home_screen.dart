@@ -1,7 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
 import 'admin/admin_home_screen.dart';
+import 'notifications_screen.dart';
 import 'doctor_application_screen.dart';
 import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
@@ -29,6 +31,7 @@ class HomeScreen extends StatelessWidget {
             elevation: 1,
             backgroundColor: const Color(0xFF0097A7),
             actions: [
+              if (auth.userId != null) _NotificationBell(uid: auth.userId!),
               // تحديث صلاحية الإدارة — لازم بعد منحها بـ create_admin.js لأن
               // الجلسة الحالية تحمل رمزاً صدر قبل المنح. راجع
               // FirebaseAuthService.refreshClaims.
@@ -469,5 +472,70 @@ class HomeScreen extends StatelessWidget {
         );
         break;
     }
+  }
+}
+
+/// جرس الإشعارات مع عدّاد غير المقروء — استعلام محدود (`limit`) لا قراءة
+/// كاملة للمجموعة، ومحصور بمساواتين على `recipientId`/`isRead` فلا يحتاج
+/// فهرساً مركّباً جديداً (Firestore يدمج فهارس الحقل المفرد تلقائياً لمثل
+/// هذا الاستعلام).
+class _NotificationBell extends StatelessWidget {
+  const _NotificationBell({required this.uid});
+
+  final String uid;
+
+  static const _countCap = 50;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('notifications')
+          .where('recipientId', isEqualTo: uid)
+          .where('isRead', isEqualTo: false)
+          .limit(_countCap)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final unread = snapshot.data?.docs.length ?? 0;
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: 'الإشعارات',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen()),
+                );
+              },
+            ),
+            if (unread > 0)
+              Positioned(
+                top: 8,
+                right: 6,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  constraints: const BoxConstraints(minWidth: 16),
+                  child: Text(
+                    unread >= _countCap ? '$_countCap+' : '$unread',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 }

@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../../core/services/push_token_service.dart';
 
 /// خدمة Firebase للمصادقة وتخزين البيانات
 class FirebaseAuthService extends ChangeNotifier {
@@ -70,6 +71,9 @@ class FirebaseAuthService extends ChangeNotifier {
         AppLogger.error('تعذّر تحميل بيانات المستخدم', e);
       }
       await _loadAdminClaim(user, forceRefresh: false);
+      // تسجيل رمز إشعارات الجهاز — لا يحجب استعادة الجلسة ولا يفشلها؛ راجع
+      // توثيق PushTokenService لسبب أن كل فشل هنا آمن ومتوقَّع.
+      unawaited(PushTokenService.instance.registerForUser(user.uid));
     }
     _sessionRestored = true;
     notifyListeners();
@@ -473,6 +477,7 @@ class FirebaseAuthService extends ChangeNotifier {
 
   Future<void> logout() async {
     await _firebaseAuth.signOut();
+    PushTokenService.instance.onLogout();
     _userId = null;
     _userData = null;
     _emailVerified = false;

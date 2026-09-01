@@ -871,6 +871,153 @@ describe('notifications', () => {
       userId: PATIENT, title: 'رسالة مزيّفة', body: 'احضر الآن', read: false,
     }));
   });
+
+  test('العميل لا يستطيع إنشاء إشعار حتى بالحقل الجديد recipientId', async () => {
+    await assertFails(setDoc(doc(asPatient(), 'notifications', 'n_new'), {
+      recipientId: PATIENT, recipientRole: 'patient', type: 'booking_confirmed',
+      title: 'مزيّف', body: 'مزيّف', isRead: false,
+    }));
+  });
+
+  describe('إشعار قائم (recipientId)', () => {
+    const NOTIF_ID = 'notif_1';
+    beforeEach(async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'notifications', NOTIF_ID), {
+          recipientId: PATIENT, recipientRole: 'patient',
+          type: 'booking_confirmed', title: 'تم التأكيد', body: '...',
+          appointmentId: 'appt_x', isRead: false, createdAt: new Date(),
+          readAt: null,
+        });
+      });
+    });
+
+    test('المستلم يقرأ إشعاره', async () => {
+      await assertSucceeds(getDoc(doc(asPatient(), 'notifications', NOTIF_ID)));
+    });
+
+    test('مستخدم آخر لا يقرأ إشعار ليس له', async () => {
+      await assertFails(getDoc(doc(asOther(), 'notifications', NOTIF_ID)));
+    });
+
+    test('المستلم يعلّم إشعاره كمقروء', async () => {
+      await assertSucceeds(updateDoc(doc(asPatient(), 'notifications', NOTIF_ID), {
+        isRead: true, readAt: new Date(),
+      }));
+    });
+
+    test('مستخدم آخر لا يستطيع تعليم إشعار ليس له كمقروء', async () => {
+      await assertFails(updateDoc(doc(asOther(), 'notifications', NOTIF_ID), {
+        isRead: true,
+      }));
+    });
+
+    test('المستلم لا يستطيع تغيير recipientId', async () => {
+      await assertFails(updateDoc(doc(asPatient(), 'notifications', NOTIF_ID), {
+        recipientId: OTHER,
+      }));
+    });
+
+    test('المستلم لا يستطيع تغيير type', async () => {
+      await assertFails(updateDoc(doc(asPatient(), 'notifications', NOTIF_ID), {
+        type: 'booking_cancelled',
+      }));
+    });
+
+    test('المستلم لا يستطيع تغيير body أو title', async () => {
+      await assertFails(updateDoc(doc(asPatient(), 'notifications', NOTIF_ID), {
+        body: 'نص مزيَّف',
+      }));
+    });
+
+    test('المستلم لا يستطيع تغيير appointmentId', async () => {
+      await assertFails(updateDoc(doc(asPatient(), 'notifications', NOTIF_ID), {
+        appointmentId: 'appt_other',
+      }));
+    });
+
+    test('المستلم لا يستطيع تغيير createdAt', async () => {
+      await assertFails(updateDoc(doc(asPatient(), 'notifications', NOTIF_ID), {
+        createdAt: new Date('2020-01-01'),
+      }));
+    });
+
+    test('لا يمكن تمرير حقل ممنوع مع isRead في نفس الطلب', async () => {
+      await assertFails(updateDoc(doc(asPatient(), 'notifications', NOTIF_ID), {
+        isRead: true, type: 'booking_cancelled',
+      }));
+    });
+
+    test('طرف آخر لا يستطيع حذف إشعار ليس له', async () => {
+      await assertFails(deleteDoc(doc(asOther(), 'notifications', NOTIF_ID)));
+    });
+
+    test('المستلم يستطيع حذف إشعاره', async () => {
+      await assertSucceeds(deleteDoc(doc(asPatient(), 'notifications', NOTIF_ID)));
+    });
+  });
+});
+
+describe('users/{uid}/devices — رموز Push (المرحلة 3)', () => {
+  const deviceDoc = () => doc(asPatient(), 'users', PATIENT, 'devices', 'token_abc');
+
+  test('المستخدم يسجّل جهازه الخاص', async () => {
+    await assertSucceeds(setDoc(deviceDoc(), {
+      token: 'token_abc', platform: 'android', updatedAt: new Date(),
+    }));
+  });
+
+  test('لا يمكن تسجيل رمز بلا platform صالحة', async () => {
+    await assertFails(setDoc(deviceDoc(), {
+      token: 'token_abc', platform: 'windows', updatedAt: new Date(),
+    }));
+  });
+
+  test('لا يمكن تسجيل رمز فارغ', async () => {
+    await assertFails(setDoc(deviceDoc(), {
+      token: '', platform: 'android', updatedAt: new Date(),
+    }));
+  });
+
+  test('مستخدم لا يستطيع تسجيل جهاز باسم مستخدم آخر', async () => {
+    await assertFails(setDoc(
+      doc(asOther(), 'users', PATIENT, 'devices', 'token_xyz'), {
+        token: 'token_xyz', platform: 'ios', updatedAt: new Date(),
+      }));
+  });
+
+  describe('جهاز مسجَّل', () => {
+    beforeEach(async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'users', PATIENT, 'devices', 'token_abc'), {
+          token: 'token_abc', platform: 'android', updatedAt: new Date(),
+        });
+      });
+    });
+
+    test('صاحب الجهاز يقرأ قائمة أجهزته', async () => {
+      await assertSucceeds(getDoc(deviceDoc()));
+    });
+
+    test('مستخدم آخر لا يقرأ أجهزة غيره', async () => {
+      await assertFails(getDoc(doc(asOther(), 'users', PATIENT, 'devices', 'token_abc')));
+    });
+
+    test('مستخدم آخر لا يستطيع الكتابة فوق رمز مستخدم آخر', async () => {
+      await assertFails(setDoc(
+        doc(asOther(), 'users', PATIENT, 'devices', 'token_abc'), {
+          token: 'token_abc', platform: 'ios', updatedAt: new Date(),
+        }));
+    });
+
+    test('صاحب الجهاز يحذف رمزه (تسجيل خروج مثلاً)', async () => {
+      await assertSucceeds(deleteDoc(deviceDoc()));
+    });
+
+    test('مستخدم آخر لا يستطيع حذف رمز ليس له', async () => {
+      await assertFails(deleteDoc(doc(asOther(), 'users', PATIENT, 'devices', 'token_abc')));
+    });
+  });
 });
 
 describe('users — لا ترقية ذاتية عبر حقول توثيق الطبيب الجديدة (المرحلة 2)', () => {

@@ -654,26 +654,49 @@ service cloud.firestore {
     // ===================== الإشعارات =====================
 
     match /notifications/{notificationId} {
-      // المرسَل إليه فقط. الحقول الثلاثة تغطي الصيغ المستخدمة في التطبيق
-      // وفي Cloud Functions.
+      // المرسَل إليه فقط. `recipientId` هو الحقل القياسي منذ المرحلة 3
+      // (`functions/notifications.js`)؛ الثلاثة الأخرى تغطّي مستندات قديمة
+      // بصيغ سابقة (`userId`/`patientId`/`doctorId`) لا تزال قابلة للقراءة.
       function isRecipient() {
-        return isUser(resource.data.get('userId', ''))
+        return isUser(resource.data.get('recipientId', ''))
+            || isUser(resource.data.get('userId', ''))
             || isUser(resource.data.get('patientId', ''))
             || isUser(resource.data.get('doctorId', ''));
       }
 
       allow read: if isRecipient();
 
-      // الإنشاء من الخادم فقط (Cloud Functions تتجاوز هذه القواعد).
-      // لولا ذلك لاستطاع أي مستخدم إرسال إشعارات باسم العيادة.
+      // الإنشاء من الخادم فقط (Cloud Functions تتجاوز هذه القواعد، وتكتب
+      // من `queueNotification`/`createReminderIfAbsent`). لولا ذلك لاستطاع
+      // أي مستخدم إرسال إشعارات باسم العيادة، أو انتحال صفة مُرسِل.
       allow create: if false;
 
-      // للمستلم أن يعلّمها كمقروءة، لا أكثر.
+      // للمستلم أن يعلّمها كمقروءة، لا أكثر — لا `recipientId`، ولا
+      // `type`، ولا `body`، ولا `appointmentId`، ولا `createdAt`. الحقلان
+      // القديم (`read`) والجديد (`isRead`/`readAt`) مقبولان معاً للتوافق.
       allow update: if isRecipient()
-                    && request.resource.data.diff(resource.data)
-                        .affectedKeys().hasOnly(['read']);
+                    && changedKeys().hasOnly(['read', 'isRead', 'readAt']);
 
       allow delete: if isRecipient();
+    }
+
+    // ===================== أجهزة المستخدم (رموز Push) =====================
+
+    // `users/{uid}/devices/{deviceId}` — معرّف كل مستند هو رمز FCM نفسه،
+    // فتسجيل نفس الجهاز مرتين يستبدل لا يكرّر. المسار نفسه (`{userId}`
+    // جزء من مسار المستند لا حقل داخله) هو ما يمنع تسجيل رمز باسم مستخدم
+    // آخر أو الكتابة فوق رمز صاحبه — لا حاجة لفحص هوية إضافي داخل الحقول.
+    // القراءة من الخادم عبر Admin SDK فقط (تسليم Push)، فلا قاعدة قراءة
+    // إضافية له هنا.
+    match /users/{userId}/devices/{deviceId} {
+      allow read: if isUser(userId);
+
+      allow create, update: if isUser(userId)
+                            && request.resource.data.token is string
+                            && request.resource.data.token.size() > 0
+                            && request.resource.data.platform in ['android', 'ios', 'web'];
+
+      allow delete: if isUser(userId);
     }
 
     // ===================== الافتراضي =====================

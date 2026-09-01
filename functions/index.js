@@ -10,6 +10,7 @@ const {
   suspendDoctorCore,
   restoreDoctorCore,
 } = require("./admin");
+const { sendAppointmentRemindersCore } = require("./reminders");
 
 admin.initializeApp();
 
@@ -267,64 +268,30 @@ exports.restoreDoctor = callable("restoreDoctor", restoreDoctorCore);
 //
 // مجموعة `otps` صارت مغلقة بالكامل في `firestore.rules`.
 
-// إرسال الإشعارات بناءً على مواعيد الحضور وغيرها
-exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(async (context) => {
-  const now = admin.firestore.Timestamp.now();
-  const nowMillis = now.toMillis();
-  const db = admin.firestore();
-  const appointmentsSnapshot = await db.collection("appointments").where("status", "==", "Scheduled").get();
-
-  const batch = db.batch();
-
-  for (const doc of appointmentsSnapshot.docs) {
-    const data = doc.data();
-    if (!data.date || !data.time) continue;
-
-    // تجميع تاريخ ووقت الموعد
-    const parts = data.date.split("T")[0].split("-");
-    const hms = data.time.split(":");
-    let hour = parseInt(hms[0]);
-    const minute = parseInt(hms[1].split(" ")[0]);
-    if (data.time.includes("PM") && hour !== 12) hour += 12;
-    if (data.time.includes("AM") && hour === 12) hour = 0;
-
-    const appointmentDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), hour, minute);
-    const appointmentMillis = appointmentDate.getTime();
-
-    const diffMins = (appointmentMillis - nowMillis) / 60000;
-
-    // 1-hour prior reminder (تذكير قبلها بساعة)
-    if (diffMins <= 60 && diffMins > 55 && !data.reminderSent) {
-       // Save notification in firestore for the patient
-       const notifRef = db.collection("notifications").doc();
-       batch.set(notifRef, {
-         userId: data.patientId,
-         title: "تذكير بموعدك 🏥",
-         body: `موعدك مع ${data.doctorName} بعد أقل من ساعة (${data.time}).`,
-         read: false,
-         createdAt: admin.firestore.FieldValue.serverTimestamp()
-       });
-       batch.update(doc.ref, { reminderSent: true });
-    }
-
-    // 10-minutes after appointment logic (تحذير إذا لم يحضر المريض)
-    // وهنا يجب على الطبيب أن يغيّر حالة الموعد لـ "Completed" أو "NoShow"
-    // فلو مر 10 دقائق بعد الموعد ولسا Status بتاعه "Scheduled" معناه الطبيب معملوش Completed
-    if (diffMins < -10 && !data.noShowWarningSent) {
-      // إرسال تنبيه للمريض، وتغيير الحالة لـ Needs Confirmation من الطبيب مثلاً
-       const notifRef = db.collection("notifications").doc();
-       batch.set(notifRef, {
-         userId: data.patientId,
-         title: "تنبيه غياب ⚠️",
-         body: `عذراً، يبدو أنك لم تحضر موعدك مع ${data.doctorName} الساعة ${data.time}. يرجى تأكيد حضورك مع الطبيب.`,
-         read: false,
-         createdAt: admin.firestore.FieldValue.serverTimestamp()
-       });
-       batch.update(doc.ref, { noShowWarningSent: true, status: "PendingConfirmation" });
-    }
-  }
-
-  await batch.commit();
-  console.log("Appointment checks completed.");
-  return null;
-});
+/**
+ * تذكيرات المواعيد — مجدوَلة كل 5 دقائق. راجع `functions/reminders.js`.
+ *
+ * ## لماذا هذه ليست `checkAppointments` القديمة مُصلَحة
+ *
+ * النسخة القديمة كانت معطَّلة بالكامل: تستعلم `status == "Scheduled"`
+ * (القيمة الحقيقية دائماً `Booked`) وتقرأ حقلي `date`/`time` (الحقلان
+ * الحقيقيان `appointmentDate`/`startTime` منذ المرحلة 1أ) — أي أن
+ * استعلامها لا يُرجع شيئاً أبداً منذ أن كُتبت. لم يكن هناك «سلوك حالي
+ * تُبقي عليه» لتُعدَّل بأقل تغيير؛ لا شيء كان يعمل فعلياً، فأُعيد البناء
+ * كاملاً على البيانات الحقيقية ومحرّك `availability.js`.
+ *
+ * كذلك أُسقطت خطوة «تحذير الغياب» (تحويل الحالة تلقائياً إلى
+ * `PendingConfirmation` بعد 10 دقائق) عمداً: نطاق المرحلة 3 إشعارات
+ * وتذكيرات الموعد، لا تحوّلات حالة جديدة في دورة حياته — وهي أصلاً لم تكن
+ * تعمل قط لنفس السبب، فإسقاطها لا يُفقد سلوكاً حقيقياً قائماً.
+ */
+exports.sendAppointmentReminders = functions.pubsub
+  .schedule('every 5 minutes')
+  .onRun(async () => {
+    const result = await sendAppointmentRemindersCore({
+      db: admin.firestore(),
+      messaging: admin.messaging(),
+    });
+    functions.logger.info('sendAppointmentReminders اكتملت', result);
+    return null;
+  });

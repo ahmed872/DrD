@@ -53,6 +53,12 @@ const {
   BOOKING_HORIZON_DAYS,
   DEFAULT_SLOTS,
 } = require('./availability');
+const {
+  NOTIFICATION_TYPES,
+  queueNotification,
+  deliverPendingPush,
+} = require('./notifications');
+const admin = require('firebase-admin');
 
 /** الحد الأقصى لنص سبب الزيارة. */
 const MAX_REASON_LENGTH = 500;
@@ -90,8 +96,12 @@ function normalizeReason(raw) {
  * @param {string}  args.uid   معرّف صاحب الطلب من رمز المصادقة — لا من الطلب.
  * @param {object}  args.data  حمولة الطلب من العميل.
  * @param {Date}    [args.now] لحقن الوقت في الاختبارات.
+ * @param {import('firebase-admin').messaging.Messaging} [args.messaging]
+ *   لحقن بديل وهمي في الاختبارات — راجع `notifications.js`.
  */
-async function bookAppointmentCore({ db, uid, data, now = new Date() }) {
+async function bookAppointmentCore({
+  db, uid, data, now = new Date(), messaging = admin.messaging(),
+}) {
   if (!uid || typeof uid !== 'string') {
     fail('unauthenticated', 'unauthenticated', 'يجب تسجيل الدخول أولاً');
   }
@@ -235,11 +245,35 @@ async function bookAppointmentCore({ db, uid, data, now = new Date() }) {
       createdAt: new Date(),
     });
 
-    return { appointmentId, duplicate: false };
+    // 5.هـ — إشعارات الحدث. داخل نفس المعاملة فتصبح in-app فوراً بذرّية
+    // الحجز نفسه — لا إشعار بلا حجز ناجح فعلاً. تسليم Push بعدها بعيداً عن
+    // المعاملة (راجع `notifications.js`).
+    const notificationCtx = {
+      doctorName: doctor.name, patientName: patient.name, date, startTime: time,
+    };
+    const notificationRefs = [
+      queueNotification(tx, db, {
+        recipientId: uid, recipientRole: 'patient',
+        type: NOTIFICATION_TYPES.BOOKING_CONFIRMED,
+        appointmentId, metadata: notificationCtx,
+      }),
+      queueNotification(tx, db, {
+        recipientId: doctorId, recipientRole: 'doctor',
+        type: NOTIFICATION_TYPES.NEW_APPOINTMENT,
+        appointmentId, metadata: notificationCtx,
+      }),
+    ];
+
+    return { appointmentId, duplicate: false, notificationRefs };
   });
 
+  if (!outcome.duplicate && outcome.notificationRefs) {
+    await deliverPendingPush({ db, messaging, refs: outcome.notificationRefs });
+  }
+
   return {
-    ...outcome,
+    appointmentId: outcome.appointmentId,
+    duplicate: outcome.duplicate,
     slotId,
     doctorId,
     appointmentDate: date,

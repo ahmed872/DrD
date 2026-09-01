@@ -51,6 +51,12 @@ const {
   planSlotReservation,
   planSlotRelease,
 } = require('./availability');
+const {
+  NOTIFICATION_TYPES,
+  queueNotification,
+  deliverPendingPush,
+} = require('./notifications');
+const admin = require('firebase-admin');
 
 /** أقل مدة قبل الموعد يُسمح خلالها بالإلغاء. */
 const CANCEL_DEADLINE_MINUTES = 60;
@@ -113,8 +119,11 @@ function assertValidAppointmentId(id) {
  * @param {string} args.uid  معرّف صاحب الطلب من رمز المصادقة.
  * @param {object} args.data `{ appointmentId, reason? }`.
  * @param {Date}   [args.now]
+ * @param {import('firebase-admin').messaging.Messaging} [args.messaging]
  */
-async function cancelAppointmentCore({ db, uid, data, now = new Date() }) {
+async function cancelAppointmentCore({
+  db, uid, data, now = new Date(), messaging = admin.messaging(),
+}) {
   if (!uid || typeof uid !== 'string') {
     fail('unauthenticated', 'unauthenticated', 'يجب تسجيل الدخول أولاً');
   }
@@ -203,8 +212,31 @@ async function cancelAppointmentCore({ db, uid, data, now = new Date() }) {
       updatedAt: new Date(),
     });
 
-    return { duplicate: false };
+    // إشعارا الحدث — للمريض تأكيد، وللطبيب إبلاغ. راجع تعليق الحجز
+    // (`booking.js`) عن سبب الكتابة هنا داخل المعاملة تحديداً.
+    const notificationCtx = {
+      doctorName: appt.doctorName, patientName: appt.patientName,
+      date: appt.appointmentDate, startTime: appt.startTime,
+    };
+    const notificationRefs = [
+      queueNotification(tx, db, {
+        recipientId: uid, recipientRole: 'patient',
+        type: NOTIFICATION_TYPES.BOOKING_CANCELLED,
+        appointmentId, metadata: notificationCtx,
+      }),
+      queueNotification(tx, db, {
+        recipientId: appt.doctorId, recipientRole: 'doctor',
+        type: NOTIFICATION_TYPES.APPOINTMENT_CANCELLED,
+        appointmentId, metadata: notificationCtx,
+      }),
+    ];
+
+    return { duplicate: false, notificationRefs };
   });
+
+  if (!outcome.duplicate && outcome.notificationRefs) {
+    await deliverPendingPush({ db, messaging, refs: outcome.notificationRefs });
+  }
 
   return {
     ok: true,
@@ -260,8 +292,11 @@ async function detectCompletedDuplicateReschedule(db, appointmentId, pre, newDat
  * @param {string} args.uid  معرّف صاحب الطلب من رمز المصادقة.
  * @param {object} args.data `{ appointmentId, newDate, newTime, reason? }`.
  * @param {Date}   [args.now]
+ * @param {import('firebase-admin').messaging.Messaging} [args.messaging]
  */
-async function rescheduleAppointmentCore({ db, uid, data, now = new Date() }) {
+async function rescheduleAppointmentCore({
+  db, uid, data, now = new Date(), messaging = admin.messaging(),
+}) {
   if (!uid || typeof uid !== 'string') {
     fail('unauthenticated', 'unauthenticated', 'يجب تسجيل الدخول أولاً');
   }
@@ -452,6 +487,7 @@ async function rescheduleAppointmentCore({ db, uid, data, now = new Date() }) {
       updatedAt: new Date(),
     });
 
+    let notificationRefs = [];
     if (!slotAlreadyIn) {
       tx.set(newAppointmentRef, {
         doctorId,
@@ -475,10 +511,37 @@ async function rescheduleAppointmentCore({ db, uid, data, now = new Date() }) {
         rescheduledFrom: appointmentId,
         createdAt: new Date(),
       });
+
+      // إشعارا الحدث — على معرّف الموعد **الجديد**، فطلب مكرَّر (يعيد إنتاج
+      // نفس newAppointmentId) لا يكتب إشعاراً ثانياً بفضل نفس المعرّف الحتمي.
+      const notificationCtx = {
+        doctorName: doctor.name, patientName: patient.name || appt.patientName,
+        date: newDate, startTime: newTime,
+        oldDate: appt.appointmentDate, oldStartTime: appt.startTime,
+      };
+      notificationRefs = [
+        queueNotification(tx, db, {
+          recipientId: uid, recipientRole: 'patient',
+          type: NOTIFICATION_TYPES.BOOKING_RESCHEDULED,
+          appointmentId: newAppointmentId, metadata: notificationCtx,
+        }),
+        queueNotification(tx, db, {
+          recipientId: doctorId, recipientRole: 'doctor',
+          type: NOTIFICATION_TYPES.APPOINTMENT_RESCHEDULED,
+          appointmentId: newAppointmentId, metadata: notificationCtx,
+        }),
+      ];
     }
 
-    return { appointmentId: newAppointmentId, previousAppointmentId: appointmentId, duplicate: slotAlreadyIn };
+    return {
+      appointmentId: newAppointmentId, previousAppointmentId: appointmentId,
+      duplicate: slotAlreadyIn, notificationRefs,
+    };
   });
+
+  if (!outcome.duplicate && outcome.notificationRefs?.length) {
+    await deliverPendingPush({ db, messaging, refs: outcome.notificationRefs });
+  }
 
   return {
     ok: true,
