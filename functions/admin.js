@@ -154,10 +154,22 @@ async function approveDoctorCore({ db, uid, auth, data }) {
 
     // دمج لا استبدال: يحافظ على أي بيانات عيادة سبق للمستخدم كتابتها
     // (لا يوجد عادة، لكن لا حاجة للافتراض).
+    // ===== المرحلة 9: تصفير المُجمَّع عند الاعتماد =====
+    //
+    // دفاع ثانٍ خلف قاعدة الإنشاء: الحساب الذي وُثِّق للتوّ لم يستقبل
+    // مراجعة واحدة بصفته طبيباً، فمُجمَّعه صفر بحكم التعريف. تثبيت ذلك هنا
+    // يغلق أي قيمة سبقت إحكام القاعدة — حساباً أُنشئ قبل هذا الإصلاح
+    // ببذرة تقييم، أو مستنداً كُتب بمسار إداري سابق.
+    //
+    // ولا يمسّ طبيباً قائماً: `approveDoctor` لا تعمل إلا على طلب معلَّق،
+    // وطبيب نشط أُوقف ثم استُعيد يمرّ بـ `restoreDoctor` لا بهذه.
     tx.update(userRef, {
       role: 'doctor',
       isVerified: true,
       disabled: false,
+      rating: 0,
+      reviews: 0,
+      ratingSum: 0,
       verificationStatus: 'approved',
       verificationSubmittedAt: app.submittedAt || now,
       verifiedAt: now,

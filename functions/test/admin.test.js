@@ -453,3 +453,28 @@ describe('دورة حياة كاملة: تقديم → قبول → إيقاف �
     expect(actions).toEqual(['doctor.approved', 'doctor.suspended', 'doctor.unsuspended']);
   });
 });
+
+describe('اعتماد الطبيب يصفّر المُجمَّع (المرحلة 9)', () => {
+  test('قيمة تقييم سابقة على الحساب لا تنجو من الاعتماد', async () => {
+    // دفاع ثانٍ خلف قاعدة الإنشاء: حساب أُنشئ قبل إحكام القاعدة ببذرة
+    // تقييم كان سيظهر في البحث بخمس نجوم بلا زيارة واحدة.
+    await db.collection('users').doc('seededDoc').set({
+      role: 'patient', name: 'مهاجم', email: 's@e.com',
+      rating: 5, reviews: 500, ratingSum: 2500,
+    });
+    await db.collection('doctorApplications').doc('seededDoc').set({
+      uid: 'seededDoc', status: 'pending', submittedAt: new Date(),
+    });
+
+    await approveDoctorCore({
+      db, uid: 'adminUid', auth: { token: { admin: true } },
+      data: { uid: 'seededDoc' },
+    });
+
+    const after = (await db.collection('users').doc('seededDoc').get()).data();
+    expect(after.role).toBe('doctor');
+    expect(after.rating).toBe(0);
+    expect(after.reviews).toBe(0);
+    expect(after.ratingSum).toBe(0);
+  });
+});

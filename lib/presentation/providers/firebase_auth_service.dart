@@ -481,8 +481,12 @@ class FirebaseAuthService extends ChangeNotifier {
   /// تسجيل الخروج
 
   Future<void> logout() async {
+    // حذف رمز الجهاز **قبل** الخروج: قاعدة `devices` تشترط `isUser(userId)`،
+    // فبعد `signOut()` لا هوية تُثبت الملكية ويبقى الرمز مسجَّلاً — فتصل
+    // إشعارات هذا الحساب لمن يدخل بعده على نفس الجهاز. راجع
+    // `PushTokenService.onLogout`.
+    await PushTokenService.instance.onLogout();
     await _firebaseAuth.signOut();
-    PushTokenService.instance.onLogout();
     _userId = null;
     _userData = null;
     _emailVerified = false;

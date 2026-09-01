@@ -100,7 +100,21 @@ service cloud.firestore {
     // وإلا توقّف الحجز عند كل طبيب قائم.
     function isBookableDoctor(doctorId) {
       let d = userData(doctorId);
-      return d.role == 'doctor' && d.get('isVerified', false) == true;
+      return d.role == 'doctor'
+          && d.get('isVerified', false) == true
+          // ===== المرحلة 9: إغلاق انحراف عن الخادم =====
+          //
+          // المرحلة 2 أضافت `disabled` وحدّثت `fetchBookableDoctor` في
+          // `functions/availability.js` لتفحصه، لكن هذه الدالة بقيت على
+          // شرطين. ومسار الحجز المباشر من العميل ما زال مفتوحاً
+          // (`clientDirectBookingEnabled`)، فالفارق ليس نظرياً: عميل
+          // معدَّل كان يُنشئ قفل خانة ثم موعداً عند طبيب أوقفته الإدارة،
+          // فيسقط معنى الإيقاف كلّه — وهو الإجراء الوحيد المتاح للإدارة
+          // حين يُساء استعمال حساب طبيب.
+          //
+          // `get('disabled', false)`: الأطباء السابقون للمرحلة 2 لا
+          // يحملون الحقل، فغيابه يعني «غير موقوف» لا يعني الرفض.
+          && d.get('disabled', false) != true;
     }
 
     // السعة المسموح بها لخانة هذا الطبيب، كما يعلنها مستنده هو — لا كما
@@ -208,9 +222,39 @@ service cloud.firestore {
       //
       // حسابات الأطباء تُنشأ الآن من Admin SDK وحده:
       //   node scripts/promote_to_doctor.js --uid=<uid> --apply
+      // ===== المرحلة 9: الحقول الخادمية محميّة عند الإنشاء أيضاً =====
+      //
+      // كانت `keepsProtectedFields()` تحرس **التحديث** وحده، فبقي باب
+      // مفتوح عند الإنشاء: يكتب المستخدم مستنده الأول بما يشاء من الحقول
+      // المجمَّعة. والمسار مكتمل لا نظري:
+      //
+      //   يسجّل بـ `rating: 5, reviews: 500, ratingSum: 2500`
+      //     → يتقدّم بطلب طبيب
+      //       → يوافق المدير (`approveDoctor` لا يصفّر المُجمَّع)
+      //         → يظهر في البحث بخمس نجوم وخمسمئة مراجعة بلا زيارة واحدة.
+      //
+      // والتقييم هو ما يختار المريض عليه، فهذا التفافٌ كامل على سلطة
+      // المراجعات التي بُنيت في المرحلة 4.
+      //
+      // ونفس الباب كان يقبل `verificationStatus: 'approved'` — حقل وصفي
+      // تقرأه لوحة الإدارة و`doctorAccountStateFrom`، فيُظهر حالة كاذبة.
+      //
+      // الحلّ: الحقول التي لا يكتبها إلا الخادم يجب أن تكون **غائبة** عند
+      // الإنشاء. الغياب لا الصفر: مستند جديد لا شأن له بها أصلاً.
+      function noServerOwnedFieldsOnCreate() {
+        return !request.resource.data.keys().hasAny([
+          'rating', 'reviews', 'ratingSum',
+          'disabled', 'verificationStatus',
+          'verifiedAt', 'verifiedBy', 'verificationSubmittedAt',
+          'suspendedAt', 'suspendedBy', 'suspensionReason',
+          'restoredAt', 'restoredBy',
+        ]);
+      }
+
       allow create: if isUser(userId)
                     && request.resource.data.role == 'patient'
-                    && request.resource.data.get('isVerified', false) == false;
+                    && request.resource.data.get('isVerified', false) == false
+                    && noServerOwnedFieldsOnCreate();
 
       // صاحب الحساب وحده، وبلا مساس بالحقول المحمية. لا استثناء لأحد —
       // كل ما عدا ذلك يمرّ عبر دوال الخادم.
@@ -433,7 +477,38 @@ service cloud.firestore {
                 || oldPatients.size() == newPatients.size());
       }
 
-      allow read: if isSignedIn();
+      // ===== المرحلة 9 — تقليل البيانات =====
+      //
+      // مستند الخانة يحمل `patientIds`، أي ربطاً طبياً صريحاً: مَن حجز عند
+      // أي طبيب في أي وقت. والطبيب يعلن تخصصه، فالربط وحده يكشف طبيعة
+      // الحالة. القاعدة السابقة كانت `allow read: if isSignedIn()`، و`read`
+      // تشمل `list` — أي أن أي حساب مسجَّل (يُنشأ في ثوانٍ) كان يستطيع سحب
+      // المجموعة كاملة باستعلام واحد. أُثبت ذلك على المحاكي قبل هذا التشديد.
+      //
+      // لا شاشة في التطبيق تستعلم `slots` إطلاقاً: التوافر يأتي من
+      // `getAvailability` وهي لا تُرجع `patientIds`، والقراءة المباشرة
+      // الوحيدة في `lib/` هي `BookingService.cancelAsDoctor` — قراءة مستند
+      // واحد بمعرّفه داخل معاملة. فإقفال `list` لا يكسر أي مسار قائم.
+      allow list: if false;
+
+      // `get` يبقى متاحاً للمسجَّلين **ما دام مفتاح الحجز المباشر مفتوحاً**:
+      // العميل المنشور القديم يقرأ القفل داخل معاملة الحجز، فتقييد القراءة
+      // الآن يكسر الحجز في الخانات الجماعية (مَن يحجز ثانياً ليس بعدُ في
+      // `patientIds`). حين يُقلب المفتاح — وهو انضباط النشر المكتوب أعلاه —
+      // يضيق `get` تلقائياً إلى صاحب الخانة ومَن فيها، دون تعديل لاحق.
+      //
+      // خطر متبقٍّ معلَن حتى ذلك الحين: مَن يعرف معرّف الخانة (وهو مشتقّ من
+      // الطبيب والتاريخ والوقت) يستطيع قراءة `patientIds` مستنداً مستنداً.
+      // الكشف الجماعي أُغلق؛ الكشف المستهدف لا يُغلق إلا بقلب المفتاح.
+      allow get: if isSignedIn()
+                 && (
+                   clientDirectBookingEnabled()
+                   // الخانة غير الموجودة لا تكشف شيئاً، وقراءتها جزء من
+                   // معاملة الإلغاء (موعد قديم قُفلت خانته أو حُذفت).
+                   || resource == null
+                   || isUser(resource.data.doctorId)
+                   || request.auth.uid in resource.data.patientIds
+                 );
 
       allow create: if clientDirectBookingEnabled()
                     && isSignedIn()
@@ -582,15 +657,43 @@ service cloud.firestore {
       // تكتبها لتمييز إلغاء الطبيب عن إلغاء المريض في السجل (راجع تعليق
       // تلك الدالة). حقل تصنيف لا بيانات حسّاسة، ولا يفتح شيئاً لم يكن
       // الطبيب يملكه أصلاً — فهو أصلاً يملك تغيير `status` إلى `Cancelled`.
+      // ===== المرحلة 9: الحالات النهائية نهائية =====
+      //
+      // كانت القاعدة تفحص قيمة الحالة الجديدة ولا تنظر إلى الحالية، فكان
+      // الطبيب ينقل موعداً **ملغى** إلى `Booked`. والإلغاء يكون قد حرّر
+      // قفل الخانة، فينتج موعد يشغل وقتاً لا قفل يقابله — وهو بعينه
+      // «موعد بلا خانة» الذي أُغلق في المرحلة صفر، عائداً من جهة التحديث
+      // لا الإنشاء. ويمكن عندئذ لمريض آخر أن يحجز نفس الوقت.
+      //
+      // وكذلك `Completed` → `Booked`: يمحو سجل زيارة وقعت فعلاً، وعليها
+      // بُنيت أهلية المراجعة والإحصاءات.
+      //
+      // القاعدة الآن: لا خروج من حالة نهائية إلى حالة نشطة. والتصحيح بين
+      // الحالات النهائية يبقى متاحاً (مكتمل ↔ لم يحضر) لأنه تصحيح سريري
+      // مشروع لا إحياء لموعد.
+      function isTerminalStatus(value) {
+        return value in ['Completed', 'Cancelled', 'NoShow'];
+      }
+
+      function isActiveStatus(value) {
+        return value in ['Booked', 'PendingConfirmation'];
+      }
+
       allow update: if isDoctorOwner()
                     && changedKeys().hasOnly(
                          ['status', 'notes', 'cancelledAt', 'cancelledBy',
                           'completedAt', 'updatedAt'])
                     && (
                       !('status' in changedKeys())
-                      || request.resource.data.status in
-                         ['Booked', 'Completed', 'Cancelled', 'NoShow',
-                          'PendingConfirmation']
+                      || (
+                        request.resource.data.status in
+                          ['Booked', 'Completed', 'Cancelled', 'NoShow',
+                           'PendingConfirmation']
+                        && !(
+                          isTerminalStatus(resource.data.status)
+                          && isActiveStatus(request.resource.data.status)
+                        )
+                      )
                     );
 
       // لا حذف — الإلغاء يتم بتغيير الحالة، حتى يبقى سجل العيادة كاملاً.
