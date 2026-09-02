@@ -153,7 +153,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('الإشعارات'),
-        centerTitle: true,
       ),
       body: RefreshIndicator(
         onRefresh: _loadFirstPage,

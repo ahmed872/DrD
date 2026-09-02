@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_spacing.dart';
+import '../widgets/app_widgets.dart';
 import '../providers/firebase_auth_service.dart';
 import 'forgot_password_screen.dart';
 
@@ -351,42 +352,27 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                 ),
 
-                // رسالة الخطأ
+                // رسالة الحالة — خطأً كانت أو نجاحاً.
+                //
+                // المرحلة 11: كانت قناة واحدة تُعرض دائماً بلوح أحمر، فيظهر
+                // نجاح التسجيل بوصفه خطأً. صارتا قناتين بنبرتين، والمكوّن
+                // مشترك مع بقية الشاشات (`MessageBanner`).
                 Consumer<FirebaseAuthService>(
                   builder: (context, auth, _) {
-                    if (auth.errorMessage != null) {
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 16),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.errorContainer,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                                color: Theme.of(context).colorScheme.error),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.error_outline,
-                                  color: Theme.of(context).colorScheme.error),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  auth.errorMessage!,
-                                  style: TextStyle(
-                                      color:
-                                          Theme.of(context).colorScheme.error),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
+                    final error = auth.errorMessage;
+                    final success = auth.successMessage;
+                    if (error == null && success == null) {
+                      return const SizedBox.shrink();
                     }
-                    return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.lg),
+                      child: MessageBanner(
+                        message: error ?? success!,
+                        tone: error != null
+                            ? BannerTone.danger
+                            : BannerTone.success,
+                      ),
+                    );
                   },
                 ),
 
@@ -450,39 +436,9 @@ class _LoginScreenState extends State<LoginScreen> {
           icon,
           color: Theme.of(context).colorScheme.primary,
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant, width: 1.5),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: Theme.of(context).colorScheme.primary,
-            width: 2,
-          ),
-        ),
-        filled: true,
-        fillColor: Theme.of(context).colorScheme.surface,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-        labelStyle: TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w500,
-          backgroundColor: Theme.of(context).colorScheme.surface,
-        ),
-        hintStyle: TextStyle(
-          color: Theme.of(context).colorScheme.outline,
-          fontSize: 13,
-        ),
+        // بلا إطار ولا تعبئة ولا تسمية عائمة محلياً: كلّها في
+        // `inputDecorationTheme`. كانت مكرّرة هنا بلون تعبئة أبيض وتسمية
+        // بخلفية بيضاء، فظهرت لطخة بيضاء فوق صفحة رمادية تحت كل تسمية.
       ),
       style: TextStyle(
         fontSize: 15,
@@ -510,35 +466,6 @@ class _LoginScreenState extends State<LoginScreen> {
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           onPressed: () => setState(() => _showPassword = !_showPassword),
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant, width: 1.5),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: Theme.of(context).colorScheme.primary,
-            width: 2,
-          ),
-        ),
-        filled: true,
-        fillColor: Theme.of(context).colorScheme.surface,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-        labelStyle: TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w500,
-          backgroundColor: Theme.of(context).colorScheme.surface,
         ),
       ),
       style: TextStyle(

@@ -36,7 +36,15 @@ class NextAppointmentCard extends StatelessWidget {
 
     return AppCard(
       emphasized: true,
-      tone: scheme.primaryContainer,
+      // البطاقة البارزة: نبرة العلامة في الفاتح، وسطح مرتفع في الليلي.
+      //
+      // `primaryContainer` في الليلي فيروزيّ داكن، فتصير أكبر بطاقة في
+      // الشاشة لوحاً فيروزياً يبتلع ما حوله — «الأسطح الفيروزية الداكنة
+      // الضخمة» التي رُصدت على الجهاز. السطح المرتفع يبرزها بالطبقة لا
+      // باللون، وتبقى العلامة في الأيقونة والنصّ.
+      tone: Theme.of(context).brightness == Brightness.dark
+          ? scheme.surfaceContainerHigh
+          : scheme.primaryContainer,
       onTap: onTap,
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(

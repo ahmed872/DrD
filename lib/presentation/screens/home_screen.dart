@@ -12,6 +12,7 @@ import '../widgets/app_widgets.dart';
 import '../widgets/patient_home_section.dart';
 import '../widgets/doctor_summary_card.dart';
 import 'doctor_application_screen.dart';
+import '../widgets/doctor_application_card.dart';
 import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
 import 'doctor_patients_screen.dart';
@@ -201,8 +202,20 @@ class HomeScreen extends StatelessWidget {
                     // الترتيب مقصود: الموعد القادم، ثم البحث، ثم الإجراءات
                     // السريعة، ثم بقيّة المواعيد. الأهمّ أعلى الشاشة بلا تمرير.
                     else ...[
-                      if (auth.userId != null)
+                      if (auth.userId != null) ...[
                         PatientHomeSection(patientId: auth.userId!),
+                        // مدخل الانضمام كطبيب وحالته.
+                        //
+                        // كان `case 'doctor_application'` أدناه معرَّفاً بلا
+                        // أي مستدعٍ في التطبيق كلّه — شاشة كاملة لا يصل
+                        // إليها أحد. موضعها هنا مقصود: بعد ما يخصّ المريض
+                        // من مواعيد وبحث، لا فوقه.
+                        DoctorApplicationCard(
+                          uid: auth.userId!,
+                          onOpen: () =>
+                              _handleServiceTap(context, 'doctor_application'),
+                        ),
+                      ],
                     ],
 
                     const SizedBox(height: AppSpacing.xxl),

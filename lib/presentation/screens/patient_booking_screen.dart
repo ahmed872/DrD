@@ -80,7 +80,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   }
 
   late TextEditingController _searchController;
-  String _selectedSpecialization = 'جميع التخصصات / All';
+  String _selectedSpecialization = 'جميع التخصصات';
   String? _selectedDoctorId;
 
   /// الخانة المختارة كما وصفها الخادم — لا تاريخ ولا وقت يبنيهما التطبيق.
@@ -115,7 +115,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
               .toLowerCase()
               .contains(_searchController.text.toLowerCase());
 
-      final matchesSpec = _selectedSpecialization == 'جميع التخصصات / All' ||
+      final matchesSpec = _selectedSpecialization == 'جميع التخصصات' ||
           doctor['specialization']
               .contains(_selectedSpecialization.split(' / ')[0]);
 
@@ -128,7 +128,6 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('احجز موعد'),
-        centerTitle: true,
         elevation: 1,
       ),
       body: _isLoadingDoctors
@@ -164,7 +163,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(
-          'ابحث عن طبيب / Search Doctor',
+          'ابحث عن طبيب',
           style: Theme.of(context)
               .textTheme
               .titleMedium
@@ -175,7 +174,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           controller: _searchController,
           onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
-            hintText: 'اسم الطبيب أو التخصص / Doctor name or specialty',
+            hintText: 'اسم الطبيب أو التخصص',
             prefixIcon: const Icon(Icons.search),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -188,15 +187,15 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           reverse: true,
           child: Row(
             children: [
-              _specChip('جميع التخصصات / All', 'جميع التخصصات / All'),
+              _specChip('جميع التخصصات', 'جميع التخصصات'),
               const SizedBox(width: 8),
-              _specChip('أسنان / Dentistry', 'أسنان / Dentistry'),
+              _specChip('أسنان', 'أسنان'),
               const SizedBox(width: 8),
-              _specChip('نساء / Obstetrics', 'نساء / Obstetrics'),
+              _specChip('نساء', 'نساء'),
               const SizedBox(width: 8),
-              _specChip('جلدية / Dermatology', 'جلدية / Dermatology'),
+              _specChip('جلدية', 'جلدية'),
               const SizedBox(width: 8),
-              _specChip('عام / General', 'عام / General Practice'),
+              _specChip('عام', 'عام'),
             ],
           ),
         ),
@@ -265,7 +264,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(
-          'الأطباء المتاحون / Available Doctors',
+          'الأطباء المتاحون',
           style: Theme.of(context)
               .textTheme
               .titleMedium
@@ -462,7 +461,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(
-          'سبب الزيارة / Reason for Visit',
+          'سبب الزيارة',
           style: Theme.of(context)
               .textTheme
               .titleMedium
@@ -473,7 +472,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           maxLines: 4,
           onChanged: (value) => setState(() => _consultationReason = value),
           decoration: InputDecoration(
-            hintText: 'اشرح سبب الزيارة / Describe your reason for visit',
+            hintText: 'اشرح سبب زيارتك باختصار',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
             ),

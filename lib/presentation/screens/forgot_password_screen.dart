@@ -26,13 +26,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.primary,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('استرجاع كلمة المرور'),
-        centerTitle: true,
       ),
       body: SingleChildScrollView(
         child: ContentWidthLimit(

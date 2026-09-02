@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/config/legal_config.dart';
+import '../../core/theme/app_spacing.dart';
+import '../widgets/app_surfaces.dart';
 import '../../data/services/account_service.dart';
 import '../providers/firebase_auth_service.dart';
 
@@ -37,8 +39,6 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       appBar: AppBar(
         title: const Text('إعداداتي'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
         elevation: 1,
       ),
       body: Consumer<FirebaseAuthService>(
@@ -472,36 +472,39 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
     }
   }
 
+  /// إجراءات الحساب.
+  ///
+  /// ## المرحلة 11: الأحمر يدلّ على الخطر، لا يملأ الشاشة
+  ///
+  /// كان القسم لوحاً أحمر كامل الإشباع بحدّ أحمر، وداخله زرّ خروج **أحمر
+  /// ممتلئ**. عملياً: الخروج — وهو إجراء يومي غير مؤذٍ — كان يبدو أخطر ما
+  /// في التطبيق، وحذف الحساب يضيع داخل نفس الكتلة الحمراء. رُصد على جهاز
+  /// حقيقي بوصفه «كتلة حمراء ضخمة في الإعدادات».
+  ///
+  /// الآن: الخروج زرّ محايد بحدّ، والحذف سطر مكبوح تحت فاصل، بلونٍ يدلّ
+  /// على الخطر في النصّ والأيقونة وحدهما. الخطورة تبقى مقروءة — والتأكيد
+  /// المزدوج هو الحاجز الحقيقي لا اللون.
   Widget _buildLogoutSection(FirebaseAuthService auth) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.errorContainer,
-        border: Border.all(color: Theme.of(context).colorScheme.error),
-        borderRadius: BorderRadius.circular(12),
-      ),
+    final scheme = Theme.of(context).colorScheme;
+    return AppCard(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _isDeleting ? null : () => _logout(auth),
-              icon: const Icon(Icons.logout),
-              label: const Text('تسجيل الخروج'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-                foregroundColor: Theme.of(context).colorScheme.onError,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
+          OutlinedButton.icon(
+            onPressed: _isDeleting ? null : () => _logout(auth),
+            icon: const Icon(Icons.logout, size: 20),
+            label: const Text('تسجيل الخروج'),
           ),
-          const SizedBox(height: 12),
-          // حذف الحساب — إجراء لا رجعة فيه، فشكله ثانوي لا زرّ ممتلئ
-          // كتسجيل الخروج: لا يُضغط بالخطأ، ولا يُخفى.
-          SizedBox(
-            width: double.infinity,
+          const SizedBox(height: AppSpacing.lg),
+          Divider(color: scheme.outlineVariant, height: 1),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            'حذف الحساب إجراء نهائي لا يمكن التراجع عنه.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
             child: TextButton.icon(
               onPressed: _isDeleting ? null : _confirmDeleteAccount,
               icon: _isDeleting
@@ -512,15 +515,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                     )
                   : const Icon(Icons.delete_forever_outlined, size: 20),
               label: Text(_isDeleting ? 'جارٍ الحذف…' : 'حذف حسابي نهائياً'),
-              // `onErrorContainer` لا `error`: هذا الزرّ يقع **داخل** لوح
-              // `errorContainer`، والدور المقابل لخلفية هو ما يُقاس تباينه
-              // في `theme_widgets_test.dart`. قياس الوضع الليلي:
-              // `onErrorContainer` يعطي 7.24:1 و`error` يعطي 5.51:1 —
-              // كلاهما فوق حدّ 4.5، لكن الأول هو الزوج المضمون في
-              // الوضعين معاً، والوحيد الذي يبقى صحيحاً لو تغيّر النسق.
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
-              ),
+              style: TextButton.styleFrom(foregroundColor: scheme.error),
             ),
           ),
         ],

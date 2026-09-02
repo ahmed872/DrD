@@ -126,7 +126,6 @@ class _PatientRateDoctorScreenState extends State<PatientRateDoctorScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('تقييم الطبيب'),
-        centerTitle: true,
         backgroundColor: Colors.green,
         elevation: 0,
       ),

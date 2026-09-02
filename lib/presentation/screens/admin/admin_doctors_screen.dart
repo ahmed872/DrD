@@ -3,6 +3,7 @@ import '../../widgets/role_guard.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_spacing.dart';
 import '../../../data/services/admin_service.dart';
 
 enum DoctorFilter { pending, active, suspended, rejected }
@@ -167,53 +168,101 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     );
   }
 
+  /// تاريخ الإرسال بصيغة مقروءة. `submittedAt` قد يكون `Timestamp` أو
+  /// غائباً في مستندات قديمة، فيُعرض شرطة بدل انهيار.
+  static String _submittedLabel(Object? raw) {
+    if (raw is! Timestamp) return 'تاريخ الإرسال غير معروف';
+    final d = raw.toDate();
+    return 'قُدّم في ${d.year}/${d.month}/${d.day}';
+  }
+
   void _openApplicationDetail(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     showModalBottomSheet(
       context: context,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('التخصص: ${data['specialization'] ?? '—'}',
-                textAlign: TextAlign.right),
-            const SizedBox(height: 8),
-            Text('ملاحظات: ${data['note'] ?? '—'}', textAlign: TextAlign.right),
-            if (_filter == DoctorFilter.rejected) ...[
-              const SizedBox(height: 8),
-              Text('سبب الرفض: ${data['rejectionReason'] ?? '—'}',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            ],
-            const SizedBox(height: 20),
-            if (_filter == DoctorFilter.pending) ...[
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _runAction(() => _adminService.approveDoctor(doc.id));
-                },
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.tertiary,
-                    foregroundColor: Theme.of(context).colorScheme.onTertiary),
-                // النصّ كان `onPrimary` فوق خلفية `tertiary` — الزوج الخاطئ.
-                child: const Text('قبول'),
+      // النموذج قد يطول بملاحظات المتقدّم، والشاشة قد تكون قصيرة: قابل
+      // للتمرير ومحصور دون حافة النظام.
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('طلب انضمام كطبيب',
+                        style: Theme.of(context).textTheme.titleLarge),
+                  ),
+                  StatusChip(
+                    label: _filter.label,
+                    tone: _filter == DoctorFilter.pending
+                        ? StatusTone.warning
+                        : StatusTone.danger,
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: () async {
-                  Navigator.pop(context);
-                  final reason = await _askReason('سبب الرفض');
-                  if (reason == null || reason.isEmpty) return;
-                  _runAction(() => _adminService.rejectDoctor(doc.id, reason));
-                },
-                child: Text('رفض',
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error)),
+              const SizedBox(height: AppSpacing.lg),
+              DetailRow(
+                label: 'التخصص',
+                value: (data['specialization'] ?? '—').toString(),
+                icon: Icons.medical_services_outlined,
               ),
+              DetailRow(
+                label: 'تاريخ الإرسال',
+                value: _submittedLabel(data['submittedAt']),
+                icon: Icons.event_outlined,
+              ),
+              DetailRow(
+                label: 'معرّف المتقدّم',
+                value: doc.id,
+                icon: Icons.badge_outlined,
+              ),
+              DetailRow(
+                label: 'ملاحظات المتقدّم',
+                value: (data['note'] ?? '').toString().isEmpty
+                    ? '—'
+                    : data['note'].toString(),
+                icon: Icons.notes_outlined,
+              ),
+              if (_filter == DoctorFilter.rejected)
+                DetailRow(
+                  label: 'سبب الرفض',
+                  value: (data['rejectionReason'] ?? '—').toString(),
+                  icon: Icons.block_outlined,
+                ),
+              const SizedBox(height: AppSpacing.xl),
+              if (_filter == DoctorFilter.pending) ...[
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _runAction(() => _adminService.approveDoctor(doc.id));
+                  },
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.tertiary,
+                      foregroundColor:
+                          Theme.of(context).colorScheme.onTertiary),
+                  // النصّ كان `onPrimary` فوق خلفية `tertiary` — الزوج الخاطئ.
+                  child: const Text('قبول'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    final reason = await _askReason('سبب الرفض');
+                    if (reason == null || reason.isEmpty) return;
+                    _runAction(
+                        () => _adminService.rejectDoctor(doc.id, reason));
+                  },
+                  child: Text('رفض',
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -275,11 +324,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     return RoleGuard(
       requireAdmin: true,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('إدارة الأطباء'),
-          centerTitle: true,
-          backgroundColor: Theme.of(context).colorScheme.primary,
-        ),
+        appBar: AppBar(title: const Text('الأطباء وطلبات الانضمام')),
         body: Column(
           children: [
             SizedBox(
@@ -302,7 +347,20 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
             ),
             Expanded(
               child: _docs.isEmpty && !_isLoading
-                  ? const Center(child: Text('لا يوجد شيء هنا'))
+                  ? EmptyState(
+                      icon: _filter == DoctorFilter.pending
+                          ? Icons.inbox_outlined
+                          : Icons.people_outline,
+                      title: switch (_filter) {
+                        DoctorFilter.pending => 'لا طلبات قيد المراجعة',
+                        DoctorFilter.rejected => 'لا طلبات مرفوضة',
+                        DoctorFilter.active => 'لا أطباء نشطين',
+                        DoctorFilter.suspended => 'لا أطباء موقوفين',
+                      },
+                      message: _filter == DoctorFilter.pending
+                          ? 'ستظهر هنا طلبات الأطباء فور إرسالها.'
+                          : null,
+                    )
                   : ListView.builder(
                       itemCount: _docs.length + (_hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
@@ -322,10 +380,30 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                             isApplication
                                 ? (data['specialization'] ?? '—')
                                 : (data['name'] ?? '—'),
-                            textAlign: TextAlign.right,
                           ),
-                          subtitle: Text(doc.id, textAlign: TextAlign.right),
-                          trailing: const DirectionalForwardIcon(),
+                          // التاريخ لا المعرّف: «متى قُدّم» هو ما يرتّب به
+                          // المدير عمله. المعرّف يبقى في التفاصيل لمن يحتاجه.
+                          subtitle: Text(
+                            isApplication
+                                ? _submittedLabel(data['submittedAt'])
+                                : (data['specialization'] ?? '—'),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              StatusChip(
+                                label: _filter.label,
+                                tone: switch (_filter) {
+                                  DoctorFilter.pending => StatusTone.warning,
+                                  DoctorFilter.rejected => StatusTone.danger,
+                                  DoctorFilter.active => StatusTone.success,
+                                  DoctorFilter.suspended => StatusTone.neutral,
+                                },
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              const DirectionalForwardIcon(),
+                            ],
+                          ),
                           onTap: () => isApplication
                               ? _openApplicationDetail(doc)
                               : _openUserDetail(doc),

@@ -31,6 +31,18 @@ class FirebaseAuthService extends ChangeNotifier {
   String? _userId;
   Map<String, dynamic>? _userData;
   String? _errorMessage;
+
+  /// ===== المرحلة 11: النجاح ليس خطأً =====
+  ///
+  /// كانت رسائل النجاح تُكتب في `_errorMessage` نفسه، وتعرضها شاشة الدخول
+  /// داخل لوح أحمر بأيقونة خطأ. فمن سجّل حساباً **بنجاح** كان يُستقبل بلافتة
+  /// حمراء تطلب منه «تفعيل بريده الإلكتروني» — بينما إرسال رسالة التفعيل
+  /// معطَّل (أدناه)، وشرط التفعيل عند الدخول معطَّل أيضاً. أي أن الواجهة
+  /// كانت تطالب بخطوة لا وجود لها ولا يفرضها النظام. رُصد على جهاز حقيقي.
+  ///
+  /// الفصل هنا يصحّح الواجهة **دون المساس بسياسة المصادقة**: لا تفعيل
+  /// أُضيف، ولا شرط أُلغي.
+  String? _successMessage;
   bool _isLoading = false;
   bool _emailVerified = false;
 
@@ -107,6 +119,9 @@ class FirebaseAuthService extends ChangeNotifier {
   String? get userId => _userId;
   Map<String, dynamic>? get userData => _userData;
   String? get errorMessage => _errorMessage;
+
+  /// رسالة نجاح لتعرضها الواجهة بأسلوب إيجابي لا بأسلوب خطأ.
+  String? get successMessage => _successMessage;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _userId != null;
   bool get emailVerified => _emailVerified;
@@ -148,6 +163,7 @@ class FirebaseAuthService extends ChangeNotifier {
     try {
       _isLoading = true;
       _errorMessage = null;
+      _successMessage = null;
       notifyListeners();
 
       // التسجيل الذاتي للمرضى فقط.
@@ -249,7 +265,8 @@ class FirebaseAuthService extends ChangeNotifier {
       _emailVerified = true;
 
       _isLoading = false;
-      _errorMessage = 'تم إنشاء الحساب! تحقق من بريدك الإلكتروني لتفعيله ✅';
+      _errorMessage = null;
+      _successMessage = 'تم إنشاء حسابك بنجاح، أهلاً بك في DrD';
       notifyListeners();
       return true;
     } catch (e) {
@@ -266,6 +283,7 @@ class FirebaseAuthService extends ChangeNotifier {
     try {
       _isLoading = true;
       _errorMessage = null;
+      _successMessage = null;
       notifyListeners();
 
       String cleanedPhone = normalizePhoneNumber(phoneNumber);
@@ -385,7 +403,7 @@ class FirebaseAuthService extends ChangeNotifier {
           _userData!['emailVerified'] = true;
         }
 
-        _errorMessage = 'تم تفعيل البريد الإلكتروني بنجاح! ✅';
+        _successMessage = 'تم تفعيل البريد الإلكتروني بنجاح';
       }
 
       _isLoading = false;
@@ -405,6 +423,7 @@ class FirebaseAuthService extends ChangeNotifier {
     try {
       _isLoading = true;
       _errorMessage = null;
+      _successMessage = null;
       notifyListeners();
 
       final user = _firebaseAuth.currentUser;
@@ -425,7 +444,7 @@ class FirebaseAuthService extends ChangeNotifier {
 
       await user.sendEmailVerification();
 
-      _errorMessage = 'تم إعادة إرسال رسالة التفعيل ✅';
+      _successMessage = 'تم إعادة إرسال رسالة التفعيل';
       _isLoading = false;
       notifyListeners();
       return true;
@@ -443,6 +462,7 @@ class FirebaseAuthService extends ChangeNotifier {
     try {
       _isLoading = true;
       _errorMessage = null;
+      _successMessage = null;
       notifyListeners();
 
       String cleanedEmail = email.trim().toLowerCase();
@@ -459,8 +479,9 @@ class FirebaseAuthService extends ChangeNotifier {
       await _firebaseAuth.sendPasswordResetEmail(email: cleanedEmail);
 
       _isLoading = false;
-      _errorMessage =
-          'تم إرسال لينك تغيير كلمة المرور إلى $cleanedEmail ✅\nتحقق من بريدك الإلكتروني';
+      _errorMessage = null;
+      _successMessage =
+          'أرسلنا رابط تغيير كلمة المرور إلى $cleanedEmail، تحقّق من بريدك';
       notifyListeners();
 
       AppLogger.info('📧 Password reset email sent to: $cleanedEmail');
@@ -505,6 +526,7 @@ class FirebaseAuthService extends ChangeNotifier {
     try {
       _isLoading = true;
       _errorMessage = null;
+      _successMessage = null;
       notifyListeners();
 
       String cleanedEmail = email.trim().toLowerCase();
@@ -513,7 +535,8 @@ class FirebaseAuthService extends ChangeNotifier {
       if (currentUser != null && currentUser.email == cleanedEmail) {
         await currentUser.updatePassword(newPassword);
         _isLoading = false;
-        _errorMessage = 'تم تحديث كلمة المرور بنجاح';
+        _errorMessage = null;
+        _successMessage = 'تم تحديث كلمة المرور بنجاح';
         notifyListeners();
         return true;
       } else {
@@ -571,7 +594,8 @@ class FirebaseAuthService extends ChangeNotifier {
       _userData!.addAll(updates);
 
       _isLoading = false;
-      _errorMessage = 'تم حفظ البيانات بنجاح ✅';
+      _errorMessage = null;
+      _successMessage = 'تم حفظ البيانات بنجاح';
       notifyListeners();
       return true;
     } catch (e) {

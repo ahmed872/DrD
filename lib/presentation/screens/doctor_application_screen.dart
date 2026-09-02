@@ -79,8 +79,6 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('التقدّم كطبيب'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: uid == null
           ? const Center(child: Text('يجب تسجيل الدخول'))

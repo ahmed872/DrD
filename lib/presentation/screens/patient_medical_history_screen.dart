@@ -86,9 +86,7 @@ class _PatientMedicalHistoryScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('السجل الطبي / Medical History'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        title: const Text('السجل الطبي'),
         elevation: 1,
       ),
       body: _isLoading
@@ -119,9 +117,9 @@ class _PatientMedicalHistoryScreenState
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          _filterChip('الكل / All', 0),
+          _filterChip('الكل', 0),
           const SizedBox(width: 8),
-          _filterChip('زيارات / Visits', 1),
+          _filterChip('زيارات', 1),
         ],
       ),
     );
@@ -234,7 +232,7 @@ class _PatientMedicalHistoryScreenState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'ملاحظات / Notes',
+                          'ملاحظات',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,

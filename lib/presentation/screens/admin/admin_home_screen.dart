@@ -35,8 +35,6 @@ class _AdminHomeBody extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('لوحة الإدارة'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),

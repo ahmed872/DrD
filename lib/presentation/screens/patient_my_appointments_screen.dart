@@ -594,7 +594,6 @@ class _PatientMyAppointmentsScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('مواعيدي'),
-        centerTitle: true,
         elevation: 1,
       ),
       body: Column(

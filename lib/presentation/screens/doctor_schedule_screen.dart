@@ -211,8 +211,6 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('جدول المواعيد'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
         elevation: 1,
       ),
       body: _isLoading
@@ -255,7 +253,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                                     padding:
                                         const EdgeInsets.symmetric(vertical: 4),
                                     child: Text(
-                                      'أعد المحاولة / Retry',
+                                      'أعد المحاولة',
                                       style: TextStyle(
                                         color: Theme.of(context)
                                             .colorScheme
@@ -369,7 +367,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              'اختر التاريخ / Select Date',
+              'اختر التاريخ',
               style: Theme.of(
                 context,
               ).textTheme.titleSmall?.copyWith(
@@ -499,7 +497,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     return Column(
       children: [
         Text(
-          '\ مواعيد / \ Appointments',
+          'المواعيد',
           style: Theme.of(
             context,
           )
@@ -602,20 +600,20 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
               const SizedBox(height: 12),
               _infoRow(
                 icon: Icons.person,
-                label: 'المريض / Patient',
+                label: 'المريض',
                 value: appointment['patientName'],
                 valueEn: appointment['patientNameEn'],
               ),
               const SizedBox(height: 12),
               _infoRow(
                 icon: Icons.phone,
-                label: 'الهاتف / Phone',
+                label: 'الهاتف',
                 value: appointment['phone'],
               ),
               const SizedBox(height: 12),
               _infoRow(
                 icon: Icons.medical_services,
-                label: 'السبب / Reason',
+                label: 'السبب',
                 value: appointment['reason'],
               ),
               const SizedBox(height: 12),
@@ -623,7 +621,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   appointment['notes'].isNotEmpty)
                 _infoRow(
                   icon: Icons.note_alt,
-                  label: 'ملاحظات / Notes',
+                  label: 'ملاحظات',
                   value: appointment['notes'],
                 ),
               const SizedBox(height: 16),
@@ -685,7 +683,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
               appointment['doctorNote'] ?? appointment['notes'] ?? '',
             ),
             icon: const Icon(Icons.edit_note),
-            label: const Text('إضافة ملاحظة طبيب / Add Note'),
+            label: const Text('إضافة ملاحظة طبيب'),
             style: OutlinedButton.styleFrom(
                 foregroundColor: Theme.of(context).colorScheme.primary),
           ),
@@ -706,7 +704,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
       builder: (context) {
         return AlertDialog(
           title: const Text(
-            'ملاحظة طبية / Medical Note',
+            'ملاحظة طبية',
             textAlign: TextAlign.right,
           ),
           content: TextField(
@@ -744,7 +742,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   );
                 } catch (e) {}
               },
-              child: const Text('حفظ / Save'),
+              child: const Text('حفظ'),
             ),
           ],
         );
@@ -784,7 +782,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           child: ElevatedButton.icon(
             onPressed: () => _completeAppointment(appointment['id']),
             icon: const Icon(Icons.check),
-            label: const Text('إنهاء / Complete'),
+            label: const Text('إنهاء الكشف'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.tertiary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -797,7 +795,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
             onPressed:
                 canCancel ? () => _cancelAppointment(appointment['id']) : null,
             icon: const Icon(Icons.close),
-            label: const Text('إلغاء / Cancel'),
+            label: const Text('إلغاء الموعد'),
             style: OutlinedButton.styleFrom(
               foregroundColor: canCancel
                   ? Theme.of(context).colorScheme.error
@@ -896,7 +894,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                 Icon(Icons.cancel,
                     color: Theme.of(context).colorScheme.onPrimary),
                 SizedBox(width: 8),
-                Text('✅ تم إلغاء الموعد / Cancelled'),
+                Text('✅ تم إلغاء الموعد'),
               ],
             ),
             backgroundColor: Theme.of(context).colorScheme.error,
@@ -936,7 +934,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                       onPressed: () => Navigator.pop(context),
                     ),
                     Text(
-                      'تفاصيل الموعد / Details',
+                      'تفاصيل الموعد',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context).colorScheme.primary,
@@ -996,7 +994,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            'السبب / Reason',
+                            'السبب',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Theme.of(context)
@@ -1048,7 +1046,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            'ملاحظات الطبيب / Notes',
+                            'ملاحظات الطبيب',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Theme.of(context)
@@ -1108,7 +1106,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                     ),
                     onPressed: () => Navigator.pop(context),
                     child: Text(
-                      'إغلاق / Close',
+                      'إغلاق',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onPrimary,
                         fontWeight: FontWeight.bold,

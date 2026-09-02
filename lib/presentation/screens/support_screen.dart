@@ -16,8 +16,6 @@ class SupportScreen extends StatelessWidget {
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       appBar: AppBar(
         title: const Text('الدعم الفني'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
         elevation: 1,
       ),
       body: SingleChildScrollView(

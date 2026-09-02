@@ -37,8 +37,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('لوحة تحكم الطبيب'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),

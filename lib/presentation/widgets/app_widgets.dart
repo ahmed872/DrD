@@ -260,6 +260,107 @@ class StatusChip extends StatelessWidget {
 }
 
 /// عنوان قسم مع إجراء اختياري على الطرف المقابل.
+/// نبرة الرسالة — تحدّد اللون والأيقونة معاً، فلا يعتمد المعنى على اللون
+/// وحده (شرط وصول).
+enum BannerTone { info, success, warning, danger }
+
+/// لافتة رسالة موحّدة: خطأ، نجاح، تنبيه، معلومة.
+///
+/// ## لماذا مكوّن واحد
+///
+/// كانت كل شاشة تبني لافتتها بنفسها: `Container` بحدّ `colorScheme.error`
+/// وخلفية `errorContainer` ونصّ بلون `error`. النتيجة نبرة واحدة لكل شيء —
+/// **حتى للنجاح**: من أنشأ حساباً بنجاح كان يرى لافتة حمراء بأيقونة خطأ.
+///
+/// وهي كذلك مكبوحة عمداً (المرحلة 11): خلفية خفيفة وشريط جانبي رفيع بدل
+/// لوح مشبع بحدّ عريض. الرسالة يجب أن تُقرأ، لا أن تُفزع.
+class MessageBanner extends StatelessWidget {
+  const MessageBanner({
+    super.key,
+    required this.message,
+    this.tone = BannerTone.info,
+    this.onDismiss,
+  });
+
+  final String message;
+  final BannerTone tone;
+  final VoidCallback? onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    final (Color accent, Color background, Color foreground, IconData icon) =
+        switch (tone) {
+      BannerTone.success => (
+          scheme.tertiary,
+          scheme.tertiaryContainer,
+          scheme.onTertiaryContainer,
+          Icons.check_circle_outline,
+        ),
+      BannerTone.warning => (
+          scheme.secondary,
+          scheme.secondaryContainer,
+          scheme.onSecondaryContainer,
+          Icons.warning_amber_outlined,
+        ),
+      BannerTone.danger => (
+          scheme.error,
+          scheme.errorContainer,
+          scheme.onErrorContainer,
+          Icons.error_outline,
+        ),
+      BannerTone.info => (
+          scheme.primary,
+          scheme.primaryContainer,
+          scheme.onPrimaryContainer,
+          Icons.info_outline,
+        ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        // شريط جانبي بدل حدّ محيط: يدلّ على النبرة بلا تأطير صارخ، ويبقى
+        // في جهة البداية فينقلب مع اتجاه اللغة.
+        border: BorderDirectional(
+          start: BorderSide(color: accent, width: 3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: accent, size: 20),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: foreground),
+            ),
+          ),
+          if (onDismiss != null)
+            IconButton(
+              onPressed: onDismiss,
+              icon: const Icon(Icons.close, size: 18),
+              color: foreground,
+              tooltip: 'إخفاء',
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              padding: EdgeInsets.zero,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class SectionHeader extends StatelessWidget {
   const SectionHeader({
     super.key,

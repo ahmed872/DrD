@@ -12,29 +12,44 @@ import 'app_typography.dart';
 class AppColors {
   const AppColors._();
 
-  /// الفيروزي الطبي — اللون المعتمد للتطبيق، وهو المستخدم في الشاشات
-  /// الأحدث ولون `theme_color` في manifest.json.
-  static const Color primary = Color(0xFF0097A7);
-  static const Color primaryDark = Color(0xFF00363D);
-  static const Color primaryLight = Color(0xFFB2EBF2);
+  // ===================== المرحلة 11: لوحة رعاية هادئة =====================
+  //
+  // ما أظهره الفحص على جهاز حقيقي: التطبيق يبدو «تقنياً» لا طبياً — خلفية
+  // ليلية تقارب الأسود (#0B1113)، وفيروزي فاتح مشبع (#7FD4DE) على كل زرّ،
+  // وكتل حمراء واسعة في الإعدادات. المريض لا يريد لوحة تحكم؛ يريد شاشة
+  // تطمئنه.
+  //
+  // المبدأ هنا: **الفاتح هو التجربة الأساسية**، والليلي نسخة هادئة منه لا
+  // نقيضه. لا أسود صريح، ولا نيون، ولا أحمر إلا حيث يكون الخطر حقيقياً.
 
-  /// نجمة التقييم. كانت تُرسم بلون `tertiary` المشتقّ من البذرة — بنفسجي
-  /// لا يقرأه أحد نجمةَ تقييم. الذهبي هو العرف، وتباينه على السطح الفاتح
-  /// كافٍ لأنه رمز لا نصّ.
-  static const Color rating = Color(0xFFE8A317);
+  /// الفيروزي الطبي — هوية DrD. أهدأ من السابق (#0097A7) وأقرب إلى الأزرق،
+  /// فيقرأ «رعاية» لا «تقنية». يبقى لون `theme_color` في manifest متوافقاً.
+  static const Color primary = Color(0xFF12707C);
+  static const Color primaryDark = Color(0xFF0A3B42);
+  static const Color primaryLight = Color(0xFFD6EBEE);
 
-  static const Color success = Color(0xFF2E7D32);
-  static const Color warning = Color(0xFFEF6C00);
+  /// نجمة التقييم — الذهبي عرفٌ لا يُستبدل، وتباينه كافٍ كرمز.
+  static const Color rating = Color(0xFFE0A02C);
+
+  /// أخضر طبي هادئ لا أخضر «نجاح» فاقع.
+  static const Color success = Color(0xFF2E7D5B);
+
+  /// كهرماني للتنبيه — ملحوظ بلا إنذار.
+  static const Color warning = Color(0xFFB86E00);
+
+  /// أحمر مكبوح: يُستعمل للنصّ والحدود والأيقونات، لا كخلفية لأقسام كاملة.
   static const Color danger = Color(0xFFB3261E);
 
-  /// خلفية الصفحة. كانت `#F5F7FA` — أفتح من أن تُميّز عن بطاقة بيضاء،
-  /// فبدت الشاشات مسطّحة بلا طبقات. هذه أعمق قليلاً فتظهر البطاقة فوقها.
-  static const Color surfaceLight = Color(0xFFEEF2F5);
-  static const Color surfaceDark = Color(0xFF0B1113);
+  // ===== الأسطح =====
+  //
+  // الفاتح: أزرق-رمادي شديد الفتحة يفصل الصفحة عن البطاقة البيضاء بلا
+  // رمادية باردة. الليلي: أزرق-رمادي معتم متدرّج الطبقات — لا #0B1113
+  // التي تجعل الشاشة حفرة سوداء، ولا لوح فيروزي داكن يبتلع المحتوى.
+  static const Color surfaceLight = Color(0xFFF3F7F9);
+  static const Color surfaceDark = Color(0xFF141B21);
 
-  /// سطح البطاقة — أبيض صريح في الفاتح، وأفتح من الخلفية في الليلي.
   static const Color cardLight = Color(0xFFFFFFFF);
-  static const Color cardDark = Color(0xFF161E21);
+  static const Color cardDark = Color(0xFF1C242B);
 }
 
 /// نسق التطبيق للوضعين الفاتح والليلي.
@@ -60,26 +75,53 @@ class AppTheme {
     // أدوار الأسطح تُضبط يدوياً: `fromSeed` يشتقّ رماديات مائلة إلى
     // الفيروزي، فتصير الخلفية والبطاقة متقاربتين ويختفي الإحساس بالطبقات.
     final scheme = colorScheme.copyWith(
-      // أدوار العلامة صريحة لا مشتقّة: `fromSeed` من بذرة فيروزية مشبعة
-      // يعطي `primaryContainer` سماوياً فاقعاً يشبه قلم التظليل، فتبدو
-      // البطاقة البارزة صارخة لا فاخرة. هذه أهدأ، وتباينها مقيس:
-      // 10.53:1 فاتح و7.81:1 ليلي بين الحاوية ونصّها.
-      primary: isDark ? const Color(0xFF7FD4DE) : const Color(0xFF00707C),
-      onPrimary: isDark ? const Color(0xFF00333A) : Colors.white,
+      // ===== أدوار العلامة صريحة لا مشتقّة =====
+      //
+      // `fromSeed` من بذرة فيروزية يعطي `primaryContainer` سماوياً فاقعاً
+      // يشبه قلم التظليل. القيم هنا مختارة ومقيسة (يحرسها
+      // `theme_widgets_test.dart` بحدّ 4.5:1)، والليلي مكتوم عمداً: فيروزي
+      // فاتح مشبع على سطح داكن هو ما جعل الأزرار تبدو نيون على الجهاز.
+      primary: isDark ? const Color(0xFF6FBAC4) : AppColors.primary,
+      onPrimary: isDark ? const Color(0xFF04333A) : Colors.white,
       primaryContainer:
-          isDark ? const Color(0xFF0D454D) : const Color(0xFFD2E9EC),
+          isDark ? const Color(0xFF12454D) : const Color(0xFFD8EBEE),
       onPrimaryContainer:
-          isDark ? const Color(0xFFBCE4EA) : const Color(0xFF04353B),
+          isDark ? const Color(0xFFC7E6EA) : AppColors.primaryDark,
+
+      // الثانوي أزرق هادئ — للمعلومة والحالة، لا لمنافسة زرّ الإجراء.
+      secondary: isDark ? const Color(0xFF9FBBD4) : const Color(0xFF3F6484),
+      onSecondary: isDark ? const Color(0xFF102434) : Colors.white,
+      secondaryContainer:
+          isDark ? const Color(0xFF23394C) : const Color(0xFFDDE7F0),
+      onSecondaryContainer:
+          isDark ? const Color(0xFFD6E4F0) : const Color(0xFF17303F),
+
+      // الثالثي = «النجاح» في هذا التطبيق (يُستعمل في رسائل التأكيد).
+      tertiary: isDark ? const Color(0xFF7FC0A2) : AppColors.success,
+      onTertiary: isDark ? const Color(0xFF06301F) : Colors.white,
+      tertiaryContainer:
+          isDark ? const Color(0xFF1B4434) : const Color(0xFFD8EDE2),
+      onTertiaryContainer:
+          isDark ? const Color(0xFFCCE8D9) : const Color(0xFF0C3A28),
+
+      // ===== الأسطح: طبقات مقروءة في الوضعين =====
       surface: isDark ? AppColors.cardDark : AppColors.cardLight,
       surfaceContainerLowest: isDark ? AppColors.surfaceDark : Colors.white,
       surfaceContainerLow:
-          isDark ? const Color(0xFF121A1D) : const Color(0xFFF7F9FB),
+          isDark ? const Color(0xFF182026) : const Color(0xFFF9FBFC),
       surfaceContainer:
-          isDark ? const Color(0xFF161E21) : const Color(0xFFF1F5F7),
+          isDark ? const Color(0xFF1C242B) : const Color(0xFFF3F7F9),
       surfaceContainerHigh:
-          isDark ? const Color(0xFF1B2528) : const Color(0xFFE9EFF2),
+          isDark ? const Color(0xFF222B33) : const Color(0xFFEBF1F4),
       surfaceContainerHighest:
-          isDark ? const Color(0xFF212C30) : const Color(0xFFE1E9ED),
+          isDark ? const Color(0xFF29333C) : const Color(0xFFE2EAEF),
+
+      // نصّ ثانوي مريح: رمادي مزرقّ لا رمادي ميت.
+      onSurfaceVariant:
+          isDark ? const Color(0xFFB4C0CA) : const Color(0xFF54636F),
+      outline: isDark ? const Color(0xFF43505B) : const Color(0xFFB9C6CF),
+      outlineVariant:
+          isDark ? const Color(0xFF2E3941) : const Color(0xFFDCE5EA),
     );
 
     return ThemeData(
@@ -112,30 +154,63 @@ class AppTheme {
         titleTextStyle: AppTypography.textTheme(scheme).titleLarge,
         iconTheme: IconThemeData(color: scheme.onSurface),
       ),
+      // ===== الحقول: ممتلئة بلا إطار (المرحلة 11) =====
+      //
+      // كان الحقل مؤطَّراً مع `floatingLabelBehavior: always`، فتستقرّ
+      // التسمية **فوق خطّ الإطار**: يفتح Flutter فجوة في الخطّ، ويظهر خلف
+      // التسمية لونُ ما تحت الحقل لا لون الحقل — لطخة رمادية تحت كل تسمية
+      // على شاشة الدخول. رُصدت في لقطة حقيقية بعد إعادة تلوين اللوحة.
+      //
+      // الحلّ ليس ضبط لون الفجوة (لا لون واحد يطابق كل أب: صفحة ملوّنة،
+      // وبطاقة بيضاء، وحوار)، بل ألّا تُوضع التسمية على خطّ أصلاً: حقل
+      // ممتلئ بلا إطار، والتسمية تطفو **داخله**. وهو كذلك أهدأ بصرياً:
+      // الحدود العريضة كانت جزءاً مما جعل الشاشات تبدو ثقيلة.
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? const Color(0xFF1A2226) : Colors.white,
-        // يمنع تداخل نص التسمية مع الحد عند الكتابة بالعربية.
-        floatingLabelBehavior: FloatingLabelBehavior.always,
+        fillColor: isDark ? const Color(0xFF222B33) : const Color(0xFFEDF2F5),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg,
           vertical: AppSpacing.lg,
         ),
+        // التسمية تلتصق بأعلى الحقل من الداخل، فلا تتداخل مع النصّ العربي.
+        alignLabelWithHint: true,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.input),
-          borderSide: BorderSide(color: colorScheme.outlineVariant),
+          borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.input),
-          borderSide: BorderSide(color: colorScheme.outlineVariant),
+          borderSide: BorderSide.none,
         ),
+        // التركيز يُرى بحلقة داخلية لا بخطّ يقطعه نصّ: الحقل يفتح فجوة
+        // للتسمية فقط حين تكون التسمية على الخطّ — وهي هنا داخل الحقل.
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.input),
-          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.input),
+          borderSide: BorderSide(color: scheme.error, width: 1.5),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.input),
+          borderSide: BorderSide(color: scheme.error, width: 2),
+        ),
+        labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+        hintStyle: TextStyle(color: scheme.onSurfaceVariant),
       ),
+      // ===== زرّ الإجراء: قويّ في الفاتح، نبريّ في الليلي =====
+      //
+      // Material يملأ الزرّ بـ `primary`. في الوضع الليلي `primary` لونٌ
+      // **فاتح** بطبيعته، فيصير كل زرّ رئيسي لوحاً فيروزياً ساطعاً بعرض
+      // الشاشة على خلفية داكنة — وهو بالضبط «الفيروزي الزائد» الذي رُصد
+      // على الجهاز. الزرّ النبري (`primaryContainer`) إجراء أساسي أيضاً في
+      // Material 3، لكنه يهدأ على السطح الداكن بدل أن يصرخ فيه.
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          backgroundColor: isDark ? scheme.primaryContainer : scheme.primary,
+          foregroundColor:
+              isDark ? scheme.onPrimaryContainer : scheme.onPrimary,
           // 48 بكسل هو الحد الأدنى الموصى به لمساحة اللمس، ومهم هنا لأن
           // كثيراً من المستخدمين كبار سن.
           minimumSize: const Size.fromHeight(52),
