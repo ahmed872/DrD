@@ -58,11 +58,14 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
             .where('status', isEqualTo: filter.name)
             .orderBy('submittedAt', descending: true);
       case DoctorFilter.active:
+        // بلا `where('disabled', isEqualTo: false)` عمداً — راجع
+        // `_hidesSuspended` أدناه: المساواة تستبعد كل مستند لا يحمل الحقل،
+        // وهم أغلب الأطباء. نفس الانضباط في شاشة البحث
+        // (`patient_search_doctor_screen.dart`).
         return db
             .collection('users')
             .where('role', isEqualTo: 'doctor')
-            .where('isVerified', isEqualTo: true)
-            .where('disabled', isEqualTo: false);
+            .where('isVerified', isEqualTo: true);
       case DoctorFilter.suspended:
         return db
             .collection('users')
@@ -81,6 +84,25 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     await _fetchPage();
   }
 
+  /// يُسقط الموقوفين من قائمة «النشطون» — بعد القراءة لا في الاستعلام.
+  ///
+  /// `where('disabled', isEqualTo: false)` في Firestore **لا** يطابق مستنداً
+  /// بلا الحقل. و`disabled` أُضيف في المرحلة 2، ولا سكربت الترحيل يكتبه،
+  /// فكان الفلتر يُخفي كل طبيب أقدم منه — أي القائمة كلها تقريباً — من
+  /// شاشة الإدارة. رُصد في مراجعة المرحلة 10 على المحاكي.
+  ///
+  /// الغياب يعني «غير موقوف»، تماماً كما تقرأه القواعد
+  /// (`get('disabled', false)`) والخادم (`disabled === true`).
+  ///
+  /// أثر جانبي مقبول: صفحة قد تعود بأقل من `_pageSize` عنصراً حين يقع
+  /// موقوف داخلها. البديل — استعلام لا يُرجع الأغلبية — أسوأ بكثير.
+  Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> _hidesSuspended(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    if (_filter != DoctorFilter.active) return docs;
+    return docs.where((d) => d.data()['disabled'] != true);
+  }
+
   Future<void> _fetchPage() async {
     Query<Map<String, dynamic>> query = _baseQuery(_filter).limit(_pageSize);
     if (_lastDoc != null) query = query.startAfterDocument(_lastDoc!);
@@ -88,7 +110,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     final snapshot = await query.get();
     if (!mounted) return;
     setState(() {
-      _docs.addAll(snapshot.docs);
+      _docs.addAll(_hidesSuspended(snapshot.docs));
       _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : _lastDoc;
       _hasMore = snapshot.docs.length == _pageSize;
       _isLoading = false;

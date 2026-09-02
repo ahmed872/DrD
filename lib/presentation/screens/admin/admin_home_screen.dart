@@ -47,10 +47,8 @@ class _AdminHomeBody extends StatelessWidget {
               title: 'طلبات توثيق قيد الانتظار',
               icon: Icons.pending_actions,
               color: Theme.of(context).colorScheme.secondary,
-              countFuture: applications
-                  .where('status', isEqualTo: 'pending')
-                  .count()
-                  .get(),
+              countFuture:
+                  _countOf(applications.where('status', isEqualTo: 'pending')),
               onTap: () =>
                   _openDoctors(context, initialFilter: DoctorFilter.pending),
             ),
@@ -59,12 +57,7 @@ class _AdminHomeBody extends StatelessWidget {
               title: 'أطباء نشطون',
               icon: Icons.verified,
               color: Theme.of(context).colorScheme.tertiary,
-              countFuture: users
-                  .where('role', isEqualTo: 'doctor')
-                  .where('isVerified', isEqualTo: true)
-                  .where('disabled', isEqualTo: false)
-                  .count()
-                  .get(),
+              countFuture: _activeDoctorCount(users),
               onTap: () =>
                   _openDoctors(context, initialFilter: DoctorFilter.active),
             ),
@@ -73,11 +66,9 @@ class _AdminHomeBody extends StatelessWidget {
               title: 'أطباء موقوفون',
               icon: Icons.block,
               color: Theme.of(context).colorScheme.error,
-              countFuture: users
+              countFuture: _countOf(users
                   .where('role', isEqualTo: 'doctor')
-                  .where('disabled', isEqualTo: true)
-                  .count()
-                  .get(),
+                  .where('disabled', isEqualTo: true)),
               onTap: () =>
                   _openDoctors(context, initialFilter: DoctorFilter.suspended),
             ),
@@ -121,6 +112,40 @@ class _AdminHomeBody extends StatelessWidget {
   }
 }
 
+/// عدد الأطباء النشطين = الموثَّقون ناقص الموقوفون منهم.
+///
+/// ## لماذا طرحٌ لا شرط ثالث
+///
+/// كان الاستعلام `where('disabled', isEqualTo: false)`. المساواة في
+/// Firestore لا تطابق **غياب** الحقل: مستند بلا `disabled` لا يدخل النتيجة
+/// أصلاً. و`disabled` أُضيف في المرحلة 2، ولا `grandfather_doctors.js`
+/// يكتبه (يقتصر على `isVerified`) — فكل طبيب أقدم منه، وكل طبيب رُقّي
+/// بالسكربت، بلا الحقل. النتيجة: «أطباء نشطون: 0» بينما العيادة تعمل.
+/// رُصد فعلياً في مراجعة المرحلة 10 على المحاكي: خمسة أطباء موثَّقين،
+/// والعدّاد صفر.
+///
+/// بقية النظام يعامل غياب الحقل بصوابه — القواعد
+/// (`d.get('disabled', false) != true`) و`fetchBookableDoctor`
+/// (`disabled === true`) — فكان هذا العدّاد وحده يقرأ الغياب «غير نشط».
+///
+/// الطرح يعيد الاتساق بلا هجرة بيانات ولا فهرس جديد: الموقوف من يحمل
+/// `disabled: true` صراحةً، ومن عداه نشط. استعلاما `count()` تجميعيان،
+/// وكلاهما مفهرس أصلاً (`users`: role+isVerified، وrole+isVerified+disabled).
+Future<int?> _activeDoctorCount(CollectionReference<Object?> users) async {
+  final verified = users
+      .where('role', isEqualTo: 'doctor')
+      .where('isVerified', isEqualTo: true);
+  final all = await verified.count().get();
+  final suspended =
+      await verified.where('disabled', isEqualTo: true).count().get();
+  final active = (all.count ?? 0) - (suspended.count ?? 0);
+  return active < 0 ? 0 : active;
+}
+
+/// عدّ بسيط لاستعلام تجميعي واحد — يوحّد نوع ما تعرضه البطاقة.
+Future<int?> _countOf(Query<Object?> query) async =>
+    (await query.count().get()).count;
+
 class _CountCard extends StatelessWidget {
   const _CountCard({
     required this.title,
@@ -133,7 +158,7 @@ class _CountCard extends StatelessWidget {
   final String title;
   final IconData icon;
   final Color color;
-  final Future<AggregateQuerySnapshot> countFuture;
+  final Future<int?> countFuture;
   final VoidCallback onTap;
 
   @override
@@ -153,10 +178,10 @@ class _CountCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              FutureBuilder<AggregateQuerySnapshot>(
+              FutureBuilder<int?>(
                 future: countFuture,
                 builder: (context, snapshot) {
-                  final count = snapshot.data?.count;
+                  final count = snapshot.data;
                   return Text(
                     count?.toString() ?? '—',
                     style: TextStyle(
