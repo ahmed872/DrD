@@ -34,11 +34,26 @@ const {
   getDocs,
 } = require('firebase/firestore');
 
+/**
+ * القواعد **كما تُنشر**: المساران المباشران مغلقان (المرحلة 10). هذه هي
+ * البيئة الافتراضية لكل اختبار في الملف ما لم يُقل غير ذلك.
+ */
 let testEnv;
-/** نفس القواعد بعد قلب مفتاح إقفال الحجز المباشر — راجع describe الأخير. */
-let lockedEnv;
-/** نفس القواعد بعد قلب مفتاح إقفال **الإلغاء** المباشر (المرحلة 1ب). */
-let cancelLockedEnv;
+/**
+ * نفس الملف والمفتاحان مفتوحان.
+ *
+ * فروع الحجز والإلغاء المباشر ما زالت في الملف خلف مفتاحيها. لولا هذه
+ * البيئة لصارت اختباراتها فارغة المعنى بعد الإقفال — تنجح لأن *كل* كتابة
+ * مباشرة مرفوضة، لا لأن الشرط الذي تدّعي اختباره يعمل. هنا تبقى تُثبت ما
+ * تدّعيه: السعة، والعدّاد، وهوية صاحب المقعد.
+ */
+let openEnv;
+/** الحجز مغلق والإلغاء مفتوح — لإثبات استقلال المفتاحين. */
+let openCancelOnlyEnv;
+/** الإلغاء مغلق والحجز مفتوح — الاتجاه المعاكس لنفس الإثبات. */
+let openBookingOnlyEnv;
+/** البيئة التي تشير إليها `asPatient()` وأخواتها الآن. */
+let activeEnv;
 
 const DOCTOR = 'doctor_1';
 const GROUP_DOCTOR = 'doctor_grouped';
@@ -65,33 +80,31 @@ const RULES = fs.readFileSync(
   'utf8'
 );
 
-/**
- * نفس ملف القواعد بعد إقفال الحجز المباشر من العميل.
- *
- * الإقفال خطوة نشر مستقلة (لا تُنفَّذ قبل أن يستخدم العميل المنشور الدالة)،
- * لكن سلوكه يجب أن يكون مُثبَتاً قبل ذلك لا بعده. لذلك يُشغَّل نفس الملف
- * مرتين بدل الاحتفاظ بنسختين تتباعدان.
- */
-const LOCKED_RULES = RULES.replace(
-  'function clientDirectBookingEnabled() { return true; }',
-  'function clientDirectBookingEnabled() { return false; }'
-);
+const BOOKING_CLOSED = 'function clientDirectBookingEnabled() { return false; }';
+const BOOKING_OPEN = 'function clientDirectBookingEnabled() { return true; }';
+const CANCEL_CLOSED = 'function clientDirectCancelEnabled() { return false; }';
+const CANCEL_OPEN = 'function clientDirectCancelEnabled() { return true; }';
 
 /**
- * نفس ملف القواعد بعد إقفال الإلغاء المباشر من العميل (المرحلة 1ب) —
- * بمعزل عن مفتاح الحجز، حتى يُثبَت أن كل مفتاح يعمل باستقلال عن الآخر.
+ * نُسخ من نفس الملف بمفتاحين مفتوحين أو مغلقاً/مفتوحاً.
+ *
+ * الاتجاه انقلب في المرحلة 10: كان المنشور مفتوحاً والاختبار يُقفل، وصار
+ * المنشور مغلقاً والاختبار يفتح. الملف واحد في الحالتين — لا نسخة ثانية
+ * من القواعد تتباعد عن الأولى.
  */
-const CANCEL_LOCKED_RULES = RULES.replace(
-  'function clientDirectCancelEnabled() { return true; }',
-  'function clientDirectCancelEnabled() { return false; }'
-);
+const OPEN_RULES = RULES.replace(BOOKING_CLOSED, BOOKING_OPEN)
+  .replace(CANCEL_CLOSED, CANCEL_OPEN);
+const OPEN_BOOKING_ONLY_RULES = RULES.replace(BOOKING_CLOSED, BOOKING_OPEN);
+const OPEN_CANCEL_ONLY_RULES = RULES.replace(CANCEL_CLOSED, CANCEL_OPEN);
 
 beforeAll(async () => {
-  if (LOCKED_RULES === RULES) {
-    throw new Error('تعذّر قلب مفتاح clientDirectBookingEnabled — تغيّرت صيغته؟');
+  // الحارس نفسه إثبات: لو عاد أحد المفتاحين إلى `true` في الملف المنشور
+  // لما وُجد النص المغلق، فيسقط الملف كله هنا بدل أن يمرّ صامتاً.
+  if (OPEN_BOOKING_ONLY_RULES === RULES) {
+    throw new Error('clientDirectBookingEnabled ليس مغلقاً في الملف المنشور');
   }
-  if (CANCEL_LOCKED_RULES === RULES) {
-    throw new Error('تعذّر قلب مفتاح clientDirectCancelEnabled — تغيّرت صيغته؟');
+  if (OPEN_CANCEL_ONLY_RULES === RULES) {
+    throw new Error('clientDirectCancelEnabled ليس مغلقاً في الملف المنشور');
   }
 
   testEnv = await initializeTestEnvironment({
@@ -99,28 +112,37 @@ beforeAll(async () => {
     firestore: { host: '127.0.0.1', port: 8080, rules: RULES },
   });
 
-  lockedEnv = await initializeTestEnvironment({
-    projectId: 'drd-rules-locked',
-    firestore: { host: '127.0.0.1', port: 8080, rules: LOCKED_RULES },
+  openEnv = await initializeTestEnvironment({
+    projectId: 'drd-rules-open',
+    firestore: { host: '127.0.0.1', port: 8080, rules: OPEN_RULES },
   });
 
-  cancelLockedEnv = await initializeTestEnvironment({
-    projectId: 'drd-rules-cancel-locked',
-    firestore: { host: '127.0.0.1', port: 8080, rules: CANCEL_LOCKED_RULES },
+  openCancelOnlyEnv = await initializeTestEnvironment({
+    projectId: 'drd-rules-locked',
+    firestore: { host: '127.0.0.1', port: 8080, rules: OPEN_CANCEL_ONLY_RULES },
   });
-});
+
+  openBookingOnlyEnv = await initializeTestEnvironment({
+    projectId: 'drd-rules-cancel-locked',
+    firestore: { host: '127.0.0.1', port: 8080, rules: OPEN_BOOKING_ONLY_RULES },
+  });
+  // أربع بيئات تتجاوز مهلة jest الافتراضية (5 ثوانٍ) على المحاكي.
+}, 60000);
 
 afterAll(async () => {
   if (testEnv) await testEnv.cleanup();
-  if (lockedEnv) await lockedEnv.cleanup();
-  if (cancelLockedEnv) await cancelLockedEnv.cleanup();
+  if (openEnv) await openEnv.cleanup();
+  if (openCancelOnlyEnv) await openCancelOnlyEnv.cleanup();
+  if (openBookingOnlyEnv) await openBookingOnlyEnv.cleanup();
 });
 
-beforeEach(async () => {
-  await testEnv.clearFirestore();
-
-  // بذور البيانات تُكتب بتجاوز القواعد، لتمثيل حالة قاعدة بيانات قائمة.
-  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+/**
+ * يزرع نفس البيانات في أي بيئة — البيئة المنشورة أو نسخة مفتوحة المفتاحين.
+ * البذور تُكتب بتجاوز القواعد، لتمثيل حالة قاعدة بيانات قائمة.
+ */
+async function seedInto(env) {
+  await env.clearFirestore();
+  await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
 
     await setDoc(doc(db, 'users', DOCTOR), {
@@ -157,18 +179,36 @@ beforeEach(async () => {
       appointmentDate: '2029-01-01', startTime: '09:00', status: 'Completed',
     });
   });
+}
+
+beforeEach(async () => {
+  activeEnv = testEnv;
+  await seedInto(testEnv);
 });
 
+/**
+ * تُستدعى في أول `describe` يحتاج فروع المسار المباشر مفتوحة.
+ *
+ * `beforeEach` الداخلي يعمل **بعد** الخارجي، فيغلب عليه: البذور تُكتب في
+ * البيئة المفتوحة، وتشير إليها `asPatient()` وأخواتها لبقية تلك المجموعة.
+ */
+function useOpenRules() {
+  beforeEach(async () => {
+    activeEnv = openEnv;
+    await seedInto(openEnv);
+  });
+}
+
 const asPatient = () =>
-  testEnv.authenticatedContext(PATIENT, { email: PATIENT_EMAIL }).firestore();
+  activeEnv.authenticatedContext(PATIENT, { email: PATIENT_EMAIL }).firestore();
 const asOther = () =>
-  testEnv.authenticatedContext(OTHER, { email: OTHER_EMAIL }).firestore();
-const asDoctor = () => testEnv.authenticatedContext(DOCTOR).firestore();
-const asAnon = () => testEnv.unauthenticatedContext().firestore();
+  activeEnv.authenticatedContext(OTHER, { email: OTHER_EMAIL }).firestore();
+const asDoctor = () => activeEnv.authenticatedContext(DOCTOR).firestore();
+const asAnon = () => activeEnv.unauthenticatedContext().firestore();
 // المرحلة 2: `admin` هنا Custom Claim، يُمرَّر كخيار مصادقة تماماً كالبريد —
 // نفس ما يحمله رمز Firebase Auth الحقيقي بعد `create_admin.js`.
 const asAdminUser = () =>
-  testEnv.authenticatedContext(ADMIN, { admin: true }).firestore();
+  activeEnv.authenticatedContext(ADMIN, { admin: true }).firestore();
 
 /**
  * حجز كما يفعله التطبيق تماماً: القفل والموعد في معاملة واحدة.
@@ -353,6 +393,12 @@ describe('تقييم الطبيب (الحقول المجمَّعة) — خادم
 });
 
 describe('slots — منع الحجز المزدوج', () => {
+  // فروع الحجز والإلغاء المباشر مغلقة في الملف المنشور (المرحلة 10)، وهذه
+  // المجموعة تختبر **جسدها**: السعة، والعدّاد، وهوية صاحب المقعد. تحت
+  // القواعد المنشورة كانت ستنجح كلها لسبب واحد بليد — كل كتابة مباشرة
+  // مرفوضة — فتفقد معناها. تُشغَّل هنا والمفتاحان مفتوحان.
+  useOpenRules();
+
   test('لا يمكن تجاوز سعة الخانة', async () => {
     // جوهر الضمان: الخانة سعتها 1 ومحجوزة بالفعل.
     await assertFails(updateDoc(doc(asOther(), 'slots', BOOKED_SLOT), {
@@ -384,7 +430,7 @@ describe('slots — منع الحجز المزدوج', () => {
     const gslot = slotId(GROUP_DOCTOR, '2030-04-04', '10:00');
 
     beforeEach(async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'slots', gslot), {
           doctorId: GROUP_DOCTOR, appointmentDate: '2030-04-04',
           startTime: '10:00', capacity: 4, bookedCount: 2,
@@ -422,10 +468,10 @@ describe('slots — منع الحجز المزدوج', () => {
     // إلا ما يطابق الاستخدام الحقيقي في `cancelAsDoctor`).
     const gslot = slotId(GROUP_DOCTOR, '2030-04-05', '11:00');
     const asGroupDoctor = () =>
-      testEnv.authenticatedContext(GROUP_DOCTOR).firestore();
+      activeEnv.authenticatedContext(GROUP_DOCTOR).firestore();
 
     beforeEach(async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'slots', gslot), {
           doctorId: GROUP_DOCTOR, appointmentDate: '2030-04-05',
           startTime: '11:00', capacity: 4, bookedCount: 2,
@@ -489,7 +535,7 @@ describe('slots — منع الحجز المزدوج', () => {
     });
 
     test('آخر مريض يغادر يُعيد الخانة صفراً بالكامل', async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'slots', gslot), {
           doctorId: GROUP_DOCTOR, appointmentDate: '2030-04-05',
           startTime: '11:00', capacity: 4, bookedCount: 1,
@@ -514,7 +560,7 @@ describe('slots — منع الحجز المزدوج', () => {
 
     test('حذف خانة فارغة يملكها الطبيب مقبول', async () => {
       const emptySlot = slotId(DOCTOR, '2030-04-06', '09:00');
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'slots', emptySlot), {
           doctorId: DOCTOR, appointmentDate: '2030-04-06', startTime: '09:00',
           capacity: 1, bookedCount: 0, patientIds: [],
@@ -602,6 +648,11 @@ describe('slots — منع الحجز المزدوج', () => {
 });
 
 describe('appointments — الحجز مربوط بقفل', () => {
+  // إنشاء الموعد من العميل مغلق في الملف المنشور؛ شرط `backedBySlot()`
+  // وحتمية المعرّف يبقيان مختبَرين هنا تحت المفتاح المفتوح. أما أن الإنشاء
+  // المباشر نفسه مرفوض بعد الإقفال فتثبته مجموعة «بعد إقفال الحجز المباشر».
+  useOpenRules();
+
   test('طرف ثالث لا يقرأ موعد غيره', async () => {
     await assertFails(getDoc(doc(asOther(), 'appointments', BOOKED_APPT)));
   });
@@ -638,7 +689,7 @@ describe('appointments — الحجز مربوط بقفل', () => {
 
   test('حجز ثانٍ في خانة مجموعة عبر arrayUnion ينجح', async () => {
     const sid = slotId(GROUP_DOCTOR, '2030-07-01', '10:00');
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'slots', sid), {
         doctorId: GROUP_DOCTOR, appointmentDate: '2030-07-01',
         startTime: '10:00', capacity: 4, bookedCount: 1,
@@ -709,10 +760,6 @@ describe('appointments — الحقول المحمية عند التعديل', (
   const patientUpdate = (data) =>
     updateDoc(doc(asPatient(), 'appointments', BOOKED_APPT), data);
 
-  test('المريض يلغي موعده', async () => {
-    await assertSucceeds(patientUpdate({ status: 'Cancelled' }));
-  });
-
   test('المريض لا يعلّم موعده مكتملاً', async () => {
     await assertFails(patientUpdate({ status: 'Completed' }));
   });
@@ -753,17 +800,6 @@ describe('appointments — الحقول المحمية عند التعديل', (
   test('الطبيب يُنهي الموعد', async () => {
     await assertSucceeds(updateDoc(
       doc(asDoctor(), 'appointments', BOOKED_APPT), { status: 'Completed' }));
-  });
-
-  test('الطبيب يلغي موعد مريضه — نفس الحقول التي تكتبها cancelAsDoctor بالضبط', async () => {
-    // يطابق شكل الكتابة في BookingService.cancelAsDoctor حرفياً — لا مجرّد
-    // status وحدها. كان cancelledBy مفقوداً من القائمة المسموحة فتُرفض هذه
-    // الكتابة بالكامل رغم أن الطبيب يملك حق الإلغاء أصلاً (اكتُشف أثناء
-    // بوابة التحقق قبل النشر، المرحلة 1ب).
-    await assertSucceeds(updateDoc(
-      doc(asDoctor(), 'appointments', BOOKED_APPT), {
-        status: 'Cancelled', cancelledAt: new Date(), cancelledBy: 'doctor',
-      }));
   });
 
   test('الطبيب يكتب ملاحظة طبية', async () => {
@@ -812,6 +848,27 @@ describe('appointments — الحقول المحمية عند التعديل', (
       doc(asOther(), 'appointments', BOOKED_APPT), { status: 'Cancelled' }));
   });
 
+  describe('الإلغاء المباشر — تحت المفتاح المفتوح (المرحلة 10)', () => {
+    // كلا الطرفين كان يلغي بكتابة مباشرة. بعد المرحلة 10 صار الإلغاء عبر
+    // `cancelAppointment` وحدها للطرفين، والمفتاح مغلق في الملف المنشور —
+    // فتبقى هذه الاختبارات هنا لتحرس **شكل** الفرع القديم ما دام في الملف.
+    useOpenRules();
+
+    test('المريض يلغي موعده', async () => {
+      await assertSucceeds(patientUpdate({ status: 'Cancelled' }));
+    });
+
+    test('الطبيب يلغي موعد مريضه — نفس الحقول التي كانت تكتبها cancelAsDoctor', async () => {
+      // يطابق شكل الكتابة القديمة حرفياً — لا مجرّد status وحدها. كان
+      // cancelledBy مفقوداً من القائمة المسموحة فتُرفض الكتابة بالكامل رغم
+      // أن الطبيب يملك حق الإلغاء (اكتُشف في بوابة التحقق، المرحلة 1ب).
+      await assertSucceeds(updateDoc(
+        doc(asDoctor(), 'appointments', BOOKED_APPT), {
+          status: 'Cancelled', cancelledAt: new Date(), cancelledBy: 'doctor',
+        }));
+    });
+  });
+
   test('حذف الموعد ممنوع — يبقى السجل كاملاً', async () => {
     await assertFails(deleteDoc(doc(asPatient(), 'appointments', BOOKED_APPT)));
   });
@@ -819,7 +876,7 @@ describe('appointments — الحقول المحمية عند التعديل', (
 
 describe('phone_index', () => {
   beforeEach(async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'phone_index', '201000000002'), {
         uid: PATIENT, email: PATIENT_EMAIL,
       });
@@ -952,7 +1009,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
       // يسجّل المهاجم بهذه القيم، ثم يتقدّم بطلب طبيب، فيوافق المدير —
       // و`approveDoctor` لا يصفّر المُجمَّع — فيظهر في البحث بخمس نجوم
       // وخمسمئة مراجعة بلا زيارة واحدة. والتقييم هو ما يختار المريض عليه.
-      const db = testEnv.authenticatedContext('freshUser').firestore();
+      const db = activeEnv.authenticatedContext('freshUser').firestore();
       await assertFails(setDoc(doc(db, 'users', 'freshUser'), {
         role: 'patient', name: 'مهاجم', isVerified: false,
         rating: 5, reviews: 500, ratingSum: 2500,
@@ -960,7 +1017,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
     });
 
     test('التسجيل النظيف يبقى مسموحاً', async () => {
-      const db = testEnv.authenticatedContext('freshUser2').firestore();
+      const db = activeEnv.authenticatedContext('freshUser2').firestore();
       await assertSucceeds(setDoc(doc(db, 'users', 'freshUser2'), {
         role: 'patient', name: 'مريض', isVerified: false,
         phone: '201000000077',
@@ -968,7 +1025,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
     });
 
     test('لا ينشئ المستخدم حسابه بدور طبيب ولا موثَّقاً', async () => {
-      const db = testEnv.authenticatedContext('freshUser3').firestore();
+      const db = activeEnv.authenticatedContext('freshUser3').firestore();
       await assertFails(setDoc(doc(db, 'users', 'freshUser3'), {
         role: 'doctor', name: 'طبيب مزعوم',
       }));
@@ -979,14 +1036,14 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
 
     test('لا ينشئ المستخدم حسابه موقوفاً-غير-موقوف أو موثَّق الحالة', async () => {
       // `disabled` و`verificationStatus` يقرّران الأهلية وحالة اللوحة.
-      const db = testEnv.authenticatedContext('freshUser4').firestore();
+      const db = activeEnv.authenticatedContext('freshUser4').firestore();
       await assertFails(setDoc(doc(db, 'users', 'freshUser4'), {
         role: 'patient', name: 'x', verificationStatus: 'approved',
       }));
     });
 
     test('لا ينشئ مستنداً باسم مستخدم آخر', async () => {
-      const db = testEnv.authenticatedContext('freshUser5').firestore();
+      const db = activeEnv.authenticatedContext('freshUser5').firestore();
       await assertFails(setDoc(doc(db, 'users', 'someoneElse'), {
         role: 'patient', name: 'x',
       }));
@@ -994,6 +1051,11 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
   });
 
   describe('الطبيب الموقوف — انحراف بين المسارين', () => {
+    // الانحراف الذي أُصلح في المرحلة 9 كان **داخل** فرع الحجز المباشر:
+    // القواعد لا تفحص `disabled` والخادم يفحصه. الفرع مغلق الآن، لكن شرطه
+    // يبقى مختبَراً تحت المفتاح المفتوح — وإلا مرّ إصلاح المرحلة 9 بلا حارس.
+    useOpenRules();
+
     // المرحلة 2 أضافت `disabled` وحدّثت الخادم (`fetchBookableDoctor`)،
     // لكن `isBookableDoctor` في القواعد بقيت تفحص `role` و`isVerified`
     // فقط. ومسار الحجز المباشر من العميل ما زال مفتوحاً
@@ -1004,7 +1066,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
     const SUS_SLOT = slotId(SUSPENDED, '2030-04-04', '10:00');
 
     beforeEach(async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'users', SUSPENDED), {
           role: 'doctor', name: 'د. موقوف', isVerified: true,
           disabled: true, bookingSystemType: 'Individual',
@@ -1046,7 +1108,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
     // إحياء موعد ملغى. هذه الاختبارات ترسم ما هو ممكن فعلاً.
 
     async function setStatus(status) {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'appointments', BOOKED_APPT),
           { status }, { merge: true });
       });
@@ -1088,9 +1150,11 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
         doc(asPatient(), 'appointments', BOOKED_APPT), { status: 'Completed' }));
     });
 
-    test('المريض يلغي موعده القائم فقط', async () => {
+    test('المريض لا يلغي موعده مباشرة بعد المرحلة 10', async () => {
+      // الإلغاء صار سلطة خادمية كاملة؛ الفرع القديم مُختبَر بشكله في
+      // «الإلغاء المباشر — تحت المفتاح المفتوح».
       await setStatus('Booked');
-      await assertSucceeds(updateDoc(
+      await assertFails(updateDoc(
         doc(asPatient(), 'appointments', BOOKED_APPT),
         { status: 'Cancelled', cancelledAt: new Date() }));
     });
@@ -1127,7 +1191,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
     });
 
     test('غريب لا يقرأ إشعار غيره ولا يحذفه', async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'notifications', 'n1'), {
           recipientId: PATIENT, type: 'booking_confirmed',
           title: 'ت', body: 'ب', isRead: false,
@@ -1139,7 +1203,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
     });
 
     test('المستلم يعلّم إشعاره مقروءاً ولا يعيد كتابة محتواه', async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'notifications', 'n2'), {
           recipientId: PATIENT, type: 'booking_confirmed',
           title: 'ت', body: 'ب', isRead: false,
@@ -1173,7 +1237,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
     });
 
     test('لا يقرأ أحد رموز أجهزة غيره', async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'users', PATIENT, 'devices', 'tk'), {
           token: 'tk', platform: 'web',
         });
@@ -1184,7 +1248,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
 
   describe('سجلّ التدقيق', () => {
     beforeEach(async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'auditLogs', 'log1'), {
           actorAdminId: ADMIN, action: 'doctor.approved', targetId: DOCTOR,
         });
@@ -1207,7 +1271,7 @@ describe('التدقيق الأمني النهائي (المرحلة 9)', () => 
 
   describe('فهرس الهاتف', () => {
     test('لا يوجّه أحد رقم غيره إلى بريده', async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'phone_index', '201000000002'), {
           uid: PATIENT, email: PATIENT_EMAIL,
         });
@@ -1234,7 +1298,7 @@ describe('التحليلات — لا مسار قراءة جانبي (المرح
   });
 
   test('المستخدم العادي لا يقرأ طلبات التوثيق', async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'doctorApplications', 'app1'), {
         uid: PATIENT, status: 'pending', submittedAt: new Date(),
       });
@@ -1244,7 +1308,7 @@ describe('التحليلات — لا مسار قراءة جانبي (المرح
   });
 
   test('المدير يقرأ طلبات التوثيق', async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'doctorApplications', 'app1'), {
         uid: PATIENT, status: 'pending', submittedAt: new Date(),
       });
@@ -1291,7 +1355,7 @@ describe('التحليلات — لا مسار قراءة جانبي (المرح
 
 describe('ratings — بيانات طبية', () => {
   beforeEach(async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'ratings', 'r1'), {
         appointmentId: BOOKED_APPT, fromUserId: DOCTOR, toUserId: PATIENT,
         ratingType: 'doctor_to_patient', healthConditionRating: 3,
@@ -1370,7 +1434,7 @@ describe('ratings — بيانات طبية', () => {
   });
 
   test('الطبيب الموقوف لا يكتب ملاحظة صحية جديدة', async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'users', DOCTOR), {
         role: 'doctor', isVerified: true, disabled: true,
       }, { merge: true });
@@ -1404,7 +1468,7 @@ describe('ratings — بيانات طبية', () => {
   test('لا يُحوَّل تقييم خدمة قائم إلى تقييم صحي بالتعديل', async () => {
     // بدون تثبيت `ratingType` و`appointmentId` يلتفّ المريض على قاعدة
     // الإنشاء كلها: يكتب تقييم خدمة مشروعاً ثم يبدّل نوعه.
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'ratings', 'svc'), {
         appointmentId: DONE_APPT, fromUserId: PATIENT, toUserId: DOCTOR,
         ratingType: 'patient_to_doctor', serviceRating: 5,
@@ -1447,7 +1511,7 @@ describe('reviews — الكتابة من الخادم وحده (المرحلة 
   });
 
   const seedReview = async (extra = {}) => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'reviews', DONE_APPT), review(extra));
     });
   };
@@ -1582,7 +1646,7 @@ describe('reviews — الكتابة من الخادم وحده (المرحلة 
   test('مستند المراجعة لا يحمل هاتف المريض ولا بريده', async () => {
     // ما يكتبه الخادم (functions/reviews.js) لا يتضمّن أياً منهما؛ هذا
     // الاختبار يحرس ذلك من انحدار مستقبلي في شكل المستند.
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'reviews', DONE_APPT), {
         appointmentId: DONE_APPT, doctorId: DOCTOR, patientId: PATIENT,
         patientName: 'مريض', rating: 5, comment: 'ممتاز',
@@ -1614,7 +1678,7 @@ describe('notifications', () => {
   describe('إشعار قائم (recipientId)', () => {
     const NOTIF_ID = 'notif_1';
     beforeEach(async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'notifications', NOTIF_ID), {
           recipientId: PATIENT, recipientRole: 'patient',
           type: 'booking_confirmed', title: 'تم التأكيد', body: '...',
@@ -1720,7 +1784,7 @@ describe('users/{uid}/devices — رموز Push (المرحلة 3)', () => {
 
   describe('جهاز مسجَّل', () => {
     beforeEach(async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'users', PATIENT, 'devices', 'token_abc'), {
           token: 'token_abc', platform: 'android', updatedAt: new Date(),
         });
@@ -1757,7 +1821,7 @@ describe('users — لا ترقية ذاتية عبر حقول توثيق الط
   // `verificationStatus` — الحقلين اللذين يقرّران الأهلية الفعلية للحجز —
   // محميان بنفس الصرامة، وأن لا مسار عميل يعيد تفعيل طبيب موقوف بنفسه.
   test('طبيب موقوف لا يستطيع إعادة تفعيل نفسه بتحديث ملفه', async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'users', DOCTOR), {
         role: 'doctor', name: 'د. أحمد', isVerified: true, disabled: true,
         verificationStatus: 'suspended', suspensionReason: 'شكوى',
@@ -1819,7 +1883,7 @@ describe('doctorApplications — طلب توثيق الطبيب (المرحلة 
 
   describe('طلب قائم', () => {
     beforeEach(async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'doctorApplications', PATIENT), {
           uid: PATIENT, status: 'pending', specialization: 'أسنان',
           submittedAt: new Date(),
@@ -1875,7 +1939,7 @@ describe('doctorApplications — طلب توثيق الطبيب (المرحلة 
 
   describe('طلب مرفوض سابقاً', () => {
     beforeEach(async () => {
-      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await activeEnv.withSecurityRulesDisabled(async (ctx) => {
         await setDoc(doc(ctx.firestore(), 'doctorApplications', PATIENT), {
           uid: PATIENT, status: 'rejected', specialization: 'أسنان',
           submittedAt: new Date(), reviewedAt: new Date(),
@@ -1910,7 +1974,7 @@ describe('doctorApplications — طلب توثيق الطبيب (المرحلة 
 
 describe('auditLogs — سجل التدقيق (المرحلة 2)', () => {
   beforeEach(async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), 'auditLogs', 'log_1'), {
         actorAdminId: ADMIN, action: 'doctor.approved',
         targetType: 'doctor', targetId: PATIENT, metadata: {},
@@ -1956,11 +2020,11 @@ describe('بعد إقفال الحجز المباشر (المرحلة 1أ)', () 
   // Admin SDK يتجاوز القواعد، فالدالة تعمل بينما يُمنع العميل.
 
   const lockedAs = (uid, email) =>
-    lockedEnv.authenticatedContext(uid, email ? { email } : {}).firestore();
+    openCancelOnlyEnv.authenticatedContext(uid, email ? { email } : {}).firestore();
 
   beforeEach(async () => {
-    await lockedEnv.clearFirestore();
-    await lockedEnv.withSecurityRulesDisabled(async (ctx) => {
+    await openCancelOnlyEnv.clearFirestore();
+    await openCancelOnlyEnv.withSecurityRulesDisabled(async (ctx) => {
       const db = ctx.firestore();
       await setDoc(doc(db, 'users', DOCTOR), {
         role: 'doctor', name: 'د. أحمد', isVerified: true,
@@ -2110,11 +2174,11 @@ describe('بعد إقفال الإلغاء المباشر (المرحلة 1ب)',
   // كل مفتاح يُختبَر باستقلال عن الآخر.
 
   const cancelLockedAs = (uid, email) =>
-    cancelLockedEnv.authenticatedContext(uid, email ? { email } : {}).firestore();
+    openBookingOnlyEnv.authenticatedContext(uid, email ? { email } : {}).firestore();
 
   beforeEach(async () => {
-    await cancelLockedEnv.clearFirestore();
-    await cancelLockedEnv.withSecurityRulesDisabled(async (ctx) => {
+    await openBookingOnlyEnv.clearFirestore();
+    await openBookingOnlyEnv.withSecurityRulesDisabled(async (ctx) => {
       const db = ctx.firestore();
       await setDoc(doc(db, 'users', DOCTOR), {
         role: 'doctor', name: 'د. أحمد', isVerified: true,
@@ -2156,19 +2220,138 @@ describe('بعد إقفال الإلغاء المباشر (المرحلة 1ب)',
     }));
   });
 
-  test('الطبيب يبقى يدير خاناته ويُنهي المواعيد', async () => {
+  test('الطبيب يبقى يُنهي المواعيد — الإنهاء ليس إلغاءً', async () => {
+    // `Completed` و`NoShow` لا تحرّران مقعداً، فلا شأن لهما بمفتاح الإلغاء.
     const db = cancelLockedAs(DOCTOR);
     await assertSucceeds(updateDoc(doc(db, 'appointments', BOOKED_APPT), {
       status: 'Completed',
     }));
-    await assertSucceeds(updateDoc(doc(db, 'slots', BOOKED_SLOT), {
+  });
+
+  test('الطبيب لا يحرّر مقعداً بعد الإقفال — ولا يكتب Cancelled', async () => {
+    // ===== المرحلة 10 =====
+    // فرع الطبيب على الخانة صار مشروطاً بنفس المفتاح. لو أُغلق التحرير
+    // وحده وبقيت `Cancelled` بيده، لأنتج موعداً ملغى بمقعد محجوز — أسوأ
+    // من الحالتين. الإلغاء كلّه عبر `cancelAppointment` الآن.
+    const db = cancelLockedAs(DOCTOR);
+    await assertFails(updateDoc(doc(db, 'slots', BOOKED_SLOT), {
       bookedCount: 0, patientIds: [],
+    }));
+    await assertFails(updateDoc(doc(db, 'appointments', BOOKED_APPT), {
+      status: 'Cancelled', cancelledAt: new Date(), cancelledBy: 'doctor',
     }));
   });
 
   test('قراءة المواعيد القائمة تبقى متاحة لصاحبها', async () => {
     await assertSucceeds(
       getDoc(doc(cancelLockedAs(PATIENT, PATIENT_EMAIL), 'appointments', BOOKED_APPT)));
+  });
+});
+
+describe('إغلاق المسار المباشر — على الملف المنشور (المرحلة 10)', () => {
+  // المجموعات الأخرى تُشغَّل بمفاتيح مقلوبة لتحرس أجساد الفروع. هذه وحدها
+  // تُشغَّل على **الملف كما يُنشر بالضبط**، بلا أي استبدال: هي الإثبات
+  // المباشر أن سلطة الحجز والإلغاء لم تعد في يد العميل إطلاقاً.
+
+  test('المريض لا يحجز بكتابة مباشرة — القفل والموعد معاً', async () => {
+    await assertFails(bookInOneBatch(asOther(), {
+      doctorId: DOCTOR, patientId: OTHER, date: '2030-10-10', time: '10:00',
+    }));
+  });
+
+  test('ولا ينشئ قفل خانة وحده', async () => {
+    await assertFails(setDoc(
+      doc(asOther(), 'slots', slotId(DOCTOR, '2030-10-11', '10:00')), {
+        doctorId: DOCTOR, appointmentDate: '2030-10-11', startTime: '10:00',
+        capacity: 1, bookedCount: 1, patientIds: [OTHER],
+      }));
+  });
+
+  test('ولا ينضمّ إلى خانة قائمة برفع عدّادها', async () => {
+    await assertFails(updateDoc(doc(asOther(), 'slots', BOOKED_SLOT), {
+      bookedCount: 2, patientIds: arrayUnion(OTHER),
+    }));
+  });
+
+  test('صاحب الحجز لا يلغي بكتابة مباشرة', async () => {
+    await assertFails(updateDoc(doc(asPatient(), 'appointments', BOOKED_APPT), {
+      status: 'Cancelled', cancelledAt: new Date(),
+    }));
+  });
+
+  test('ولا يُنقص عدّاد خانته بنفسه', async () => {
+    await assertFails(updateDoc(doc(asPatient(), 'slots', BOOKED_SLOT), {
+      bookedCount: 0, patientIds: arrayRemove(PATIENT),
+    }));
+  });
+
+  test('الطبيب لا يلغي موعد مريضه بكتابة مباشرة', async () => {
+    // كان هذا آخر مسار كتابة مباشرة في العميل (`cancelAsDoctor`). صار
+    // يستدعي `cancelAppointment` نفسها.
+    await assertFails(updateDoc(doc(asDoctor(), 'appointments', BOOKED_APPT), {
+      status: 'Cancelled', cancelledAt: new Date(), cancelledBy: 'doctor',
+    }));
+  });
+
+  test('ولا يحرّر مقعد مريضه من الخانة', async () => {
+    await assertFails(updateDoc(doc(asDoctor(), 'slots', BOOKED_SLOT), {
+      bookedCount: 0, patientIds: arrayRemove(PATIENT),
+    }));
+  });
+
+  test('المعاملة القديمة كاملةً (موعد + خانة) مرفوضة الآن', async () => {
+    // نفس المعاملة حرفياً التي كان `BookingService.cancelAsDoctor` ينفّذها.
+    const db = asDoctor();
+    await assertFails(runTransaction(db, async (tx) => {
+      const apptRef = doc(db, 'appointments', BOOKED_APPT);
+      const apptSnap = await tx.get(apptRef);
+      const slotRef = doc(db, 'slots', apptSnap.data().slotId);
+      const slotSnap = await tx.get(slotRef);
+      tx.update(slotRef, {
+        bookedCount: Math.max(0, slotSnap.data().bookedCount - 1),
+        patientIds: arrayRemove(PATIENT),
+      });
+      tx.update(apptRef, { status: 'Cancelled', cancelledBy: 'doctor' });
+    }));
+  });
+
+  // ===== وما يجب أن يبقى عاملاً =====
+
+  test('الطبيب يُنهي الكشف', async () => {
+    await assertSucceeds(updateDoc(
+      doc(asDoctor(), 'appointments', BOOKED_APPT), { status: 'Completed' }));
+  });
+
+  test('الطبيب يسجّل عدم حضور', async () => {
+    await assertSucceeds(updateDoc(
+      doc(asDoctor(), 'appointments', BOOKED_APPT), { status: 'NoShow' }));
+  });
+
+  test('الطبيب يكتب الملاحظة الطبية', async () => {
+    await assertSucceeds(updateDoc(
+      doc(asDoctor(), 'appointments', BOOKED_APPT), { notes: 'ضغط مرتفع' }));
+  });
+
+  test('الطبيب يعدّل إعدادات عيادته', async () => {
+    await assertSucceeds(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      sessionDuration: 45, price: 250,
+    }));
+  });
+
+  test('الطرفان يقرآن الموعد', async () => {
+    await assertSucceeds(
+      getDoc(doc(asPatient(), 'appointments', BOOKED_APPT)));
+    await assertSucceeds(getDoc(doc(asDoctor(), 'appointments', BOOKED_APPT)));
+  });
+
+  test('المريض يعلّم إشعاره مقروءاً', async () => {
+    await activeEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'notifications', 'n_p10'), {
+        recipientId: PATIENT, type: 'booking.cancelled', isRead: false,
+      });
+    });
+    await assertSucceeds(updateDoc(
+      doc(asPatient(), 'notifications', 'n_p10'), { isRead: true }));
   });
 });
 

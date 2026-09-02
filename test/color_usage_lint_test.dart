@@ -80,6 +80,67 @@ void main() {
     );
   });
 
+  test('لا محتوى بلون أساسي داخل حاوية بلون الحاوية', () {
+    // انحراف رصدته مراجعة المرحلة 10: زرّ «حذف حسابي نهائياً» داخل لوح
+    // `errorContainer` كُتب بـ `foregroundColor: error`. القياس يقول إنه
+    // ما زال فوق حدّ التباين (5.51:1 مقابل 7.24:1 للدور الصحيح)، فليس
+    // عطباً بصرياً اليوم — لكنه زوج غير مضمون: `theme_widgets_test.dart`
+    // يقيس `onXContainer/XContainer` وحده، فأي تعديل لاحق على النسق قد
+    // يُسقط هذا الاستعمال بلا حارس يلتقطه.
+    //
+    // الاختباران السابقان لا يلتقطانه: الأول يحرس الخلفيات المملوءة
+    // بالدور **الأساسي** (`error`) لا بدور الحاوية (`errorContainer`)،
+    // والثاني يحرس غياب `foregroundColor` لا خطأه. الدور الصحيح فوق
+    // `XContainer` هو `onXContainer` دائماً.
+    //
+    // الفحص مقصور على `foregroundColor` عمداً: `border` أو أيقونة تزيينية
+    // بلون `error` فوق `errorContainer` استعمال مشروع لا عطب تباين.
+    final offenders = <String>[];
+
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      if (deadRatingFiles.any(entity.path.endsWith)) continue;
+      final source = entity.readAsStringSync();
+
+      for (final role in fillRoles) {
+        final fill = RegExp(
+          r'BoxDecoration\(\s*color:[^,;]{0,120}?Theme\.of\(context\)\s*'
+                  r'\.colorScheme\s*\.' +
+              role +
+              r'Container\b',
+          multiLine: true,
+        );
+        // حدّ الكلمة هو كل شيء هنا: `errorContainer` يبدأ بـ `error`،
+        // فبدونه يُبلَّغ عن كل استعمال صحيح.
+        final baseRole = RegExp(
+          r'foregroundColor:[^,;]{0,120}?Theme\.of\(context\)\s*'
+                  r'\.colorScheme\s*\.' +
+              role +
+              r'\b(?!Container)',
+          multiLine: true,
+        );
+
+        for (final match in fill.allMatches(source)) {
+          final end = (match.end + 2500).clamp(0, source.length);
+          final body = source.substring(match.end, end);
+          for (final hit in baseRole.allMatches(body)) {
+            final abs = match.end + hit.start;
+            final line = '\n'.allMatches(source.substring(0, abs)).length + 1;
+            offenders.add(
+                '${entity.path}:$line — محتوى $role داخل ${role}Container');
+          }
+        }
+      }
+    }
+
+    expect(
+      offenders,
+      isEmpty,
+      reason: 'استعمل `on…Container` لمحتوى لوح `…Container`:\n'
+          '${offenders.join('\n')}',
+    );
+  });
+
   test('لا زرّ بخلفية معيَّنة ونصّ افتراضي', () {
     // عطب رصدته المراجعة البصرية للمرحلة 6: زرّ «عرض التفاصيل» في شاشة
     // مرضى الطبيب كان يُرسم لوحاً فيروزياً فارغاً. السبب أن

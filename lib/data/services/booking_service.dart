@@ -308,52 +308,26 @@ class BookingService {
     }
   }
 
-  /// إلغاء الطبيب لموعد أحد مرضاه من شاشة جدوله.
+  /// إلغاء الطبيب لموعد أحد مرضاه من شاشة جدوله — عبر نفس دالة الخادم.
   ///
-  /// `cancelAppointment` على الخادم (أعلاه) للمريض وحده — راجع توثيقها.
-  /// إلغاء الطبيب يبقى بالمسار المباشر القديم عمداً: قواعد الأمان تمنحه
-  /// حرية إدارة خانات عيادته ومواعيدها أصلاً (`isUser(doctorId)` على
-  /// `slots`، و`isDoctorOwner()` على `appointments`)، بلا حاجة لمهلة أو
-  /// تحقق إضافي كالذي يحتاجه إلغاء المريض. هذا خارج نطاق المرحلة 1ب.
+  /// ## المرحلة 10: إغلاق آخر كتابة مباشرة على المواعيد والخانات
+  ///
+  /// كان هذا المسار وحده يكتب مباشرة من العميل: معاملة تُنقص `bookedCount`
+  /// وتحذف المريض من `patientIds` وتضع الموعد `Cancelled`. كان يعمل لأن
+  /// القواعد تمنح الطبيب فرعاً خاصاً على خانته (`doctorRemovesOnePatient`)،
+  /// لكنه يعني أن سلطة الإلغاء موزّعة على مصدرين: الخادم للمريض، والعميل
+  /// للطبيب — ومصدران للحقيقة يعنيان انحرافاً بينهما عاجلاً أو آجلاً.
+  ///
+  /// الآن `cancelAppointment` تخدم الطرفين (راجع `cancellerRoleFor` في
+  /// `functions/lifecycle.js`)، وفرع الطبيب في القواعد أُغلق مع مفتاح
+  /// الإلغاء المباشر. المهلة تبقى على المريض وحده — الطبيب يلغي متى شاء،
+  /// تماماً كما كان يفعل هذا المسار من قبل.
+  ///
+  /// يُرجع `true` عند النجاح (بما فيه الإلغاء المكرَّر) و`false` عند الفشل،
+  /// حفاظاً على العقد الذي تستدعيه به شاشة الجدول.
   Future<bool> cancelAsDoctor({required String appointmentId}) async {
-    try {
-      await _db.runTransaction<void>((transaction) async {
-        final appointmentRef = _appointments.doc(appointmentId);
-        final appointmentSnapshot = await transaction.get(appointmentRef);
-
-        if (!appointmentSnapshot.exists) return;
-
-        final data = appointmentSnapshot.data()!;
-        final slotId = data['slotId'] as String?;
-        final patientId = (data['patientId'] ?? '').toString();
-
-        // المواعيد القديمة لا تحمل `slotId`؛ نلغيها بدون لمس أي قفل.
-        if (slotId != null && slotId.isNotEmpty) {
-          final slotRef = _db.collection('slots').doc(slotId);
-          final slotSnapshot = await transaction.get(slotRef);
-          if (slotSnapshot.exists) {
-            final bookedCount =
-                (slotSnapshot.data()!['bookedCount'] as num?)?.toInt() ?? 0;
-            transaction.update(slotRef, {
-              // `clamp` يحمي من عدّاد سالب لو تكرّر الإلغاء لأي سبب.
-              'bookedCount': (bookedCount - 1).clamp(0, 1 << 30),
-              'patientIds': FieldValue.arrayRemove([patientId]),
-              'updatedAt': FieldValue.serverTimestamp(),
-            });
-          }
-        }
-
-        transaction.update(appointmentRef, {
-          'status': AppointmentStatus.cancelled.wireValue,
-          'cancelledAt': FieldValue.serverTimestamp(),
-          'cancelledBy': 'doctor',
-        });
-      });
-      return true;
-    } catch (e, s) {
-      AppLogger.error('فشل إلغاء الطبيب للموعد', e, s);
-      return false;
-    }
+    final result = await cancel(appointmentId: appointmentId);
+    return result.isSuccess;
   }
 
   /// نقل موعد إلى خانة جديدة عند **نفس الطبيب** — عبر الخادم، بمعاملة

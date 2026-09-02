@@ -12,6 +12,7 @@ const {
 } = require("./admin");
 const { sendAppointmentRemindersCore } = require("./reminders");
 const { createReviewCore, getReviewEligibilityCore } = require("./reviews");
+const { deleteAccountCore } = require("./account");
 const {
   getPatientAnalyticsCore,
   getDoctorAnalyticsCore,
@@ -383,6 +384,25 @@ exports.getDoctorAnalytics =
  */
 exports.getAdminAnalytics =
   callable("getAdminAnalytics", getAdminAnalyticsCore);
+
+/**
+ * حذف الحساب — راجع `functions/account.js` لما يُحذف وما يُطمس ولماذا.
+ *
+ * ```
+ * الطلب:  { confirm: true }
+ * الرد:   { ok, deleted, cancelledAppointments, anonymizedAppointments,
+ *           anonymizedReviews, deletedNotifications, deletedDevices }
+ * ```
+ *
+ * | reason | code | المعنى |
+ * |---|---|---|
+ * | `unauthenticated` | unauthenticated | بلا تسجيل دخول |
+ * | `confirmation-required` | invalid-argument | بلا تأكيد صريح |
+ * | `recent-login-required` | failed-precondition | جلسة قديمة — أعد الدخول |
+ * | `doctor-account` | failed-precondition | حساب طبيب يُغلق إدارياً |
+ * | `internal` | internal | خطأ غير متوقع |
+ */
+exports.deleteAccount = callable("deleteAccount", deleteAccountCore);
 
 // ملاحظة أمنية (المرحلة صفر):
 //

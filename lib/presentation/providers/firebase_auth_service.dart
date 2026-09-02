@@ -223,7 +223,14 @@ class FirebaseAuthService extends ChangeNotifier {
         'role': role,
         'birthDate': birthDate?.toIso8601String(),
         'gender': gender,
-        'emailVerified': true, // تعيينها مفعّلة تلقائياً
+        // ===== المرحلة 10: القيمة الحقيقية لا قيمة ثابتة =====
+        //
+        // كانت `true` دائماً بينما التحقق من البريد معطَّل ولا رسالة
+        // تُرسَل أصلاً — أي حقل يقول عن كل حساب ما ليس فيه. لا قاعدة ولا
+        // دالة تقرأه (تحقّقنا بالبحث في `firestore.rules` و`functions/`
+        // كاملة)، فتصحيحه لا يغيّر سلوكاً؛ لكنه يمنع أن يُبنى عليه قرار
+        // لاحقاً وهو كاذب. مصدر الحقيقة يبقى Firebase Auth نفسه.
+        'emailVerified': firebaseUser.emailVerified,
         'createdAt': FieldValue.serverTimestamp(),
       };
 

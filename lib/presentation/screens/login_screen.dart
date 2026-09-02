@@ -5,6 +5,15 @@ import '../../core/theme/app_spacing.dart';
 import '../providers/firebase_auth_service.dart';
 import 'forgot_password_screen.dart';
 
+/// الحد الأدنى لطول كلمة المرور عند **تسجيل الدخول**.
+///
+/// مطابق لحدّ Firebase الافتراضي الذي أُنشئت به الحسابات القائمة. رفعه هنا
+/// يمنع أصحابها من الدخول بكلمة صحيحة — عطل لا تشديد.
+const int kMinPasswordLengthLogin = 6;
+
+/// الحد الأدنى لطول كلمة المرور عند **إنشاء حساب جديد**.
+const int kMinPasswordLengthSignup = 8;
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -556,9 +565,25 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // التحقق من كلمة المرور
-    if (password.length < 6) {
-      _showErrorDialog('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+    // ===== كلمة المرور: حدّان لا حدّ واحد (المرحلة 10) =====
+    //
+    // كان الشرط `< 6` مطبَّقاً على المسارين معاً. رفعه كما هو كان سيقفل
+    // الباب في وجه كل حساب قائم كلمته من ستة أحرف — وهو حدّ Firebase
+    // الافتراضي الذي أُنشئت به تلك الحسابات فعلاً. الدخول ليس المكان الذي
+    // تُفرض فيه سياسة جديدة؛ التسجيل هو.
+    //
+    // الفرض الحقيقي يبقى على الخادم: سياسة كلمة المرور في Firebase
+    // Authentication (Identity Platform) — راجع `docs/RUNBOOK.md`. ما هنا
+    // رسالة مبكرة للمستخدم لا حاجز أمني، تماماً كبقية تحققات الواجهة.
+    if (password.length < kMinPasswordLengthLogin) {
+      _showErrorDialog(
+          'كلمة المرور يجب أن تكون $kMinPasswordLengthLogin أحرف على الأقل');
+      return;
+    }
+
+    if (!_isLogin && password.length < kMinPasswordLengthSignup) {
+      _showErrorDialog('اختر كلمة مرور من $kMinPasswordLengthSignup أحرف '
+          'على الأقل لحماية حسابك');
       return;
     }
 

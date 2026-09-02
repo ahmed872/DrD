@@ -59,32 +59,46 @@ service cloud.firestore {
       return request.resource.data[field] == resource.data[field];
     }
 
-    // ===================== مفتاح إقفال الحجز المباشر =====================
+    // ===================== مفتاحا المسار المباشر — مُقفَلان =====================
+    //
+    // ## المرحلة 10: أُغلق المسار المباشر بعد إثبات هجرته
+    //
+    // المرحلة 1أ نقلت قرار الحجز إلى `bookAppointment`، والمرحلة 1ب نقلت
+    // الإلغاء إلى `cancelAppointment` — لكن المفتاحين بقيا `true` عمداً:
+    // إقفالهما قبل أن يصبح العميل المنشور فعلاً على الدوال يعني أن كل نسخة
+    // قديمة مثبَّتة على هاتف مريض تفقد الحجز لحظة نشر القواعد.
+    //
+    // الإقفال الآن مسبوق بجردٍ كامل لا بافتراض. `grep` على `lib/` بأكملها
+    // عن كل كتابة Firestore (`.set(`, `.update(`, `.delete(`, `.add(`,
+    // `writeBatch`, `runTransaction`) يُظهر أن ما بقي يكتب على `slots` أو
+    // `appointments` من العميل هو:
+    //
+    //   • `BookingService.book` → `bookAppointment` (دالة)      ✅ مهاجر
+    //   • `BookingService.cancel` → `cancelAppointment` (دالة)   ✅ مهاجر
+    //   • `BookingService.reschedule` → `rescheduleAppointment`  ✅ مهاجر
+    //   • `BookingService.cancelAsDoctor` → كتابة مباشرة         ← هوجر في
+    //     المرحلة 10: صار يستدعي `cancelAppointment` نفسها، بعد أن صارت
+    //     تخدم طبيب الموعد كما تخدم مريضه (`cancellerRoleFor`).
+    //
+    // ولم يبق بعدها أي مسار عميل يحجز أو يلغي بكتابة مباشرة. ما يبقى
+    // للطبيب كتابةً مباشرة — `status: 'Completed'`/`'NoShow'` والملاحظة
+    // الطبية — ليس من سلطة الحجز/الإلغاء، ويحرسه فرع الطبيب المشروط
+    // بحالة الموعد (المرحلة 9).
+    //
+    // **ترتيب النشر ملزم**: انشر الدوال ثم العميل، وانتظر تبنّي النسخة
+    // الجديدة، ثم انشر هذه القواعد. عكس الترتيب يقطع الحجز عن كل نسخة
+    // قديمة. راجع `docs/RUNBOOK.md`.
+    //
+    // الحالتان تبقيان مغطّاتين: `rules.test.js` يشغّل نفس الملف بالقيمة
+    // المنشورة (مغلقاً) وبنسخة يفتح فيها المفتاحان، فلا يذبل فرع ولا
+    // يُفقَد إثبات أن الإقفال هو ما يمنع — لا خطأ آخر.
+    function clientDirectBookingEnabled() { return false; }
 
-    // المرحلة 1أ نقلت قرار الحجز إلى الدالة `bookAppointment`، والدوال
-    // السحابية تعمل بـ Admin SDK فتتجاوز هذه القواعد. لكن **لا يجوز** إقفال
-    // المسار القديم قبل أن يصبح العميل المنشور فعلاً يستخدم الدالة: كل نسخة
-    // قديمة مثبَّتة على هاتف مريض ستفقد القدرة على الحجز لحظة الإقفال.
-    //
-    // ولذلك الإقفال خطوة نشر مستقلة: اقلب هذه القيمة إلى `false` بعد التحقق
-    // (راجع `scripts/README.md` — ترتيب نشر المرحلة 1أ).
-    //
-    // ما يتأثر بها: إنشاء خانة، وزيادة عدّادها، وإنشاء موعد. الإلغاء وإدارة
-    // الطبيب لخاناته تبقى من العميل في هذه المرحلة.
-    //
-    // الحالتان مغطّاتان بالاختبارات: `rules.test.js` يشغّل نفس الملف مرتين،
-    // مرة كما هو ومرة بالقيمة مقلوبة.
-    function clientDirectBookingEnabled() { return true; }
-
-    // المرحلة 1ب نقلت الإلغاء أيضاً إلى الخادم (`cancelAppointment`) —
-    // معه المهلة، وتحقّق الحالة، وربط تحرير الخانة بنفس المعاملة. **نفس
-    // انضباط النشر بالضبط**: هذا المفتاح يبقى `true` حتى يُتحقَّق أن العميل
-    // المنشور يلغي عبر الدالة لا مباشرة، ثم يُقلب — لا قبل ذلك.
-    //
-    // ما يتأثر به: تحديث حالة الموعد إلى `Cancelled` من المريض مباشرة،
-    // ونقص عدّاد الخانة المقابل. إعادة الجدولة (`rescheduleAppointment`)
-    // لم يكن لها مسار عميل مباشر إطلاقاً — فلا حاجة لمفتاح توافقي لها.
-    function clientDirectCancelEnabled() { return true; }
+    // ما يتأثر به: تحديث حالة الموعد إلى `Cancelled` من العميل مباشرة —
+    // من المريض صاحبه أو من طبيبه — ونقص عدّاد الخانة المقابل.
+    // إعادة الجدولة (`rescheduleAppointment`) لم يكن لها مسار عميل مباشر
+    // إطلاقاً، فلا مفتاح توافقي لها.
+    function clientDirectCancelEnabled() { return false; }
 
     // ===================== الطبيب القابل للحجز =====================
 
@@ -460,12 +474,20 @@ service cloud.firestore {
       // مريض بدل صاحب الطلب وحده، مع مطابقة صريحة لسلوك `.clamp(0, ...)`
       // في الكود: لو كان العدّاد صفراً بالفعل (حالة تكرار إلغاء نادرة) فهو
       // يبقى صفراً بدل أن يصبح سالباً.
+      //
+      // ===== المرحلة 10 =====
+      // الشرط الأول هو الإقفال: بعد أن صار `cancelAppointment` يخدم الطبيب
+      // أيضاً، لم يبق سبب لأن يحرّر العميل مقعداً بنفسه. بقاء هذا الفرع
+      // مفتوحاً كان يعني سلطتين للإلغاء — الخادم للمريض والعميل للطبيب —
+      // وسلطتان تعنيان انحرافاً بينهما. جسد الشرط يبقى كما هو ليُختبر تحت
+      // المفتاح المفتوح، فلا يذبل ولا يُفقَد ما أثبتته المرحلة 1ج.
       function doctorRemovesOnePatient() {
         let oldCount = resource.data.bookedCount;
         let newCount = request.resource.data.bookedCount;
         let oldPatients = resource.data.patientIds;
         let newPatients = request.resource.data.patientIds;
-        return isUser(resource.data.doctorId)
+        return clientDirectCancelEnabled()
+            && isUser(resource.data.doctorId)
             && newCount == (oldCount > 0 ? oldCount - 1 : 0)
             && newCount >= 0
             // لا إضافة: كل عنصر في القائمة الجديدة كان موجوداً في القديمة.
@@ -679,6 +701,23 @@ service cloud.firestore {
         return value in ['Booked', 'PendingConfirmation'];
       }
 
+      // ===== المرحلة 10: `Cancelled` خرجت من يد العميل =====
+      //
+      // الإلغاء ليس تغيير حالة فحسب — هو تغيير حالة **مع** تحرير مقعد في
+      // الخانة. وقد أُقفل تحرير المقعد من العميل (`doctorRemovesOnePatient`
+      // صار مشروطاً بالمفتاح)، فلو بقي الطبيب يكتب `Cancelled` مباشرة
+      // لأنتج أسوأ الحالتين: موعد ملغى ومقعده ما زال محجوزاً، فيُحرم مريض
+      // آخر من وقت لم يعد لأحد. `cancelAppointment` تفعل الاثنين معاً في
+      // معاملة واحدة.
+      //
+      // بقية الحالات تبقى للطبيب مباشرةً: `Completed` و`NoShow` نتيجة
+      // كشفٍ حضره أو لم يحضره المريض — لا تحرّر مقعداً ولا تمسّ سلطة
+      // الحجز، ويحرسها شرط عدم العودة من حالة نهائية (المرحلة 9).
+      function doctorMayWriteStatus(value) {
+        return value in ['Booked', 'Completed', 'NoShow', 'PendingConfirmation']
+            || (value == 'Cancelled' && clientDirectCancelEnabled());
+      }
+
       allow update: if isDoctorOwner()
                     && changedKeys().hasOnly(
                          ['status', 'notes', 'cancelledAt', 'cancelledBy',
@@ -686,9 +725,7 @@ service cloud.firestore {
                     && (
                       !('status' in changedKeys())
                       || (
-                        request.resource.data.status in
-                          ['Booked', 'Completed', 'Cancelled', 'NoShow',
-                           'PendingConfirmation']
+                        doctorMayWriteStatus(request.resource.data.status)
                         && !(
                           isTerminalStatus(resource.data.status)
                           && isActiveStatus(request.resource.data.status)

@@ -53,6 +53,11 @@ const Map<String, String> _messagesByReason = {
   'appointment-not-completed': 'يمكنك التقييم بعد اكتمال الكشف فقط',
   'already-reviewed': 'سبق أن قيّمت هذه الزيارة',
 
+  // ===== حذف الحساب (المرحلة 10) =====
+  'confirmation-required': 'لم يصل تأكيد الحذف، حاول مرة أخرى',
+  'recent-login-required': 'لأمان حسابك، سجّل الدخول من جديد ثم أعد المحاولة',
+  'doctor-account': 'حسابات الأطباء تُغلق من إدارة التطبيق، تواصل معنا',
+
   // ===== الإدارة =====
   'application-not-found': 'لا يوجد طلب توثيق بهذا المعرّف',
   'user-not-found': 'هذا الحساب غير موجود',

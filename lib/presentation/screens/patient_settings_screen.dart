@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../core/config/legal_config.dart';
+import '../../data/services/account_service.dart';
 import '../providers/firebase_auth_service.dart';
 
 class PatientSettingsScreen extends StatefulWidget {
@@ -15,6 +18,9 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
   String _selectedGender = 'male';
   bool _isEditing = false;
   bool _isSaving = false;
+  bool _isDeleting = false;
+
+  final AccountService _accountService = AccountService();
 
   @override
   void initState() {
@@ -127,6 +133,9 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                     ),
 
                   const SizedBox(height: 24),
+
+                  // المستندات القانونية — تظهر حين تُنشر (راجع LegalConfig).
+                  _buildLegalSection(),
 
                   // قسم تسجيل الخروج
                   _buildLogoutSection(auth),
@@ -424,6 +433,45 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
     );
   }
 
+  /// مدخل سياسة الخصوصية — يظهر حين تُنشر وحدها.
+  ///
+  /// راجع `LegalConfig`: رابط فارغ يعني أن السياسة لم تُنشر بعد، فلا
+  /// يُعرض مدخل يوحي بوجودها.
+  Widget _buildLegalSection() {
+    if (!LegalConfig.hasPrivacyPolicy && !LegalConfig.hasTermsOfService) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      children: [
+        if (LegalConfig.hasPrivacyPolicy)
+          ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('سياسة الخصوصية'),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: () => _openLegalLink(LegalConfig.privacyPolicyUrl),
+          ),
+        if (LegalConfig.hasTermsOfService)
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('شروط الاستخدام'),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: () => _openLegalLink(LegalConfig.termsOfServiceUrl),
+          ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Future<void> _openLegalLink(String url) async {
+    final opened = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      _showMessage('تعذّر فتح الرابط', isError: true);
+    }
+  }
+
   Widget _buildLogoutSection(FirebaseAuthService auth) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -432,22 +480,117 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
         border: Border.all(color: Theme.of(context).colorScheme.error),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () => _logout(auth),
-          icon: const Icon(Icons.logout),
-          label: const Text('تسجيل الخروج'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.error,
-            foregroundColor: Theme.of(context).colorScheme.onError,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isDeleting ? null : () => _logout(auth),
+              icon: const Icon(Icons.logout),
+              label: const Text('تسجيل الخروج'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
             ),
           ),
-        ),
+          const SizedBox(height: 12),
+          // حذف الحساب — إجراء لا رجعة فيه، فشكله ثانوي لا زرّ ممتلئ
+          // كتسجيل الخروج: لا يُضغط بالخطأ، ولا يُخفى.
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: _isDeleting ? null : _confirmDeleteAccount,
+              icon: _isDeleting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.delete_forever_outlined, size: 20),
+              label: Text(_isDeleting ? 'جارٍ الحذف…' : 'حذف حسابي نهائياً'),
+              // `onErrorContainer` لا `error`: هذا الزرّ يقع **داخل** لوح
+              // `errorContainer`، والدور المقابل لخلفية هو ما يُقاس تباينه
+              // في `theme_widgets_test.dart`. قياس الوضع الليلي:
+              // `onErrorContainer` يعطي 7.24:1 و`error` يعطي 5.51:1 —
+              // كلاهما فوق حدّ 4.5، لكن الأول هو الزوج المضمون في
+              // الوضعين معاً، والوحيد الذي يبقى صحيحاً لو تغيّر النسق.
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  /// تأكيد الحذف — خطوتان لا واحدة.
+  ///
+  /// النص يقول ما سيحدث بالضبط لا «هل أنت متأكد؟»: ما يُحذف، وما يبقى
+  /// (سجل الزيارات عند الطبيب بلا اسمك)، وأن المواعيد القائمة ستُلغى.
+  Future<void> _confirmDeleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف الحساب نهائياً'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('سيُحذف حسابك وبياناتك الشخصية ولا يمكن التراجع.'),
+            SizedBox(height: 12),
+            Text('• ستُلغى مواعيدك القائمة ويُبلَّغ أطباؤها.'),
+            Text('• سيُحذف ملفك الشخصي ورقم جوالك من التطبيق.'),
+            Text('• تبقى الزيارات السابقة في سجل العيادة بلا اسمك.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('تراجع'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(dialogContext).colorScheme.error,
+            ),
+            child: const Text('نعم، احذف حسابي'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    await _deleteAccount();
+  }
+
+  Future<void> _deleteAccount() async {
+    setState(() => _isDeleting = true);
+    final auth = context.read<FirebaseAuthService>();
+    final result = await _accountService.deleteAccount();
+    if (!mounted) return;
+    setState(() => _isDeleting = false);
+
+    if (!result.isSuccess) {
+      // جلسة قديمة: الخادم يشترط دخولاً حديثاً قبل إجراء لا رجعة فيه،
+      // فالمخرج الصحيح هو الخروج ثم الدخول من جديد — لا مجرّد رسالة.
+      _showMessage(result.message, isError: true);
+      if (result.needsRecentLogin) {
+        await auth.logout();
+        if (!mounted) return;
+        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      }
+      return;
+    }
+
+    await auth.logout();
+    if (!mounted) return;
+    _showMessage(result.message);
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   }
 
   void _saveChanges(FirebaseAuthService auth) async {
