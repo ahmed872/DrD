@@ -9,15 +9,14 @@ plugins {
 android {
     namespace = "com.example.medical_appointment_app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"
+    // كانت مثبَّتة يدوياً على 27.0.12077973 — الآن تتبع القيمة الموصى بها من
+    // Flutter نفسه (تُحدَّث تلقائياً مع كل ترقية لأداة Flutter، بدل تثبيت
+    // رقم قد يصبح أقل من أدنى إصدار تطلبه أحد الإضافات لاحقاً).
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
@@ -37,6 +36,14 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+}
+
+// الصيغة الحديثة بدل `kotlinOptions` القديمة (مهجورة تدريجياً منذ Kotlin
+// Gradle Plugin 2.x) — تطابق ما يولّده `flutter create` الآن بـ KGP 2.4.0.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
