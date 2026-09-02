@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:provider/provider.dart';
 import '../../core/utils/app_logger.dart';
-import '../../core/utils/slot_id.dart';
+import '../../data/services/availability_service.dart';
 import '../../data/services/booking_service.dart';
-import '../providers/firebase_auth_service.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/slot_picker.dart';
+import 'booking_confirmation_screen.dart';
 
 class PatientBookingScreen extends StatefulWidget {
   final String? initialDoctorId;
@@ -17,6 +18,10 @@ class PatientBookingScreen extends StatefulWidget {
 }
 
 class _PatientBookingScreenState extends State<PatientBookingScreen> {
+  /// سقف قائمة اختيار الطبيب في شاشة الحجز.
+  /// البحث الكامل بترقيم صفحات في `PatientSearchDoctorScreen`.
+  static const int _doctorPickerCap = 100;
+
   final BookingService _bookingService = BookingService();
 
   List<Map<String, dynamic>> _allDoctors = [];
@@ -31,6 +36,11 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           .collection('users')
           .where('role', isEqualTo: 'doctor')
           .where('isVerified', isEqualTo: true)
+          // المرحلة 7: قائمة اختيار لا فهرس كامل. بلا سقف كانت تقرأ
+          // مجموعة الأطباء كلها في كل فتح للشاشة. الترتيب بالاسم يجعل
+          // السقف قطعاً مستقرّاً لا عيّنة عشوائية.
+          .orderBy('name')
+          .limit(_doctorPickerCap)
           .get();
 
       // المرحلة 2: طبيب موقوف (`disabled: true`) يبقى `isVerified: true`
@@ -67,22 +77,17 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       AppLogger.error('تعذّر جلب قائمة الأطباء', e);
     }
     if (mounted) setState(() => _isLoadingDoctors = false);
-    if (_selectedDoctorId != null) {
-      _fetchBookedSlots();
-    }
   }
 
   late TextEditingController _searchController;
   String _selectedSpecialization = 'جميع التخصصات / All';
   String? _selectedDoctorId;
-  DateTime? _selectedDate;
-  String? _selectedTime;
-  String? _consultationReason;
 
-  /// الوقت (`HH:mm`) → عدد الحجوزات القائمة فيه.
-  Map<String, int> _bookedSlots = {};
-  bool _isLoadingSlots = false;
-  bool _hasAppointmentToday = false;
+  /// الخانة المختارة كما وصفها الخادم — لا تاريخ ولا وقت يبنيهما التطبيق.
+  AvailabilitySlot? _selectedSlot;
+  final SlotPickerController _slotPickerController = SlotPickerController();
+  String? _consultationReason;
+  bool _isBooking = false;
 
   @override
   void initState() {
@@ -92,49 +97,12 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     }
     _fetchRealDoctors();
     _searchController = TextEditingController();
-    _selectedDate = DateTime.now().add(const Duration(days: 1));
-  }
-
-  Future<void> _fetchBookedSlots() async {
-    if (_selectedDoctorId == null || _selectedDate == null) return;
-    setState(() {
-      _isLoadingSlots = true;
-      _bookedSlots.clear();
-      _hasAppointmentToday = false;
-      _selectedTime = null;
-    });
-
-    try {
-      final auth = Provider.of<FirebaseAuthService>(context, listen: false);
-
-      // الاستعلامان يعتمدان الآن على BookingService، وهو نفس المصدر الذي
-      // يستخدمه الحجز — فلا تختلف الواجهة عمّا ستقبله قاعدة البيانات.
-      final taken = await _bookingService.bookedCountsFor(
-        doctorId: _selectedDoctorId!,
-        date: _selectedDate!,
-      );
-      final patientAlreadyBooked = await _bookingService.hasAppointmentOnDate(
-        doctorId: _selectedDoctorId!,
-        patientId: auth.userId ?? '',
-        date: _selectedDate!,
-      );
-
-      if (mounted) {
-        setState(() {
-          _bookedSlots = taken;
-          _hasAppointmentToday = patientAlreadyBooked;
-        });
-      }
-    } catch (e) {
-      AppLogger.error('تعذّر جلب الخانات المحجوزة', e);
-    } finally {
-      if (mounted) setState(() => _isLoadingSlots = false);
-    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _slotPickerController.dispose();
     super.dispose();
   }
 
@@ -155,106 +123,12 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     }).toList();
   }
 
-  List<String> _getAvailableTimeSlots(Map<String, dynamic> doctor) {
-    if (_selectedDate != null) {
-      final dynamic workingDaysDynamic = doctor['workingDays'];
-      if (workingDaysDynamic != null && workingDaysDynamic is Map) {
-        Map<String, dynamic> workingDays =
-            Map<String, dynamic>.from(workingDaysDynamic);
-        String arabicDay = DateFormat('EEEE', 'ar').format(_selectedDate!);
-        bool isWorkingDay = true;
-        for (final entry in workingDays.entries) {
-          if (entry.key.contains(arabicDay)) {
-            isWorkingDay = entry.value == true;
-            break;
-          }
-        }
-        if (!isWorkingDay) return [];
-      }
-    }
-
-    String bookingSystemType = doctor['bookingSystemType'] ?? 'Individual';
-    int duration = doctor['sessionDuration'] ?? 30;
-    if (bookingSystemType == 'Grouped') {
-      duration = 60; // 1 hour groups
-    }
-    String workingHours = doctor['workingHours'] ?? '09:00 AM - 05:00 PM';
-
-    List<String> defaultSlots = [
-      '09:00',
-      '09:30',
-      '10:00',
-      '10:30',
-      '11:00',
-      '11:30',
-      '14:00',
-      '14:30',
-      '15:00',
-      '15:30',
-      '16:00',
-      '16:30',
-    ];
-
-    try {
-      final parts = workingHours.split('-');
-      if (parts.length != 2) return defaultSlots;
-
-      final startStr = parts[0].trim();
-      final endStr = parts[1].trim();
-
-      TimeOfDay parseTime(String timeStr) {
-        String cleanTime = timeStr.trim();
-        final isPM = cleanTime.toUpperCase().contains('PM');
-        final isAM = cleanTime.toUpperCase().contains('AM');
-
-        String justTime = cleanTime
-            .toUpperCase()
-            .replaceAll('AM', '')
-            .replaceAll('PM', '')
-            .trim();
-        final hm = justTime.split(':');
-        int hour = int.tryParse(hm[0]) ?? 0;
-        int minute = hm.length > 1 ? (int.tryParse(hm[1]) ?? 0) : 0;
-
-        if (isPM && hour != 12) {
-          hour += 12;
-        } else if (isAM && hour == 12) {
-          hour = 0;
-        }
-        return TimeOfDay(hour: hour, minute: minute);
-      }
-
-      final startTime = parseTime(startStr);
-      final endTime = parseTime(endStr);
-
-      List<String> slots = [];
-      DateTime current = DateTime(2000, 1, 1, startTime.hour, startTime.minute);
-      DateTime end = DateTime(2000, 1, 1, endTime.hour, endTime.minute);
-
-      if (end.isBefore(current) || end.isAtSameMomentAs(current)) {
-        end = end.add(const Duration(days: 1));
-      }
-
-      while (current.isBefore(end)) {
-        String formattedHour = current.hour.toString().padLeft(2, '0');
-        String formattedMinute = current.minute.toString().padLeft(2, '0');
-        slots.add('$formattedHour:$formattedMinute');
-        current = current.add(Duration(minutes: duration));
-      }
-
-      return slots.isEmpty ? defaultSlots : slots;
-    } catch (e) {
-      return defaultSlots;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('احجز موعد'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
         elevation: 1,
       ),
       body: _isLoadingDoctors
@@ -340,10 +214,12 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           _selectedDoctorId = null;
         });
       },
-      backgroundColor: Colors.grey[100],
-      selectedColor: Colors.blue,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      selectedColor: Theme.of(context).colorScheme.primary,
       labelStyle: TextStyle(
-        color: _selectedSpecialization == spec ? Colors.white : Colors.black87,
+        color: _selectedSpecialization == spec
+            ? Theme.of(context).colorScheme.onPrimary
+            : Theme.of(context).colorScheme.onSurface,
         fontWeight: _selectedSpecialization == spec
             ? FontWeight.bold
             : FontWeight.normal,
@@ -368,13 +244,14 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           padding: const EdgeInsets.symmetric(vertical: 40),
           child: Column(
             children: [
-              Icon(Icons.person_search, size: 64, color: Colors.grey[300]),
+              Icon(Icons.person_search,
+                  size: 64, color: Theme.of(context).colorScheme.outline),
               const SizedBox(height: 16),
               Text(
                 'لم يتم العثور على أطباء',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.grey[500],
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -409,17 +286,20 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide(
-                  color: isSelected ? Colors.blue : Colors.transparent,
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.transparent,
                   width: 2,
                 ),
               ),
               child: InkWell(
                 onTap: () {
+                  // تغيير الطبيب يُسقط الخانة المختارة: خانة طبيب لا تصلح
+                  // لطبيب آخر، و`SlotPicker` يعيد التحميل من تلقائه.
                   setState(() {
                     _selectedDoctorId = doctor['id'];
-                    _selectedTime = null;
+                    _selectedSlot = null;
                   });
-                  _fetchBookedSlots();
                 },
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
@@ -432,7 +312,9 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.star, color: Colors.amber, size: 18),
+                              Icon(Icons.star,
+                                  color: Theme.of(context).colorScheme.tertiary,
+                                  size: 18),
                               const SizedBox(width: 4),
                               Text(
                                 '${doctor['rating']} (${doctor['reviews']})',
@@ -459,7 +341,10 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                                   style: Theme.of(context)
                                       .textTheme
                                       .bodySmall
-                                      ?.copyWith(color: Colors.grey[500]),
+                                      ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant),
                                 ),
                               ],
                             ),
@@ -470,7 +355,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                       Text(
                         doctor['specialization'],
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.blue.shade700,
+                              color: Theme.of(context).colorScheme.primary,
                               fontWeight: FontWeight.w500,
                             ),
                       ),
@@ -480,8 +365,9 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.location_on,
-                                size: 14, color: Colors.orange),
+                            Icon(Icons.location_on,
+                                size: 14,
+                                color: Theme.of(context).colorScheme.secondary),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
@@ -490,7 +376,9 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                                     .textTheme
                                     .bodySmall
                                     ?.copyWith(
-                                      color: Colors.orange[700],
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .secondary,
                                       fontWeight: FontWeight.w500,
                                     ),
                               ),
@@ -502,7 +390,9 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                       Text(
                         doctor['bio'],
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[600],
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                       ),
                       const SizedBox(height: 8),
@@ -515,8 +405,11 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                                 .textTheme
                                 .bodySmall
                                 ?.copyWith(
-                                  color:
-                                      isSelected ? Colors.green : Colors.grey,
+                                  color: isSelected
+                                      ? Theme.of(context).colorScheme.tertiary
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
                                   fontWeight: FontWeight.bold,
                                 ),
                           ),
@@ -526,7 +419,8 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                                 .textTheme
                                 .titleSmall
                                 ?.copyWith(
-                                    color: Colors.green,
+                                    color:
+                                        Theme.of(context).colorScheme.tertiary,
                                     fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -542,148 +436,24 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     );
   }
 
+  /// اختيار الموعد من التوفّر الحقيقي على الخادم.
+  ///
+  /// كان هنا مولّد خانات محلي يقرأ `workingHours` و`sessionDuration` ويستعلم
+  /// Firestore عن المحجوز — نسخة ثانية من منطق الجدول لا تعرف الاستراحات ولا
+  /// الإجازات ولا استثناءات التواريخ التي أضافتها المرحلة 1ب، فتعرض أوقاتاً
+  /// يرفضها الخادم عند التأكيد.
   Widget _buildDateTimeSection(Map<String, dynamic> doctor) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'اختر التاريخ والوقت / Select Date & Time',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
+        const SectionHeader(title: 'اختر الموعد'),
+        SlotPicker(
+          doctorId: doctor['id'].toString(),
+          controller: _slotPickerController,
+          selectedSlot: _selectedSlot,
+          onSlotSelected: (slot) => setState(() => _selectedSlot = slot),
         ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: InkWell(
-              onTap: () => _selectDate(context, doctor),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(Icons.calendar_today, color: Colors.blue),
-                  Text(
-                    DateFormat('EEEE, d MMMM', 'ar').format(_selectedDate!),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (_isLoadingSlots)
-          const Center(child: CircularProgressIndicator())
-        else if (_hasAppointmentToday)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.red[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.red[200]!),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.warning, color: Colors.red),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'لديك موعد محجوز مسبقاً في هذا اليوم.\nYou already have an appointment booked on this date.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.red[800]),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else ...[
-          Text(
-            'أوقات متاحة / Available Times',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey[600],
-                ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 8,
-            runSpacing: 8,
-            children: _getAvailableTimeSlots(doctor)
-                .map((time) {
-                  final String sysType =
-                      doctor['bookingSystemType'] ?? 'Individual';
-                  final int maxPerSlot = (sysType == 'Grouped')
-                      ? ((doctor['maxPatientsPerSlot'] as num?)?.toInt() ?? 4)
-                      : 1;
-                  // التوحيد ضروري: الخانات المولّدة بصيغة `HH:mm` والمحجوزة
-                  // قادمة من قاعدة البيانات بصيغ متعددة.
-                  final int bookedCount =
-                      _bookedSlots[SlotId.normalizeTime(time)] ?? 0;
-
-                  if (bookedCount >= maxPerSlot) {
-                    return const SizedBox.shrink();
-                  }
-
-                  return _buildTimeSlot(time,
-                      sysType == 'Grouped' ? (maxPerSlot - bookedCount) : null);
-                })
-                .where((widget) => widget is! SizedBox)
-                .toList(),
-          ),
-        ],
       ],
-    );
-  }
-
-  Widget _buildTimeSlot(String time, int? remaining) {
-    final isSelected = _selectedTime == time;
-    String formattedTime = time;
-    final parts = time.split(':');
-    if (parts.length == 2) {
-      int h = int.tryParse(parts[0]) ?? 0;
-      final m = parts[1].split('\n')[0]; // strip anything extra
-      final period = h >= 12 ? 'م' : 'ص';
-      if (h == 0)
-        h = 12;
-      else if (h > 12) h -= 12;
-      formattedTime = '${h.toString()}:$m $period';
-    }
-
-    final displayLabel = remaining != null
-        ? '$formattedTime\n(باقي $remaining مكان)'
-        : formattedTime;
-    return chip(
-      label: displayLabel,
-      selected: isSelected,
-      onSelected: (selected) {
-        setState(() => _selectedTime = time);
-      },
-    );
-  }
-
-  Widget chip({
-    required String label,
-    required bool selected,
-    required Function(bool) onSelected,
-  }) {
-    return FilterChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: onSelected,
-      backgroundColor: Colors.grey[100],
-      selectedColor: Colors.green,
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : Colors.black87,
-        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-      ),
     );
   }
 
@@ -715,146 +485,67 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
 
   Widget _buildBookButton() {
     final isComplete = _selectedDoctorId != null &&
-        _selectedDate != null &&
-        _selectedTime != null &&
-        (_consultationReason?.isNotEmpty ?? false);
+        _selectedSlot != null &&
+        (_consultationReason?.trim().isNotEmpty ?? false);
 
-    return SizedBox(
-      width: double.infinity,
-      height: 48,
-      child: ElevatedButton.icon(
-        onPressed: isComplete ? () => _confirmBooking() : null,
-        icon: const Icon(Icons.check_circle),
-        label: const Text('تأكيد الحجز / Confirm Booking'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: Colors.grey[300],
-        ),
-      ),
+    return FilledButton.icon(
+      onPressed: isComplete && !_isBooking ? _confirmBooking : null,
+      icon: _isBooking
+          ? const SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.check_circle_outline),
+      label: Text(_isBooking ? 'جارٍ تأكيد الحجز…' : 'تأكيد الحجز'),
     );
   }
 
-  Future<void> _selectDate(
-      BuildContext context, Map<String, dynamic> doctor) async {
-    final dynamic workingDaysDynamic = doctor['workingDays'];
-    Map<String, dynamic>? workingDays;
-
-    if (workingDaysDynamic is Map) {
-      workingDays = Map<String, dynamic>.from(workingDaysDynamic);
-    } else if (workingDaysDynamic is List) {
-      // Ignore list since we rely on the Map format now
-      workingDays = null;
-    }
-
-    bool isDaySelectable(DateTime val) {
-      if (workingDays == null || workingDays.isEmpty) return true;
-
-      bool hasAnyWorkingDay = false;
-      for (var value in workingDays.values) {
-        if (value == true) {
-          hasAnyWorkingDay = true;
-          break;
-        }
-      }
-      if (!hasAnyWorkingDay)
-        return true; // Failsafe: if no true days exist, don't block all days.
-
-      String arabicDay = DateFormat('EEEE', 'ar').format(val);
-      for (final entry in workingDays.entries) {
-        if (entry.key.contains(arabicDay)) {
-          return entry.value == true;
-        }
-      }
-      return true;
-    }
-
-    // Find the first available day for the initialDate
-    // to prevent the DatePicker from crashing if _selectedDate is not a working day.
-    DateTime initialDate = _selectedDate ?? DateTime.now();
-
-    if (!isDaySelectable(initialDate)) {
-      bool found = false;
-      for (int i = 0; i < 30; i++) {
-        DateTime searchDay = DateTime.now().add(Duration(days: i));
-        if (isDaySelectable(searchDay)) {
-          initialDate = searchDay;
-          found = true;
-          break;
-        }
-      }
-
-      if (!found) {
-        initialDate = DateTime.now();
-      }
-    }
-
-    final picked = await showDatePicker(
-        context: context,
-        initialDate: initialDate,
-        firstDate: DateTime.now(),
-        lastDate: DateTime.now().add(const Duration(days: 90)),
-        locale: const Locale('ar'),
-        selectableDayPredicate: isDaySelectable);
-
-    if (picked != null && picked != _selectedDate) {
-      if (mounted) setState(() => _selectedDate = picked);
-      _fetchBookedSlots();
-    }
-  }
-
+  /// مراجعة أخيرة ثم تأكيد.
+  ///
+  /// كل ما يُعرض هنا للقراءة فقط: السعر والطبيب والوقت تأتي من الخادم، ولا
+  /// حقل منها قابل للتحرير — إرسالها من العميل توقّف منذ المرحلة 1أ.
   void _confirmBooking() {
-    if (_selectedTime == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('الرجاء اختيار وقت الموعد / Please select a time'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+    final slot = _selectedSlot;
+    if (slot == null) return;
 
     final doctor = _allDoctors.firstWhere((d) => d['id'] == _selectedDoctorId);
+    final parsedDate = DateTime.parse(slot.date);
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('تأكيد الحجز / Confirm Booking'),
+        title: const Text('مراجعة الحجز'),
         content: SingleChildScrollView(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _confirmRow('الطبيب / Doctor', doctor['name']),
-              _confirmRow('التخصص / Specialty',
-                  doctor['specialization'].split(' / ')[0]),
-              _confirmRow(
-                'التاريخ / Date',
-                DateFormat('EEEE, d MMMM yyyy', 'ar').format(_selectedDate!),
+              DetailRow(
+                label: 'الطبيب',
+                value: doctor['name'].toString(),
+                icon: Icons.person_outline,
               ),
-              _confirmRow('الوقت / Time', _selectedTime ?? ''),
-              _confirmRow('السعر / Price', '${doctor['price']} جنيه'),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info, color: Colors.blue, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'سيصلك تأكيد عبر البريد الإلكتروني\nYou will receive confirmation via email',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
+              DetailRow(
+                label: 'التخصص',
+                value: doctor['specialization'].toString().split(' / ').first,
+                icon: Icons.medical_services_outlined,
+              ),
+              DetailRow(
+                label: 'التاريخ',
+                value: DateFormat('EEEE d MMMM yyyy', 'ar').format(parsedDate),
+                icon: Icons.calendar_today_outlined,
+              ),
+              DetailRow(
+                label: 'الوقت',
+                value: slot.displayTime,
+                icon: Icons.access_time,
+              ),
+              DetailRow(
+                label: 'سعر الكشف',
+                value: '${doctor['price']} جنيه',
+                icon: Icons.payments_outlined,
               ),
             ],
           ),
@@ -862,86 +553,67 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء / Cancel'),
+            child: const Text('رجوع'),
           ),
-          ElevatedButton(
-            onPressed: () async {
-              showDialog(
-                context: dialogContext,
-                barrierDismissible: false,
-                builder: (_) =>
-                    const Center(child: CircularProgressIndicator()),
-              );
-
-              final messenger = ScaffoldMessenger.of(context);
-              final navigator = Navigator.of(context);
-
-              // الطلب يحمل الاختيار وحده: أي طبيب، أي يوم، أي ساعة، ولماذا.
-              // السعة والسعر واسم الطبيب واسم المريض ورقمه كانت تُرسل من هنا
-              // وتُكتب كما هي؛ صار الخادم يستخرجها من Firestore بنفسه.
-              final result = await _bookingService.book(
-                doctorId: doctor['id'].toString(),
-                date: _selectedDate!,
-                time: _selectedTime!,
-                reason: _consultationReason,
-              );
-
-              if (!mounted) return;
-
-              // إغلاق مؤشر التحميل ثم نافذة التأكيد.
+          FilledButton(
+            onPressed: () {
               Navigator.pop(dialogContext);
-              Navigator.pop(dialogContext);
-
-              messenger.showSnackBar(SnackBar(
-                content: Text(result.message),
-                backgroundColor:
-                    result.isSuccess ? Colors.green : Colors.red[700],
-              ));
-
-              if (result.isSuccess) {
-                navigator.pop();
-              } else {
-                // الخانة اتحجزت أثناء التأكيد — نُحدّث القائمة فوراً حتى لا
-                // يحاول المريض على نفس الوقت مرة أخرى.
-                await _fetchBookedSlots();
-              }
+              _submitBooking(doctor, slot);
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-            ),
-            child: const Text('تأكيد / Confirm'),
+            child: const Text('تأكيد الحجز'),
           ),
         ],
       ),
     );
   }
 
-  Widget _confirmRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: Colors.grey[600]),
-          ),
-        ],
-      ),
+  Future<void> _submitBooking(
+      Map<String, dynamic> doctor, AvailabilitySlot slot) async {
+    setState(() => _isBooking = true);
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    final result = await _bookingService.book(
+      doctorId: doctor['id'].toString(),
+      date: DateTime.parse(slot.date),
+      time: slot.startTime,
+      reason: _consultationReason,
     );
+
+    if (!mounted) return;
+    setState(() => _isBooking = false);
+
+    if (result.isSuccess) {
+      await navigator.push(
+        MaterialPageRoute(
+          builder: (_) => BookingConfirmationScreen(
+            doctorName: doctor['name'].toString(),
+            specialization:
+                doctor['specialization'].toString().split(' / ').first,
+            date: slot.date,
+            startTime: slot.startTime,
+            price: doctor['price'],
+            appointmentId: result.appointmentId,
+            alreadyBooked: result.duplicate,
+          ),
+        ),
+      );
+      if (mounted) navigator.pop();
+      return;
+    }
+
+    messenger.showSnackBar(SnackBar(
+      content: Text(result.message),
+      backgroundColor: Theme.of(context).colorScheme.error,
+    ));
+
+    // الخانة قد تكون امتلأت بين العرض والتأكيد — نعيد تحميل التوفّر بدل
+    // ترك المريض أمام وقت لم يعد موجوداً.
+    if (result.failure == BookingFailure.slotTaken ||
+        result.failure == BookingFailure.slotInThePast) {
+      setState(() => _selectedSlot = null);
+      _slotPickerController.refresh();
+    }
   }
 }

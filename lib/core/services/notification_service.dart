@@ -83,15 +83,17 @@ class NotificationService {
     }
   }
 
-  /// جلب إشعارات المستخدم
-  Stream<List<DocumentSnapshot>> getUserNotifications(String userId) {
-    return _firestore
-        .collection('notifications')
-        .where('doctorId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((event) => event.docs);
-  }
+  // ===== المرحلة 7: حُذفت قراءتان بلا حدّ ولا مستدعٍ =====
+  //
+  // `getUserNotifications` كانت بثّاً حيّاً بـ `orderBy` وبلا `limit` — أي
+  // مجموعة إشعارات المستخدم كاملة تُنصت إليها بلا سقف. و
+  // `getUnreadNotificationsCount` كانت تعدّ بلا سقف كذلك. وكلتاهما تستعلمان
+  // بالحقل القديم `doctorId` لا `recipientId` القياسي منذ المرحلة 3، فما
+  // كانتا لتُرجعا شيئاً على البيانات الحالية أصلاً.
+  //
+  // ولا مستدعٍ لأيٍّ منهما في المستودع: شاشة الإشعارات تستعمل ترقيماً
+  // بمؤشّر (`notifications_screen.dart`)، والعدّاد في الجرس استعلام محدود
+  // في `home_screen.dart`. حذفهما يزيل فخّاً جاهزاً لا وظيفة قائمة.
 
   /// وضع علامة على الإشعار كمقروء
   Future<void> markNotificationAsRead(String notificationId) async {
@@ -111,22 +113,6 @@ class NotificationService {
       await _firestore.collection('notifications').doc(notificationId).delete();
     } catch (e) {
       AppLogger.error('❌ خطأ في حذف الإشعار: $e');
-    }
-  }
-
-  /// الحصول على عدد الإشعارات غير المقروءة
-  Future<int> getUnreadNotificationsCount(String userId) async {
-    try {
-      final snapshot = await _firestore
-          .collection('notifications')
-          .where('doctorId', isEqualTo: userId)
-          .where('read', isEqualTo: false)
-          .count()
-          .get();
-      return snapshot.count ?? 0;
-    } catch (e) {
-      AppLogger.error('❌ خطأ في عد الإشعارات: $e');
-      return 0;
     }
   }
 

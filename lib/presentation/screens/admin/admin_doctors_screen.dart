@@ -1,3 +1,5 @@
+import '../../widgets/app_widgets.dart';
+import '../../widgets/role_guard.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -56,11 +58,14 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
             .where('status', isEqualTo: filter.name)
             .orderBy('submittedAt', descending: true);
       case DoctorFilter.active:
+        // بلا `where('disabled', isEqualTo: false)` عمداً — راجع
+        // `_hidesSuspended` أدناه: المساواة تستبعد كل مستند لا يحمل الحقل،
+        // وهم أغلب الأطباء. نفس الانضباط في شاشة البحث
+        // (`patient_search_doctor_screen.dart`).
         return db
             .collection('users')
             .where('role', isEqualTo: 'doctor')
-            .where('isVerified', isEqualTo: true)
-            .where('disabled', isEqualTo: false);
+            .where('isVerified', isEqualTo: true);
       case DoctorFilter.suspended:
         return db
             .collection('users')
@@ -79,6 +84,25 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     await _fetchPage();
   }
 
+  /// يُسقط الموقوفين من قائمة «النشطون» — بعد القراءة لا في الاستعلام.
+  ///
+  /// `where('disabled', isEqualTo: false)` في Firestore **لا** يطابق مستنداً
+  /// بلا الحقل. و`disabled` أُضيف في المرحلة 2، ولا سكربت الترحيل يكتبه،
+  /// فكان الفلتر يُخفي كل طبيب أقدم منه — أي القائمة كلها تقريباً — من
+  /// شاشة الإدارة. رُصد في مراجعة المرحلة 10 على المحاكي.
+  ///
+  /// الغياب يعني «غير موقوف»، تماماً كما تقرأه القواعد
+  /// (`get('disabled', false)`) والخادم (`disabled === true`).
+  ///
+  /// أثر جانبي مقبول: صفحة قد تعود بأقل من `_pageSize` عنصراً حين يقع
+  /// موقوف داخلها. البديل — استعلام لا يُرجع الأغلبية — أسوأ بكثير.
+  Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> _hidesSuspended(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    if (_filter != DoctorFilter.active) return docs;
+    return docs.where((d) => d.data()['disabled'] != true);
+  }
+
   Future<void> _fetchPage() async {
     Query<Map<String, dynamic>> query = _baseQuery(_filter).limit(_pageSize);
     if (_lastDoc != null) query = query.startAfterDocument(_lastDoc!);
@@ -86,7 +110,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     final snapshot = await query.get();
     if (!mounted) return;
     setState(() {
-      _docs.addAll(snapshot.docs);
+      _docs.addAll(_hidesSuspended(snapshot.docs));
       _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : _lastDoc;
       _hasMore = snapshot.docs.length == _pageSize;
       _isLoading = false;
@@ -110,7 +134,9 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(result.message),
-      backgroundColor: result.isSuccess ? Colors.green : Colors.red,
+      backgroundColor: result.isSuccess
+          ? Theme.of(context).colorScheme.tertiary
+          : Theme.of(context).colorScheme.error,
     ));
     if (result.isSuccess) _loadFirstPage();
   }
@@ -159,7 +185,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
               const SizedBox(height: 8),
               Text('سبب الرفض: ${data['rejectionReason'] ?? '—'}',
                   textAlign: TextAlign.right,
-                  style: const TextStyle(color: Colors.red)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 20),
             if (_filter == DoctorFilter.pending) ...[
@@ -168,9 +194,11 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   Navigator.pop(context);
                   _runAction(() => _adminService.approveDoctor(doc.id));
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child:
-                    const Text('قبول', style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.tertiary,
+                    foregroundColor: Theme.of(context).colorScheme.onTertiary),
+                // النصّ كان `onPrimary` فوق خلفية `tertiary` — الزوج الخاطئ.
+                child: const Text('قبول'),
               ),
               const SizedBox(height: 8),
               OutlinedButton(
@@ -180,7 +208,9 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   if (reason == null || reason.isEmpty) return;
                   _runAction(() => _adminService.rejectDoctor(doc.id, reason));
                 },
-                child: const Text('رفض', style: TextStyle(color: Colors.red)),
+                child: Text('رفض',
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
               ),
             ],
           ],
@@ -207,7 +237,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
               const SizedBox(height: 8),
               Text('سبب الإيقاف: ${data['suspensionReason'] ?? '—'}',
                   textAlign: TextAlign.right,
-                  style: const TextStyle(color: Colors.red)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 20),
             if (_filter == DoctorFilter.active)
@@ -218,7 +248,9 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   if (reason == null || reason.isEmpty) return;
                   _runAction(() => _adminService.suspendDoctor(doc.id, reason));
                 },
-                child: const Text('إيقاف', style: TextStyle(color: Colors.red)),
+                child: Text('إيقاف',
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
               ),
             if (_filter == DoctorFilter.suspended)
               ElevatedButton(
@@ -226,9 +258,11 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                   Navigator.pop(context);
                   _runAction(() => _adminService.restoreDoctor(doc.id));
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child: const Text('استعادة',
-                    style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.tertiary,
+                    foregroundColor: Theme.of(context).colorScheme.onTertiary),
+                // النصّ كان `onPrimary` فوق خلفية `tertiary` — الزوج الخاطئ.
+                child: const Text('استعادة'),
               ),
           ],
         ),
@@ -238,65 +272,69 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('إدارة الأطباء'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-      ),
-      body: Column(
-        children: [
-          SizedBox(
-            height: 52,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              children: DoctorFilter.values
-                  .map((f) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: ChoiceChip(
-                          label: Text(f.label),
-                          selected: _filter == f,
-                          onSelected: (_) => _switchFilter(f),
-                        ),
-                      ))
-                  .toList(),
+    return RoleGuard(
+      requireAdmin: true,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('إدارة الأطباء'),
+          centerTitle: true,
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+        body: Column(
+          children: [
+            SizedBox(
+              height: 52,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                children: DoctorFilter.values
+                    .map((f) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ChoiceChip(
+                            label: Text(f.label),
+                            selected: _filter == f,
+                            onSelected: (_) => _switchFilter(f),
+                          ),
+                        ))
+                    .toList(),
+              ),
             ),
-          ),
-          Expanded(
-            child: _docs.isEmpty && !_isLoading
-                ? const Center(child: Text('لا يوجد شيء هنا'))
-                : ListView.builder(
-                    itemCount: _docs.length + (_hasMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _docs.length) {
-                        _loadMore();
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(child: CircularProgressIndicator()),
+            Expanded(
+              child: _docs.isEmpty && !_isLoading
+                  ? const Center(child: Text('لا يوجد شيء هنا'))
+                  : ListView.builder(
+                      itemCount: _docs.length + (_hasMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index >= _docs.length) {
+                          _loadMore();
+                          return const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final doc = _docs[index];
+                        final data = doc.data();
+                        final isApplication = _filter == DoctorFilter.pending ||
+                            _filter == DoctorFilter.rejected;
+                        return ListTile(
+                          title: Text(
+                            isApplication
+                                ? (data['specialization'] ?? '—')
+                                : (data['name'] ?? '—'),
+                            textAlign: TextAlign.right,
+                          ),
+                          subtitle: Text(doc.id, textAlign: TextAlign.right),
+                          trailing: const DirectionalForwardIcon(),
+                          onTap: () => isApplication
+                              ? _openApplicationDetail(doc)
+                              : _openUserDetail(doc),
                         );
-                      }
-                      final doc = _docs[index];
-                      final data = doc.data();
-                      final isApplication = _filter == DoctorFilter.pending ||
-                          _filter == DoctorFilter.rejected;
-                      return ListTile(
-                        title: Text(
-                          isApplication
-                              ? (data['specialization'] ?? '—')
-                              : (data['name'] ?? '—'),
-                          textAlign: TextAlign.right,
-                        ),
-                        subtitle: Text(doc.id, textAlign: TextAlign.right),
-                        trailing: const Icon(Icons.chevron_left),
-                        onTap: () => isApplication
-                            ? _openApplicationDetail(doc)
-                            : _openUserDetail(doc),
-                      );
-                    },
-                  ),
-          ),
-        ],
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

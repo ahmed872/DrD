@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/theme/app_spacing.dart';
 import '../../core/utils/app_logger.dart';
 
 class SupportScreen extends StatelessWidget {
@@ -12,267 +13,289 @@ class SupportScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       appBar: AppBar(
         title: const Text('الدعم الفني'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         elevation: 1,
       ),
       body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 20),
+        child: ContentWidthLimit(
+          // على شاشة عريضة كان المحتوى يمتدّ بعرض النافذة كاملاً؛ سطر نصّ
+          // بعرض 1400 بكسل غير مقروء.
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 20),
 
-              // رسالة ترحيب
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0097A7).withOpacity(0.1),
-                  border: Border.all(
-                      color: const Color(0xFF0097A7).withOpacity(0.3)),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.help_outline,
-                      size: 40,
-                      color: Color(0xFF0097A7),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'هل تحتاج إلى مساعدة؟',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF0097A7),
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'نحن هنا لمساعدتك في أي استفسار أو مشكلة تواجهك في التطبيق',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: const Color(0xFF0097A7).withOpacity(0.8),
-                        fontSize: 13,
+                // رسالة ترحيب
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    border: Border.all(
+                        color:
+                            Theme.of(context).colorScheme.onPrimaryContainer),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.help_outline,
+                        size: 40,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // الخدمات المتاحة
-              Text(
-                'فيم يمكننا مساعدتك؟',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
-                    ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // البطاقات
-              Column(
-                children: [
-                  _buildSupportCard(
-                    icon: Icons.person_add,
-                    title: 'إضافة طبيب جديد',
-                    description: 'اطلب إضافة طبيب جديد للنظام',
-                    color: Colors.green[50]!,
-                    borderColor: Colors.green[200]!,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSupportCard(
-                    icon: Icons.bug_report,
-                    title: 'إبلاغ عن مشكلة',
-                    description: 'أخبرنا عن أي مشكلة تواجهك',
-                    color: Colors.orange[50]!,
-                    borderColor: Colors.orange[200]!,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSupportCard(
-                    icon: Icons.feedback,
-                    title: 'تقديم اقتراح',
-                    description: 'شارك اقتراحك لتحسين التطبيق',
-                    color: Colors.purple[50]!,
-                    borderColor: Colors.purple[200]!,
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 40),
-
-              // معلومات التواصل
-              Text(
-                'تواصل معنا',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
-                    ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // زر الواتس الرئيسي - الأكثر وضوحاً
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _launchWhatsApp(context),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.green.shade400,
-                          Colors.green.shade600,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                      const SizedBox(height: 12),
+                      Text(
+                        'هل تحتاج إلى مساعدة؟',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer,
+                            ),
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.green.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
+                      const SizedBox(height: 8),
+                      Text(
+                        'نحن هنا لمساعدتك في أي استفسار أو مشكلة تواجهك في التطبيق',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          fontSize: 13,
                         ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.message,
-                          size: 40,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'اضغط للتواصل عبر WhatsApp',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '+20 109 303 3884',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // بطاقة إضافية قابلة للنقر
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _launchWhatsApp(context),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.1),
-                      border: Border.all(
-                        color: const Color(0xFF0097A7),
-                        width: 2,
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.chat,
-                          size: 32,
-                          color: Color(0xFF0097A7),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'هل تحتاج مساعدة؟',
-                                style: TextStyle(
-                                  color: Color(0xFF0097A7),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'نحن متاحون الآن',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.arrow_forward_ios,
-                          size: 16,
-                          color: Color(0xFF0097A7),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
-              ),
 
-              const SizedBox(height: 32),
+                const SizedBox(height: 32),
 
-              // معلومات إضافية
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ملاحظات مهمة:',
-                      style: TextStyle(
+                // الخدمات المتاحة
+                Text(
+                  'فيم يمكننا مساعدتك؟',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // البطاقات
+                Column(
+                  children: [
+                    _buildSupportCard(
+                      context: context,
+                      icon: Icons.person_add,
+                      title: 'إضافة طبيب جديد',
+                      description: 'اطلب إضافة طبيب جديد للنظام',
+                      color: Theme.of(context).colorScheme.tertiaryContainer,
+                      borderColor:
+                          Theme.of(context).colorScheme.tertiaryContainer,
                     ),
                     const SizedBox(height: 12),
-                    _buildBulletPoint(
-                        'وقت الرد: من الأحد للخميس من 8 صباحاً إلى 5 مساءً'),
-                    const SizedBox(height: 8),
-                    _buildBulletPoint(
-                        'لإضافة طبيب: أرسل المعلومات الكاملة عبر الواتس'),
-                    const SizedBox(height: 8),
-                    _buildBulletPoint(
-                        'للاستفسارات العاجلة: تواصل معنا مباشرة عبر الواتس'),
+                    _buildSupportCard(
+                      context: context,
+                      icon: Icons.bug_report,
+                      title: 'إبلاغ عن مشكلة',
+                      description: 'أخبرنا عن أي مشكلة تواجهك',
+                      color: Theme.of(context).colorScheme.secondaryContainer,
+                      borderColor: Theme.of(context).colorScheme.secondary,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildSupportCard(
+                      context: context,
+                      icon: Icons.feedback,
+                      title: 'تقديم اقتراح',
+                      description: 'شارك اقتراحك لتحسين التطبيق',
+                      color: Theme.of(context).colorScheme.tertiaryContainer,
+                      borderColor: Theme.of(context).colorScheme.tertiary,
+                    ),
                   ],
                 ),
-              ),
 
-              const SizedBox(height: 40),
-            ],
+                const SizedBox(height: 40),
+
+                // معلومات التواصل
+                Text(
+                  'تواصل معنا',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // زر الواتس الرئيسي - الأكثر وضوحاً
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _launchWhatsApp(context),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Theme.of(context).colorScheme.tertiary,
+                            Theme.of(context).colorScheme.tertiary,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Theme.of(context).colorScheme.tertiary,
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.message,
+                            size: 40,
+                            color: Theme.of(context).colorScheme.onPrimary,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'اضغط للتواصل عبر WhatsApp',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '+20 109 303 3884',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // بطاقة إضافية قابلة للنقر
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _launchWhatsApp(context),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        border: Border.all(
+                          color:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.chat,
+                            size: 32,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'هل تحتاج مساعدة؟',
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'نحن متاحون الآن',
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            size: 16,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // معلومات إضافية
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ملاحظات مهمة:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildBulletPoint(context,
+                          'وقت الرد: من الأحد للخميس من 8 صباحاً إلى 5 مساءً'),
+                      const SizedBox(height: 8),
+                      _buildBulletPoint(context,
+                          'لإضافة طبيب: أرسل المعلومات الكاملة عبر الواتس'),
+                      const SizedBox(height: 8),
+                      _buildBulletPoint(context,
+                          'للاستفسارات العاجلة: تواصل معنا مباشرة عبر الواتس'),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
       ),
@@ -280,6 +303,7 @@ class SupportScreen extends StatelessWidget {
   }
 
   Widget _buildSupportCard({
+    required BuildContext context,
     required IconData icon,
     required String title,
     required String description,
@@ -307,10 +331,10 @@ class SupportScreen extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
-                    color: Colors.grey,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -318,7 +342,7 @@ class SupportScreen extends StatelessWidget {
                   description,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey[600],
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -329,7 +353,7 @@ class SupportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBulletPoint(String text) {
+  Widget _buildBulletPoint(BuildContext context, String text) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -340,7 +364,7 @@ class SupportScreen extends StatelessWidget {
             height: 6,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.grey[600],
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ),
@@ -350,7 +374,7 @@ class SupportScreen extends StatelessWidget {
             text,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey[700],
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ),

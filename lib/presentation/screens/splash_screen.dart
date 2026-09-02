@@ -57,7 +57,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.grey[300]!,
+                      color: Theme.of(context).colorScheme.outlineVariant,
                       blurRadius: 20,
                       spreadRadius: 5,
                     ),
@@ -71,7 +71,7 @@ class _SplashScreenState extends State<SplashScreen>
                 'نظام حجز المواعيد',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
+                      color: Theme.of(context).colorScheme.primary,
                       fontSize: 26,
                     ),
               ),
@@ -82,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen>
               Text(
                 'Medical Appointment System',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 13,
                       letterSpacing: 0.5,
                     ),
@@ -96,7 +96,8 @@ class _SplashScreenState extends State<SplashScreen>
                 height: 40,
                 child: CircularProgressIndicator(
                   strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation(Colors.grey[400]),
+                  valueColor: AlwaysStoppedAnimation(
+                      Theme.of(context).colorScheme.outline),
                 ),
               ),
 
@@ -105,7 +106,7 @@ class _SplashScreenState extends State<SplashScreen>
               Text(
                 'جاري التحميل...',
                 style: TextStyle(
-                  color: Colors.grey[600],
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                 ),
               ),

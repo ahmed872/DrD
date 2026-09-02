@@ -108,11 +108,34 @@ function assertValidAppointmentId(id) {
 // ===================== الإلغاء =====================
 
 /**
+ * مَن يملك إلغاء هذا الموعد — ودوره.
+ *
+ * المريض صاحبه، أو طبيبه. لا ثالث: لا مريض آخر، ولا طبيب آخر، ولا إدارة
+ * (للإدارة إيقاف الطبيب لا إلغاء مواعيده فرداً فرداً). أي غير ذلك يُرفض
+ * برسالة واحدة عامة لا تكشف إن كان الموعد موجوداً لغيره.
+ *
+ * المرحلة 10: قبلها كانت هذه الدالة تخدم المريض وحده، وكان الطبيب يلغي
+ * بكتابة مباشرة من العميل (`BookingService.cancelAsDoctor`) — قفل الخانة
+ * والموعد في معاملة يكتبها العميل بنفسه. ذلك المسار أُغلق، فانتقلت سلطة
+ * الإلغاء كاملةً إلى هنا.
+ *
+ * @returns {'patient'|'doctor'}
+ */
+function cancellerRoleFor(appointment, uid) {
+  if (appointment.patientId === uid) return 'patient';
+  if (appointment.doctorId === uid) return 'doctor';
+  return fail('permission-denied', 'permission-denied',
+    'لا يمكنك إلغاء هذا الموعد');
+}
+
+/**
  * إلغاء موعد وتحرير مكانه في الخانة، بمعاملة ذرّية واحدة.
  *
- * المريض صاحب الموعد وحده يستطيع استدعاء هذا — لا الطبيب، ولا أي طرف ثالث.
- * إعادة نفس الطلب على موعد أُلغي بالفعل تُعيد نجاحاً هادئاً
- * (`alreadyCancelled: true`) بدل خطأ أو عملية ثانية.
+ * طرفا الموعد وحدهما — مريضه أو طبيبه — يستطيعان استدعاء هذا. الفرق
+ * بينهما قيد المهلة: المريض يلتزم بها، والطبيب لا (راجع `cancellerRoleFor`
+ * والتعليق عند فحص المهلة). إعادة نفس الطلب على موعد أُلغي بالفعل تُعيد
+ * نجاحاً هادئاً (`alreadyCancelled: true`) بدل خطأ أو عملية ثانية —
+ * وهذا ما يجعل إعادة المحاولة بعد انقطاع الشبكة آمنة.
  *
  * @param {object} args
  * @param {FirebaseFirestore.Firestore} args.db
@@ -142,9 +165,7 @@ async function cancelAppointmentCore({
     fail('appointment-not-found', 'not-found', 'هذا الموعد غير موجود');
   }
   const pre = preSnap.data();
-  if (pre.patientId !== uid) {
-    fail('permission-denied', 'permission-denied', 'لا يمكنك إلغاء موعد مريض آخر');
-  }
+  const actorRole = cancellerRoleFor(pre, uid);
 
   const preStatus = normalizeStatusKey(pre.status);
   if (preStatus === 'cancelled' || preStatus === 'canceled') {
@@ -157,14 +178,23 @@ async function cancelAppointmentCore({
     fail('appointment-not-cancellable', 'failed-precondition', 'هذا الموعد لم يعد قابلاً للإلغاء');
   }
 
-  const nowInfo = await nowForAppointmentDoctor(db, pre, now);
-  const minutesUntil = minutesBetween(nowInfo.date, nowInfo.time, pre.appointmentDate, pre.startTime);
-  if (minutesUntil <= 0) {
-    fail('appointment-past', 'failed-precondition', 'لا يمكن إلغاء موعد فات وقته بالفعل');
-  }
-  if (minutesUntil < CANCEL_DEADLINE_MINUTES) {
-    fail('cancellation-deadline-passed', 'failed-precondition',
-      `لا يمكن الإلغاء قبل أقل من ${CANCEL_DEADLINE_MINUTES} دقيقة من موعد الكشف`);
+  // المهلة قيد على **المريض** وحده.
+  //
+  // الطبيب صاحب الوقت نفسه: طارئ، أو غياب، أو إغلاق يوم — كلّها تقع بعد
+  // انقضاء المهلة بطبيعتها، والمسار المباشر الذي حلّت هذه الدالة محلّه
+  // (`BookingService.cancelAsDoctor`) لم يكن يفحص وقتاً إطلاقاً. فرض مهلة
+  // المريض على الطبيب هنا كان سيكسر سلوكاً قائماً ومشروعاً، لا يغلق ثغرة.
+  if (actorRole === 'patient') {
+    const nowInfo = await nowForAppointmentDoctor(db, pre, now);
+    const minutesUntil = minutesBetween(
+      nowInfo.date, nowInfo.time, pre.appointmentDate, pre.startTime);
+    if (minutesUntil <= 0) {
+      fail('appointment-past', 'failed-precondition', 'لا يمكن إلغاء موعد فات وقته بالفعل');
+    }
+    if (minutesUntil < CANCEL_DEADLINE_MINUTES) {
+      fail('cancellation-deadline-passed', 'failed-precondition',
+        `لا يمكن الإلغاء قبل أقل من ${CANCEL_DEADLINE_MINUTES} دقيقة من موعد الكشف`);
+    }
   }
 
   const slotId = typeof pre.slotId === 'string' && pre.slotId ? pre.slotId : null;
@@ -181,9 +211,8 @@ async function cancelAppointmentCore({
       fail('appointment-not-found', 'not-found', 'هذا الموعد غير موجود');
     }
     const appt = apptSnap.data();
-    if (appt.patientId !== uid) {
-      fail('permission-denied', 'permission-denied', 'لا يمكنك إلغاء موعد مريض آخر');
-    }
+    // يُعاد الفحص على القراءة الطازجة داخل المعاملة، لا على `pre` وحدها.
+    cancellerRoleFor(appt, uid);
 
     const status = normalizeStatusKey(appt.status);
     if (status === 'cancelled' || status === 'canceled') {
@@ -198,7 +227,11 @@ async function cancelAppointmentCore({
     }
 
     if (slotRef && slotSnap) {
-      const plan = planSlotRelease(slotSnap, uid);
+      // `appt.patientId` لا `uid`: حين يلغي الطبيب، المقعد المحجوز في
+      // الخانة يخصّ المريض. تمرير `uid` هنا كان سيجعل التحرير `noop`
+      // (الطبيب ليس في `patientIds`) فيبقى العدّاد مرفوعاً على موعد ملغى،
+      // وتُحجب الخانة عن كل مَن بعده.
+      const plan = planSlotRelease(slotSnap, appt.patientId);
       if (plan.action === 'update') {
         tx.update(slotRef, { ...plan.data, updatedAt: new Date() });
       }
@@ -208,6 +241,7 @@ async function cancelAppointmentCore({
       status: 'Cancelled',
       cancelledAt: new Date(),
       cancelledBy: uid,
+      cancelledByRole: actorRole,
       cancelReason,
       updatedAt: new Date(),
     });
@@ -218,9 +252,11 @@ async function cancelAppointmentCore({
       doctorName: appt.doctorName, patientName: appt.patientName,
       date: appt.appointmentDate, startTime: appt.startTime,
     };
+    // الطرفان يُبلَّغان أياً كان الملغي — الفرق أن المريض حين يلغي الطبيب
+    // موعده يحتاج الإبلاغ أكثر لا أقل.
     const notificationRefs = [
       queueNotification(tx, db, {
-        recipientId: uid, recipientRole: 'patient',
+        recipientId: appt.patientId, recipientRole: 'patient',
         type: NOTIFICATION_TYPES.BOOKING_CANCELLED,
         appointmentId, metadata: notificationCtx,
       }),

@@ -223,7 +223,14 @@ class FirebaseAuthService extends ChangeNotifier {
         'role': role,
         'birthDate': birthDate?.toIso8601String(),
         'gender': gender,
-        'emailVerified': true, // تعيينها مفعّلة تلقائياً
+        // ===== المرحلة 10: القيمة الحقيقية لا قيمة ثابتة =====
+        //
+        // كانت `true` دائماً بينما التحقق من البريد معطَّل ولا رسالة
+        // تُرسَل أصلاً — أي حقل يقول عن كل حساب ما ليس فيه. لا قاعدة ولا
+        // دالة تقرأه (تحقّقنا بالبحث في `firestore.rules` و`functions/`
+        // كاملة)، فتصحيحه لا يغيّر سلوكاً؛ لكنه يمنع أن يُبنى عليه قرار
+        // لاحقاً وهو كاذب. مصدر الحقيقة يبقى Firebase Auth نفسه.
+        'emailVerified': firebaseUser.emailVerified,
         'createdAt': FieldValue.serverTimestamp(),
       };
 
@@ -246,7 +253,8 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'خطأ في التسجيل: $e';
+      AppLogger.error('فشل التسجيل', e);
+      _errorMessage = 'تعذّر إنشاء الحساب، تحقق من بياناتك وحاول مرة أخرى';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -338,7 +346,8 @@ class FirebaseAuthService extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      _errorMessage = 'خطأ في تسجيل الدخول: $e';
+      AppLogger.error('فشل تسجيل الدخول', e);
+      _errorMessage = 'تعذّر تسجيل الدخول، تحقق من الإنترنت وحاول مرة أخرى';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -383,7 +392,8 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return _emailVerified;
     } catch (e) {
-      _errorMessage = 'خطأ في التحقق: $e';
+      AppLogger.error('فشل التحقق من البريد', e);
+      _errorMessage = 'تعذّر التحقق من البريد، حاول مرة أخرى';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -420,7 +430,8 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'خطأ في إعادة الإرسال: $e';
+      AppLogger.error('فشل إعادة إرسال رسالة التفعيل', e);
+      _errorMessage = 'تعذّر إعادة الإرسال، حاول بعد قليل';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -466,7 +477,8 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return false;
     } catch (e) {
-      _errorMessage = 'خطأ في إرسال البريد: $e';
+      AppLogger.error('فشل إرسال بريد استعادة كلمة المرور', e);
+      _errorMessage = 'تعذّر إرسال البريد، حاول مرة أخرى';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -476,8 +488,12 @@ class FirebaseAuthService extends ChangeNotifier {
   /// تسجيل الخروج
 
   Future<void> logout() async {
+    // حذف رمز الجهاز **قبل** الخروج: قاعدة `devices` تشترط `isUser(userId)`،
+    // فبعد `signOut()` لا هوية تُثبت الملكية ويبقى الرمز مسجَّلاً — فتصل
+    // إشعارات هذا الحساب لمن يدخل بعده على نفس الجهاز. راجع
+    // `PushTokenService.onLogout`.
+    await PushTokenService.instance.onLogout();
     await _firebaseAuth.signOut();
-    PushTokenService.instance.onLogout();
     _userId = null;
     _userData = null;
     _emailVerified = false;
@@ -507,7 +523,8 @@ class FirebaseAuthService extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      _errorMessage = 'خطأ في تحديث كلمة المرور: $e';
+      AppLogger.error('فشل تحديث كلمة المرور', e);
+      _errorMessage = 'تعذّر تحديث كلمة المرور، حاول مرة أخرى';
       _isLoading = false;
       notifyListeners();
       return false;

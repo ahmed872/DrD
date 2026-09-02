@@ -11,6 +11,13 @@ const {
   restoreDoctorCore,
 } = require("./admin");
 const { sendAppointmentRemindersCore } = require("./reminders");
+const { createReviewCore, getReviewEligibilityCore } = require("./reviews");
+const { deleteAccountCore } = require("./account");
+const {
+  getPatientAnalyticsCore,
+  getDoctorAnalyticsCore,
+  getAdminAnalyticsCore,
+} = require("./analytics");
 
 admin.initializeApp();
 
@@ -186,6 +193,54 @@ exports.rescheduleAppointment = callable("rescheduleAppointment", rescheduleAppo
  */
 exports.getAvailability = callable("getAvailability", getAvailabilityCore);
 
+// ===================== المرحلة 4: المراجعات والتقييمات =====================
+
+/**
+ * كتابة مراجعة عن زيارة مكتملة — نقطة الدخول الوحيدة.
+ *
+ * ```
+ * الطلب:  { appointmentId, rating: 1..5, comment? }
+ * الرد:   { ok, reviewId, appointmentId, doctorId, rating, comment,
+ *           patientName, verifiedVisit, doctorRating, doctorReviews,
+ *           duplicate }
+ * ```
+ *
+ * `patientId` و`doctorId` و`verifiedVisit` و`createdAt` ومتوسط الطبيب: كلها
+ * من الخادم. أي قيمة لها في الطلب تُتجاهل — المرجع مستند الموعد نفسه.
+ *
+ * المراجعة والمُجمَّع يُكتبان في معاملة واحدة، فلا تبقى مراجعة بلا أثر في
+ * المتوسط ولا متوسط ارتفع بلا مراجعة. ومعرّف المراجعة هو معرّف الموعد، فطلب
+ * مكرَّر يُعيد `duplicate: true` بالمراجعة القائمة بدل رفع العدّاد مرتين.
+ *
+ * | reason | code | المعنى |
+ * |---|---|---|
+ * | `unauthenticated` | unauthenticated | بلا تسجيل دخول |
+ * | `invalid-argument` | invalid-argument | تقييم خارج 1..5، أو تعليق طويل، أو معرّف غير صالح |
+ * | `appointment-not-found` | not-found | لا موعد بهذا المعرّف |
+ * | `permission-denied` | permission-denied | ليس موعدك |
+ * | `appointment-not-completed` | failed-precondition | الكشف لم يكتمل بعد |
+ * | `doctor-not-found` | not-found | حساب الطبيب غير موجود |
+ * | `internal` | internal | خطأ غير متوقع |
+ */
+exports.createReview = callable("createReview", createReviewCore);
+
+/**
+ * هل يمكن تقييم هذا الموعد؟ — قرار الخادم، لا استنتاج الواجهة من الحالة.
+ *
+ * ```
+ * الطلب:  { appointmentId }
+ * الرد:   { ok, appointmentId, doctorId, eligible, alreadyReviewed, reason,
+ *           rating?, comment? }
+ * ```
+ *
+ * `reason` عند عدم الأهلية: `already-reviewed` أو `appointment-not-completed`.
+ * موعد ليس لصاحب الطلب يُرفَض بـ `permission-denied` ولا تُكشف حالته.
+ */
+exports.getReviewEligibility = callable(
+  "getReviewEligibility",
+  getReviewEligibilityCore
+);
+
 // ===================== المرحلة 2: الإدارة وتوثيق الأطباء =====================
 //
 // الأربعة أدناه إدارية حصراً — تتحقق من `context.auth.token.admin` (راجع
@@ -254,6 +309,100 @@ exports.suspendDoctor = callable("suspendDoctor", suspendDoctorCore);
  * ```
  */
 exports.restoreDoctor = callable("restoreDoctor", restoreDoctorCore);
+
+// ===================== التحليلات (المرحلة 8) =====================
+//
+// ثلاث نقاط قراءة فقط. لا واحدة منها تكتب شيئاً، ولا رقم منها يدخل في قرار
+// حجز أو سعر أو توثيق: التحليلات رصد لا سلطة.
+//
+// المدى مجموعة مغلقة (`7d`/`30d`/`90d`/`365d`) لا تاريخان يرسلهما العميل،
+// فلا يمكن طلب مسح مفتوح. والتجميع يقع على الخادم، فلا يعبر الشبكة مستند
+// موعد واحد — أرقام فقط.
+
+/**
+ * تحليلات المريض عن نشاطه هو.
+ *
+ * ```
+ * الطلب:  { range?: '7d' | '30d' | '90d' | '365d' }
+ * الرد:   { ok, scope, range, timezone, generatedAt, counts, series, truncated }
+ * ```
+ *
+ * النطاق مشتقّ من `uid` المصادَق عليه: لا يقبل الطلب معرّف مريض إطلاقاً،
+ * فلا صيغة لطلب تحليلات مريض آخر.
+ *
+ * | reason | code |
+ * |---|---|
+ * | `unauthenticated` | unauthenticated |
+ * | `invalid-range` | invalid-argument |
+ */
+exports.getPatientAnalytics =
+  callable("getPatientAnalytics", getPatientAnalyticsCore);
+
+/**
+ * تحليلات الطبيب عن عيادته هو.
+ *
+ * ```
+ * الطلب:  { range?: '7d' | '30d' | '90d' | '365d' }
+ * الرد:   { ok, scope, range, timezone, generatedAt, counts, series,
+ *           quality: { averageRating, reviewCount, completionRate,
+ *                      cancellationRate, noShowRate }, truncated }
+ * ```
+ *
+ * الصفة تُقرأ من `users/{uid}.role` لا مما يرسله الطالب، والنطاق `doctorId
+ * == uid` دائماً.
+ *
+ * | reason | code |
+ * |---|---|
+ * | `unauthenticated` | unauthenticated |
+ * | `not-a-doctor` | permission-denied |
+ * | `invalid-range` | invalid-argument |
+ */
+exports.getDoctorAnalytics =
+  callable("getDoctorAnalytics", getDoctorAnalyticsCore);
+
+/**
+ * تحليلات المنصّة — للإدارة وحدها.
+ *
+ * ```
+ * الطلب:  { range?: '7d' | '30d' | '90d' | '365d' }
+ * الرد:   { ok, scope, range, timezone, generatedAt, platform, counts,
+ *           series, specialties, quality, truncated }
+ * ```
+ *
+ * الصلاحية من `token.admin` — Custom Claim موقَّع لا حقل Firestore، فلا
+ * يمنحها أحد لنفسه بكتابة مستند. وكانت لوحة الإدارة تحسب أعدادها من العميل
+ * بـ `count()`، وهي استعلامات تنجح لأي مستخدم مسجَّل لأن القواعد تسمح
+ * بقراءة مستندات الأطباء؛ فصار العدّ هنا خلف فحص الصلاحية.
+ *
+ * الرد تجميعي بحت: أعداد وأسماء تخصصات. لا اسم مريض ولا طبيب ولا معرّف.
+ *
+ * | reason | code |
+ * |---|---|
+ * | `unauthenticated` | unauthenticated |
+ * | `permission-denied` | permission-denied |
+ * | `invalid-range` | invalid-argument |
+ */
+exports.getAdminAnalytics =
+  callable("getAdminAnalytics", getAdminAnalyticsCore);
+
+/**
+ * حذف الحساب — راجع `functions/account.js` لما يُحذف وما يُطمس ولماذا.
+ *
+ * ```
+ * الطلب:  { confirm: true }
+ * الرد:   { ok, deleted, cancelledAppointments, anonymizedAppointments,
+ *           anonymizedReviews, deletedNotifications, deletedDevices }
+ * ```
+ *
+ * | reason | code | المعنى |
+ * |---|---|---|
+ * | `unauthenticated` | unauthenticated | بلا تسجيل دخول |
+ * | `confirmation-required` | invalid-argument | بلا تأكيد صريح |
+ * | `recent-login-required` | failed-precondition | جلسة قديمة — أعد الدخول |
+ * | `doctor-account` | failed-precondition | حساب طبيب يُغلق إدارياً |
+ * | `internal` | internal | خطأ غير متوقع |
+ */
+exports.deleteAccount = callable("deleteAccount", deleteAccountCore);
 
 // ملاحظة أمنية (المرحلة صفر):
 //

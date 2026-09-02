@@ -1,3 +1,4 @@
+import '../widgets/role_guard.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -41,6 +42,14 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
   // Working hours and days
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 17, minute: 0);
+
+  /// أيام إغلاق مفردة (`yyyy-MM-dd`). محرّك الإتاحة يقرأ `closedDates` منذ
+  /// المرحلة 3 (`isClosedDate` في `functions/availability.js`) لكن لم تكن
+  /// له أي واجهة — فبقيت الإجازات تُدار بإطفاء يوم العمل كلّه أسبوعياً.
+  ///
+  /// الاتجاه طرحي بحته: الإغلاق يُنقص الإتاحة ولا يزيدها، فلا يمسّ أي
+  /// ثابتة من ثوابت الحجز، ولا يحتاج تغييراً في الخادم.
+  List<String> _closedDates = [];
 
   final Map<String, bool> _workingDays = {
     'السبت (Saturday)': true,
@@ -133,6 +142,12 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               (data['maxPatientsPerSlot'] ?? '4').toString();
           _bookingSystemType = data['bookingSystemType'] ?? 'Individual';
 
+          final rawClosed = data['closedDates'];
+          _closedDates = rawClosed is List
+              ? rawClosed.map((e) => e.toString()).toList()
+              : <String>[];
+          _closedDates.sort();
+
           // Load working hours - Parse '09:00 AM - 05:00 PM' format
           if (data['workingHours'] != null) {
             try {
@@ -168,7 +183,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       } catch (e) {
         debugPrint('Error loading doctor profile: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load profile: $e')),
+          const SnackBar(content: Text('تعذّر تحميل بيانات العيادة')),
         );
       }
     }
@@ -180,6 +195,15 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // الحارس يجعل الشاشة متّسقة مع صلاحية الخادم: من ليس طبيباً له عيادة
+    // (نشط أو موقوف) يرى رسالة مفهومة بدل استعلامات تُرفض بلا تفسير.
+    return RoleGuard(
+      requireDoctorClinicAccess: true,
+      child: Builder(builder: _buildBody),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -190,7 +214,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       appBar: AppBar(
         title: const Text('إعدادات العيادة'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         elevation: 1,
         actions: [
           IconButton(
@@ -235,18 +259,20 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                 value: _selectedSpecialtyAr,
                 decoration: InputDecoration(
                   labelText: 'التخصص / Specialization',
-                  prefixIcon:
-                      const Icon(Icons.medical_services, color: Colors.blue),
+                  prefixIcon: Icon(Icons.medical_services,
+                      color: Theme.of(context).colorScheme.primary),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.outlineVariant),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.blue, width: 2),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary, width: 2),
                   ),
                 ),
                 items: _specialties.map((spec) {
@@ -368,9 +394,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200),
+                  border:
+                      Border.all(color: Theme.of(context).colorScheme.primary),
                 ),
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -399,16 +426,17 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onPrimary,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue),
+                          border: Border.all(
+                              color: Theme.of(context).colorScheme.primary),
                         ),
                         child: Text(
                           '${_startTime.format(context)} - ${_endTime.format(context)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
                         ),
                       ),
@@ -425,9 +453,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: Theme.of(context).colorScheme.tertiaryContainer,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
+                  border:
+                      Border.all(color: Theme.of(context).colorScheme.tertiary),
                 ),
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -451,7 +480,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                                   _workingDays[entry.key] = value;
                                 });
                               },
-                              activeColor: Colors.green,
+                              activeColor:
+                                  Theme.of(context).colorScheme.tertiary,
                             ),
                           ],
                         ),
@@ -461,6 +491,12 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   }).toList(),
                 ),
               ),
+
+              const SizedBox(height: 24),
+
+              _buildSectionTitle('🚫 أيام الإغلاق / Closed Dates'),
+              const SizedBox(height: 12),
+              _buildClosedDatesSection(),
 
               const SizedBox(height: 24),
 
@@ -476,7 +512,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor: Theme.of(context).colorScheme.tertiary,
+                    foregroundColor: Theme.of(context).colorScheme.onTertiary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -508,14 +545,93 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     );
   }
 
+  /// أقصى عدد أيام إغلاق — مطابق للحدّ في `firestore.rules`.
+  static const int maxClosedDates = 366;
+
+  Widget _buildClosedDatesSection() {
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'الأيام التي لا تستقبل فيها حجوزات (إجازة، عطلة، ظرف طارئ). '
+            'المواعيد المحجوزة مسبقاً لا تُلغى تلقائياً — ألغِها من شاشة '
+            'المواعيد إن لزم.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_closedDates.isEmpty)
+            Text(
+              'لا أيام إغلاق',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _closedDates
+                  .map((date) => InputChip(
+                        label: Text(date),
+                        onDeleted: () =>
+                            setState(() => _closedDates.remove(date)),
+                        deleteButtonTooltipMessage: 'إزالة $date',
+                      ))
+                  .toList(),
+            ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed:
+                _closedDates.length >= maxClosedDates ? null : _pickClosedDate,
+            icon: const Icon(Icons.event_busy),
+            label: const Text('إضافة يوم إغلاق'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickClosedDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year, now.month, now.day),
+      // نافذة الحجز على الخادم 90 يوماً؛ إغلاق ما بعدها بلا أثر عملي،
+      // لكن السنة تسمح بتسجيل إجازة مخطَّطة.
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked == null) return;
+    final key = '${picked.year.toString().padLeft(4, '0')}-'
+        '${picked.month.toString().padLeft(2, '0')}-'
+        '${picked.day.toString().padLeft(2, '0')}';
+    if (_closedDates.contains(key)) return;
+    setState(() {
+      _closedDates
+        ..add(key)
+        ..sort();
+    });
+  }
+
   Widget _buildSectionTitle(String title) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.blue.shade100,
+        color: Theme.of(context).colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(8),
         border: Border(
-          right: BorderSide(color: Colors.blue.shade700, width: 4),
+          right: BorderSide(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              width: 4),
         ),
       ),
       child: Text(
@@ -523,7 +639,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Colors.blue.shade900,
+          color: Theme.of(context).colorScheme.onPrimaryContainer,
         ),
       ),
     );
@@ -542,17 +658,19 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blue),
+        prefixIcon: Icon(icon, color: Theme.of(context).colorScheme.primary),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide:
+              BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.blue, width: 2),
+          borderSide: BorderSide(
+              color: Theme.of(context).colorScheme.primary, width: 2),
         ),
       ),
     );
@@ -568,7 +686,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+          style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 4),
         OutlinedButton(
@@ -589,10 +709,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           ),
           child: Text(
             time.format(context),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.blue,
+              color: Theme.of(context).colorScheme.primary,
             ),
           ),
         ),
@@ -625,9 +745,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         price <= 0) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text('يرجى التأكد من أن السعر ومدة الجلسة أكبر من صفر'),
-          backgroundColor: Colors.red,
+          backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
       return;
@@ -653,14 +773,16 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           'price': price,
           'workingHours': formattedWorkingHours,
           'workingDays': _workingDays,
+          'closedDates': _closedDates,
         }, SetOptions(merge: true));
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Row(
+              content: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.white),
+                  Icon(Icons.check_circle,
+                      color: Theme.of(context).colorScheme.onPrimary),
                   SizedBox(width: 12),
                   Text(
                     '✅ تم الحفظ بنجاح / Saved Successfully',
@@ -668,7 +790,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   ),
                 ],
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: Theme.of(context).colorScheme.tertiary,
               duration: const Duration(seconds: 2),
             ),
           );
@@ -677,8 +799,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error saving settings: $e'),
-              backgroundColor: Colors.red,
+              content: const Text('تعذّر حفظ الإعدادات، حاول مرة أخرى'),
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
         }
@@ -749,7 +871,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
             flex: 2,
             child: Text(
               enText,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
               textAlign: TextAlign.left,
             ),
           ),

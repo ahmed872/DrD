@@ -34,6 +34,10 @@ class PushTokenService {
   StreamSubscription<String>? _refreshSubscription;
   String? _currentUid;
 
+  /// آخر رمز سُجّل فعلاً لهذا المستخدم — هو معرّف مستند الجهاز، وما يُحذف
+  /// عند تسجيل الخروج.
+  String? _currentToken;
+
   /// يطلب إذن الإشعارات (إن لزم) ويسجّل رمز الجهاز الحالي لهذا المستخدم،
   /// ثم يستمع لتحديث الرمز طوال الجلسة. تُستدعى مرة واحدة بعد كل تسجيل
   /// دخول ناجح — راجع `FirebaseAuthService._onAuthStateChanged`.
@@ -54,6 +58,7 @@ class PushTokenService {
 
       final token = await messaging.getToken();
       if (token != null && token.isNotEmpty) {
+        _currentToken = token;
         await _saveToken(uid, token);
       }
 
@@ -63,6 +68,7 @@ class PushTokenService {
       _refreshSubscription = messaging.onTokenRefresh.listen((newToken) {
         final uidNow = _currentUid;
         if (uidNow != null && newToken.isNotEmpty) {
+          _currentToken = newToken;
           _saveToken(uidNow, newToken);
         }
       }, onError: (Object e) {
@@ -102,15 +108,44 @@ class PushTokenService {
     };
   }
 
-  /// يوقف الاستماع لتحديث الرمز. لا يحذف مستندات `devices` الحالية عمداً:
-  /// جهاز واحد قد يبقى صالحاً لتسجيلات دخول لاحقة لنفس المستخدم، وحذفه هنا
-  /// يعني فقدان القدرة على الوصول له عبر Push فور تسجيل الخروج من هذه
-  /// الجلسة فقط — بينما تنظيف الرموز الميتة الفعلي مسؤولية الخادم
-  /// (`DEAD_TOKEN_ERROR_CODES` في `functions/notifications.js`) عند فشل
-  /// إرسال حقيقي.
-  void onLogout() {
+  /// يوقف الاستماع لتحديث الرمز **ويحذف مستند الجهاز** من حساب المستخدم
+  /// الخارج.
+  ///
+  /// ===== المرحلة 9: كشف بيانات بين مستخدمي جهاز واحد =====
+  ///
+  /// كان هذا التابع يترك مستند `users/{uid}/devices/{token}` قائماً عمداً،
+  /// بحجّة أن الجهاز قد يخدم تسجيل دخول لاحقاً لنفس المستخدم. الحجّة تسقط
+  /// أمام الجهاز المشترك: رمز FCM خاصّ بتثبيت التطبيق لا بالمستخدم، فإذا
+  /// خرج (أ) ودخل (ب) على نفس الهاتف — هاتف عائلي، أو جهاز عيادة — بقي
+  /// الرمز مسجَّلاً تحت حساب (أ)، فتصل تذكيرات مواعيد (أ) — وفيها اسم
+  /// الطبيب وتخصّصه وموعد الكشف — إلى يد (ب). وهذه بيانات طبية.
+  ///
+  /// الحذف هنا لا يكلّف شيئاً: `registerForUser` تُستدعى بعد كل تسجيل دخول
+  /// ناجح فتعيد كتابة المستند فوراً لصاحب الجلسة الجديدة.
+  ///
+  /// **الترتيب شرط**: يجب أن يُنتظر هذا التابع **قبل** `signOut()`، لأن
+  /// قاعدة `users/{userId}/devices/{deviceId}` تشترط `isUser(userId)` —
+  /// بعد الخروج لا هوية، فيُرفض الحذف بصمت ويبقى الرمز.
+  ///
+  /// الفشل (انقطاع شبكة مثلاً) لا يوقف تسجيل الخروج: يُسجَّل ويُمضى.
+  Future<void> onLogout() async {
+    final uid = _currentUid;
+    final token = _currentToken;
     _currentUid = null;
-    _refreshSubscription?.cancel();
+    _currentToken = null;
+    await _refreshSubscription?.cancel();
     _refreshSubscription = null;
+
+    if (uid == null || token == null || token.isEmpty) return;
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('devices')
+          .doc(token)
+          .delete();
+    } catch (e) {
+      AppLogger.error('تعذّر حذف رمز الجهاز عند تسجيل الخروج', e);
+    }
   }
 }

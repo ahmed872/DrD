@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/role_guard.dart';
+import 'admin_analytics_screen.dart';
 import 'admin_doctors_screen.dart';
 
 /// أساس لوحة الإدارة — عدّادات سريعة وروابط. وظيفية لا تصميماً نهائياً؛
@@ -15,6 +17,17 @@ class AdminHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // الزرّ المؤدي إلى هنا مخفي لغير الأدمن، والزرّ المخفي ليس حاجزاً:
+    // الحارس يجعل الواجهة متّسقة مع صلاحية الخادم بدل شاشة تفشل استعلاماتها.
+    return const RoleGuard(requireAdmin: true, child: _AdminHomeBody());
+  }
+}
+
+class _AdminHomeBody extends StatelessWidget {
+  const _AdminHomeBody();
+
+  @override
+  Widget build(BuildContext context) {
     final users = FirebaseFirestore.instance.collection('users');
     final applications =
         FirebaseFirestore.instance.collection('doctorApplications');
@@ -23,7 +36,7 @@ class AdminHomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('لوحة الإدارة'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -33,11 +46,9 @@ class AdminHomeScreen extends StatelessWidget {
             _CountCard(
               title: 'طلبات توثيق قيد الانتظار',
               icon: Icons.pending_actions,
-              color: Colors.orange,
-              countFuture: applications
-                  .where('status', isEqualTo: 'pending')
-                  .count()
-                  .get(),
+              color: Theme.of(context).colorScheme.secondary,
+              countFuture:
+                  _countOf(applications.where('status', isEqualTo: 'pending')),
               onTap: () =>
                   _openDoctors(context, initialFilter: DoctorFilter.pending),
             ),
@@ -45,13 +56,8 @@ class AdminHomeScreen extends StatelessWidget {
             _CountCard(
               title: 'أطباء نشطون',
               icon: Icons.verified,
-              color: Colors.green,
-              countFuture: users
-                  .where('role', isEqualTo: 'doctor')
-                  .where('isVerified', isEqualTo: true)
-                  .where('disabled', isEqualTo: false)
-                  .count()
-                  .get(),
+              color: Theme.of(context).colorScheme.tertiary,
+              countFuture: _activeDoctorCount(users),
               onTap: () =>
                   _openDoctors(context, initialFilter: DoctorFilter.active),
             ),
@@ -59,24 +65,33 @@ class AdminHomeScreen extends StatelessWidget {
             _CountCard(
               title: 'أطباء موقوفون',
               icon: Icons.block,
-              color: Colors.red,
-              countFuture: users
+              color: Theme.of(context).colorScheme.error,
+              countFuture: _countOf(users
                   .where('role', isEqualTo: 'doctor')
-                  .where('disabled', isEqualTo: true)
-                  .count()
-                  .get(),
+                  .where('disabled', isEqualTo: true)),
               onTap: () =>
                   _openDoctors(context, initialFilter: DoctorFilter.suspended),
             ),
             const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AdminAnalyticsScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.insights_outlined),
+              label: const Text('تحليلات المنصّة'),
+            ),
+            const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: () =>
                   _openDoctors(context, initialFilter: DoctorFilter.pending),
               icon: const Icon(Icons.list),
               label: const Text('إدارة الأطباء'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0097A7),
-                foregroundColor: Colors.white,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
@@ -97,6 +112,40 @@ class AdminHomeScreen extends StatelessWidget {
   }
 }
 
+/// عدد الأطباء النشطين = الموثَّقون ناقص الموقوفون منهم.
+///
+/// ## لماذا طرحٌ لا شرط ثالث
+///
+/// كان الاستعلام `where('disabled', isEqualTo: false)`. المساواة في
+/// Firestore لا تطابق **غياب** الحقل: مستند بلا `disabled` لا يدخل النتيجة
+/// أصلاً. و`disabled` أُضيف في المرحلة 2، ولا `grandfather_doctors.js`
+/// يكتبه (يقتصر على `isVerified`) — فكل طبيب أقدم منه، وكل طبيب رُقّي
+/// بالسكربت، بلا الحقل. النتيجة: «أطباء نشطون: 0» بينما العيادة تعمل.
+/// رُصد فعلياً في مراجعة المرحلة 10 على المحاكي: خمسة أطباء موثَّقين،
+/// والعدّاد صفر.
+///
+/// بقية النظام يعامل غياب الحقل بصوابه — القواعد
+/// (`d.get('disabled', false) != true`) و`fetchBookableDoctor`
+/// (`disabled === true`) — فكان هذا العدّاد وحده يقرأ الغياب «غير نشط».
+///
+/// الطرح يعيد الاتساق بلا هجرة بيانات ولا فهرس جديد: الموقوف من يحمل
+/// `disabled: true` صراحةً، ومن عداه نشط. استعلاما `count()` تجميعيان،
+/// وكلاهما مفهرس أصلاً (`users`: role+isVerified، وrole+isVerified+disabled).
+Future<int?> _activeDoctorCount(CollectionReference<Object?> users) async {
+  final verified = users
+      .where('role', isEqualTo: 'doctor')
+      .where('isVerified', isEqualTo: true);
+  final all = await verified.count().get();
+  final suspended =
+      await verified.where('disabled', isEqualTo: true).count().get();
+  final active = (all.count ?? 0) - (suspended.count ?? 0);
+  return active < 0 ? 0 : active;
+}
+
+/// عدّ بسيط لاستعلام تجميعي واحد — يوحّد نوع ما تعرضه البطاقة.
+Future<int?> _countOf(Query<Object?> query) async =>
+    (await query.count().get()).count;
+
 class _CountCard extends StatelessWidget {
   const _CountCard({
     required this.title,
@@ -109,13 +158,13 @@ class _CountCard extends StatelessWidget {
   final String title;
   final IconData icon;
   final Color color;
-  final Future<AggregateQuerySnapshot> countFuture;
+  final Future<int?> countFuture;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.onPrimary,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
@@ -123,15 +172,16 @@ class _CountCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey[200]!),
+            border:
+                Border.all(color: Theme.of(context).colorScheme.outlineVariant),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
             children: [
-              FutureBuilder<AggregateQuerySnapshot>(
+              FutureBuilder<int?>(
                 future: countFuture,
                 builder: (context, snapshot) {
-                  final count = snapshot.data?.count;
+                  final count = snapshot.data;
                   return Text(
                     count?.toString() ?? '—',
                     style: TextStyle(

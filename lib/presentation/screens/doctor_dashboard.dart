@@ -1,3 +1,22 @@
+// ⚠️ شاشة **غير موصولة بأي مسار تنقّل**، وبيانات ما تعرضه **ملفّقة**
+// (مراجعة المرحلة 6).
+//
+// «مدة الجلسة: 30 دقيقة» و«ساعات العمل: 09:00 - 17:00» مكتوبة في الشيفرة
+// لا مقروءة من مستند الطبيب، وزرّ التعديل يُظهر «تم تحديث …» دون أن يكتب
+// شيئاً. أي أنها نموذج أوّلي بقي في المستودع.
+//
+// وظيفتها الحقيقية موجودة ومنفَّذة في مكانين:
+//   - إعدادات العيادة (المدة، السعر، الساعات، الأيام، أيام الإغلاق):
+//     `doctor_settings_screen.dart` — يقرأ ويكتب فعلاً.
+//   - جدول اليوم: `doctor_schedule_screen.dart`.
+//   - ملخّص اليوم وأقرب موعد: `DoctorSummaryCard` على الشاشة الرئيسية،
+//     من `appointments` و`notifications` مباشرةً.
+//
+// لم تُحذف في المرحلة 6 التزاماً بقاعدة «لا حذف عشوائي للنظم القديمة»،
+// ولأن حذف ملف ليس من عمل مرحلة تشديد. القرار المطلوب: حذفها — فلا شيء
+// فيها لا يوجد بصورة أفضل في مكان آخر. مذكور في تقرير المرحلة 6، القسم «ر».
+//
+// **لا توصَل بأي مسار قبل ذلك القرار**: وصلها يعني عرض أرقام ملفّقة للطبيب.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
@@ -19,7 +38,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       appBar: AppBar(
         title: const Text('لوحة تحكم الطبيب'),
         centerTitle: true,
-        backgroundColor: Colors.blue,
+        backgroundColor: Theme.of(context).colorScheme.primary,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -45,30 +64,33 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'إعدادات العيادة',
                           style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: Colors.blue),
+                              color: Theme.of(context).colorScheme.primary),
                         ),
                         const Divider(),
                         ListTile(
                           title: const Text('مدة الجلسة'),
                           subtitle: const Text('30 دقيقة'),
-                          trailing: const Icon(Icons.edit, color: Colors.blue),
+                          trailing: Icon(Icons.edit,
+                              color: Theme.of(context).colorScheme.primary),
                           onTap: () => _showEditDialog('مدة الجلسة'),
                         ),
                         ListTile(
                           title: const Text('وقت التأخير للمستعجلات'),
                           subtitle: const Text('5 دقائق'),
-                          trailing: const Icon(Icons.edit, color: Colors.blue),
+                          trailing: Icon(Icons.edit,
+                              color: Theme.of(context).colorScheme.primary),
                           onTap: () => _showEditDialog('وقت التأخير'),
                         ),
                         ListTile(
                           title: const Text('ساعات العمل'),
                           subtitle: const Text('09:00 - 17:00'),
-                          trailing: const Icon(Icons.edit, color: Colors.blue),
+                          trailing: Icon(Icons.edit,
+                              color: Theme.of(context).colorScheme.primary),
                           onTap: () => _showEditDialog('ساعات العمل'),
                         ),
                       ],
@@ -110,14 +132,15 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                       },
                       child: Row(
                         children: [
-                          const Icon(Icons.calendar_month,
-                              color: Colors.blue, size: 20),
+                          Icon(Icons.calendar_month,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 20),
                           const SizedBox(width: 4),
                           Text(
                             _selectedDate.toString().split(' ')[0],
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.blue,
+                                color: Theme.of(context).colorScheme.primary,
                                 fontWeight: FontWeight.w500),
                           ),
                         ],
@@ -185,11 +208,16 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Icon(Icons.calendar_today,
-                            size: 48, color: Colors.grey[400]),
+                            size: 48,
+                            color: Theme.of(context).colorScheme.outline),
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'لا توجد مواعيد في هذا التاريخ',
-                          style: TextStyle(color: Colors.grey, fontSize: 14),
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontSize: 14),
                         ),
                       ],
                     ),
@@ -249,8 +277,8 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
               Provider.of<FirebaseAuthService>(context, listen: false).logout();
               Navigator.of(context).pushReplacementNamed('/login');
             },
-            child:
-                const Text('تسجيل خروج', style: TextStyle(color: Colors.red)),
+            child: Text('تسجيل خروج',
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ),
         ],
       ),

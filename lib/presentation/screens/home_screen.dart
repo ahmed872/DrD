@@ -1,9 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/constants/doctor_account_state.dart';
 import '../providers/firebase_auth_service.dart';
+import '../widgets/role_guard.dart';
 import 'admin/admin_home_screen.dart';
 import 'notifications_screen.dart';
+import '../../core/theme/app_spacing.dart';
+import '../widgets/app_surfaces.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/patient_home_section.dart';
+import '../widgets/doctor_summary_card.dart';
 import 'doctor_application_screen.dart';
 import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
@@ -27,158 +34,180 @@ class HomeScreen extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: const Text('الرئيسية'),
-            centerTitle: true,
-            elevation: 1,
-            backgroundColor: const Color(0xFF0097A7),
             actions: [
               if (auth.userId != null) _NotificationBell(uid: auth.userId!),
-              // تحديث صلاحية الإدارة — لازم بعد منحها بـ create_admin.js لأن
-              // الجلسة الحالية تحمل رمزاً صدر قبل المنح. راجع
-              // FirebaseAuthService.refreshClaims.
-              IconButton(
-                icon: const Icon(Icons.sync),
-                tooltip: 'تحديث الصلاحيات',
-                onPressed: () async {
-                  await auth.refreshClaims();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(auth.isAdmin
-                          ? 'صلاحية الإدارة مفعّلة'
-                          : 'لا تحمل صلاحية إدارة حالياً'),
-                    ));
-                  }
-                },
-              ),
-              // رابط الإعدادات للمرضى
               if (auth.userRole == 'patient')
                 IconButton(
-                  icon: const Icon(Icons.settings),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const PatientSettingsScreen(),
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: 'الإعدادات',
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PatientSettingsScreen(),
+                    ),
+                  ),
+                ),
+              // شريط الرئيسية كان يحمل أربعة أزرار: إشعارات، ومزامنة
+              // صلاحيات، وإعدادات، وخروج. اثنان منها إجراءان نادران
+              // (الخروج، ومزامنة صلاحية الإدارة بعد منحها بـ
+              // `create_admin.js`)، فجُمعا في قائمة إضافية.
+              //
+              // ولا يصحّ إخفاء المزامنة خلف `auth.isAdmin`: هي لازمة تحديداً
+              // حين يحمل الرمز الحالي حالةً أقدم من المنح، أي حين تكون
+              // `isAdmin` كاذبة. لذلك تبقى متاحة للجميع، خارج الصفّ الأول.
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                tooltip: 'المزيد',
+                onSelected: (value) async {
+                  if (value == 'refresh') {
+                    await auth.refreshClaims();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(auth.isAdmin
+                            ? 'صلاحية الإدارة مفعّلة'
+                            : 'لا تحمل صلاحية إدارة حالياً'),
+                      ));
+                    }
+                  } else if (value == 'logout') {
+                    final shouldLogout = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('تسجيل الخروج'),
+                        content: const Text(
+                            'هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('إلغاء'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: Text('تسجيل الخروج',
+                                style: TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.error)),
+                          ),
+                        ],
                       ),
                     );
-                  },
-                  tooltip: 'الإعدادات',
-                ),
-              // تسجيل الخروج
-              IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: () async {
-                  final shouldLogout = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('تسجيل الخروج'),
-                      content:
-                          const Text('هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('إلغاء'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text('تسجيل الخروج',
-                              style: TextStyle(color: Colors.red)),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  if (shouldLogout == true) {
-                    auth.logout();
+                    if (shouldLogout == true) auth.logout();
                   }
                 },
-                tooltip: 'تسجيل الخروج',
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'refresh',
+                    child: ListTile(
+                      leading: Icon(Icons.sync),
+                      title: Text('تحديث الصلاحيات'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: ListTile(
+                      leading: Icon(Icons.logout),
+                      title: Text('تسجيل الخروج'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+          // على شاشة عريضة كان المحتوى يمتدّ بعرض النافذة: بطاقة «موعدك
+          // القادم» بعرض 1400 بكسل، وصفّ إجراءات متباعد بلا داعٍ. الحصر
+          // يوسّط المحتوى في عرض مقروء ولا يغيّر شيئاً على الهاتف.
           body: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // الترحيب
-                  Text(
-                    'مرحباً',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[500],
-                          fontSize: 13,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    auth.userName ?? 'المستخدم',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF0097A7),
-                          fontSize: 24,
-                        ),
-                  ),
-                  const SizedBox(height: 36),
+            child: ContentWidthLimit(
+              maxWidth: AppBreakpoints.contentMaxWidth,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.xl),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // الترحيب
+                    Text('مرحباً',
+                        style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      auth.userName ?? 'المستخدم',
+                      style: Theme.of(context).textTheme.displaySmall,
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
 
-                  // بطاقة المعلومات
-                  _buildInfoCard(context, auth),
-                  const SizedBox(height: 24),
+                    // بطاقة رقم الهاتف ونوع الحساب كانت هنا، في أعلى الشاشة.
+                    // معلومتان يعرفهما المستخدم عن نفسه، تحتلّان الموضع الذي
+                    // يستحقّه موعده القادم. نُقلتا إلى الإعدادات حيث تُراجَع
+                    // البيانات فعلاً، وحلّ محلّهما ما يخصّ اليوم.
 
-                  // لوحة الإدارة — تظهر فقط لصاحب Custom Claim صحيح. هذا
-                  // إخفاء عرض لا حماية: الوصول الفعلي محكوم بـ
-                  // firestore.rules والدوال السحابية بمعزل تام عن هذا الشرط.
-                  if (auth.isAdmin) ...[
-                    Material(
-                      color: Colors.teal[50],
-                      borderRadius: BorderRadius.circular(10),
-                      child: InkWell(
+                    // لوحة الإدارة — تظهر فقط لصاحب Custom Claim صحيح. هذا
+                    // إخفاء عرض لا حماية: الوصول الفعلي محكوم بـ
+                    // firestore.rules والدوال السحابية بمعزل تام عن هذا الشرط.
+                    if (auth.isAdmin) ...[
+                      Material(
+                        color: Theme.of(context).colorScheme.primaryContainer,
                         borderRadius: BorderRadius.circular(10),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const AdminHomeScreen()),
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              Icon(Icons.admin_panel_settings,
-                                  color: Color(0xFF0097A7)),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text('لوحة الإدارة',
-                                    textAlign: TextAlign.right,
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16)),
-                              ),
-                              Icon(Icons.chevron_left),
-                            ],
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const AdminHomeScreen()),
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Icon(Icons.admin_panel_settings,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: Text('لوحة الإدارة',
+                                      textAlign: TextAlign.right,
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16)),
+                                ),
+                                const DirectionalForwardIcon(),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // ===== الطبيب =====
+                    if (isDoctor) ...[
+                      // الحالة أولاً: الموقوف كان يرى لوحته كاملة بلا إشارة.
+                      DoctorStatusBanner(
+                        state: doctorAccountStateFrom(auth.userData),
+                      ),
+                      if (doctorAccountStateFrom(auth.userData)
+                              .hasClinicAccess &&
+                          auth.userId != null) ...[
+                        DoctorSummaryCard(doctorId: auth.userId!),
+                        const SizedBox(height: AppSpacing.xl),
+                      ],
+                      const SectionTitle(title: 'أدوات العيادة'),
+                      _buildDoctorServices(
+                        context,
+                        doctorAccountStateFrom(auth.userData),
+                      ),
+                    ]
+
+                    // ===== المريض =====
+                    // الترتيب مقصود: الموعد القادم، ثم البحث، ثم الإجراءات
+                    // السريعة، ثم بقيّة المواعيد. الأهمّ أعلى الشاشة بلا تمرير.
+                    else ...[
+                      if (auth.userId != null)
+                        PatientHomeSection(patientId: auth.userId!),
+                    ],
+
+                    const SizedBox(height: AppSpacing.xxl),
                   ],
-
-                  // الخدمات
-                  Text(
-                    isDoctor ? 'لوحة الطبيب' : 'الخدمات المتاحة',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.grey[800],
-                        ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  if (isDoctor)
-                    _buildDoctorServices(context)
-                  else
-                    _buildPatientServices(context),
-
-                  const SizedBox(height: 40),
-                ],
+                ),
               ),
             ),
           ),
@@ -187,229 +216,42 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoCard(BuildContext context, FirebaseAuthService auth) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        border: Border.all(color: Colors.grey[200]!, width: 1),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _infoRow(
-            context,
-            icon: Icons.phone,
-            label: 'رقم الجوال',
-            value: auth.userData?['phone'] ?? '-',
+  /// أدوات العيادة.
+  ///
+  /// كانت شبكة بطاقات بارتفاع 165 بكسل لكل منها أيقونة ضخمة وسطران —
+  /// نفس الهدر الذي أُزيل من جانب المريض. صارت صفّ إجراءات مضغوطاً بنفس
+  /// المكوّن، فتُقرأ الشاشتان بوصفهما نظاماً واحداً.
+  ///
+  /// مصفوفة الحالات كما هي: شاشات العيادة للنشط وحده، والإعدادات تبقى
+  /// للموقوف ليصل إلى بياناته وإلى الدعم.
+  Widget _buildDoctorServices(BuildContext context, DoctorAccountState state) {
+    final clinic = state.hasClinicAccess;
+    return QuickActionsRow(
+      actions: [
+        if (clinic)
+          QuickAction(
+            icon: Icons.calendar_month,
+            label: 'المواعيد',
+            onTap: () => _handleServiceTap(context, 'schedule'),
           ),
-          const SizedBox(height: 14),
-          Divider(color: Colors.grey[300]),
-          const SizedBox(height: 14),
-          _infoRow(
-            context,
-            icon: Icons.person,
-            label: auth.userRole == 'doctor' ? 'النوع' : 'النوع',
-            value: auth.userRole == 'doctor' ? 'طبيب' : 'مريض',
+        if (clinic)
+          QuickAction(
+            icon: Icons.people_outline,
+            label: 'المرضى',
+            onTap: () => _handleServiceTap(context, 'patients'),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoRow(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[500],
-                      fontSize: 12,
-                    ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey[800],
-                    ),
-              ),
-            ],
+        if (clinic)
+          QuickAction(
+            icon: Icons.insights_outlined,
+            label: 'الإحصائيات',
+            onTap: () => _handleServiceTap(context, 'analytics'),
           ),
+        QuickAction(
+          icon: Icons.settings_outlined,
+          label: 'الإعدادات',
+          onTap: () => _handleServiceTap(context, 'settings'),
         ),
-        const SizedBox(width: 12),
-        Icon(icon, color: const Color(0xFF0097A7), size: 20),
       ],
-    );
-  }
-
-  Widget _buildDoctorServices(BuildContext context) {
-    final services = [
-      {
-        'icon': Icons.calendar_month,
-        'title': 'المواعيد',
-        'subtitle': 'جدول اليوم',
-        'action': 'schedule',
-      },
-      {
-        'icon': Icons.settings,
-        'title': 'الإعدادات',
-        'subtitle': 'إعدادات العيادة',
-        'action': 'settings',
-      },
-      {
-        'icon': Icons.people,
-        'title': 'المرضى',
-        'subtitle': 'قائمة المرضى',
-        'action': 'patients',
-      },
-      {
-        'icon': Icons.trending_up,
-        'title': 'الإحصائيات',
-        'subtitle': 'الأداء والتقارير',
-        'action': 'analytics',
-      },
-    ];
-
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: services.length,
-      itemBuilder: (context, index) {
-        final service = services[index];
-        return _buildServiceCard(
-          context,
-          icon: service['icon'] as IconData,
-          title: service['title'] as String,
-          subtitle: service['subtitle'] as String,
-          action: service['action'] as String,
-        );
-      },
-    );
-  }
-
-  Widget _buildPatientServices(BuildContext context) {
-    final services = [
-      {
-        'icon': Icons.date_range,
-        'title': 'حجز موعد',
-        'subtitle': 'موعد جديد',
-        'action': 'book',
-      },
-      {
-        'icon': Icons.calendar_month,
-        'title': 'مواعيدي',
-        'subtitle': 'مواعيدك',
-        'action': 'appointments',
-      },
-      {
-        'icon': Icons.search,
-        'title': 'البحث',
-        'subtitle': 'البحث عن طبيب',
-        'action': 'search',
-      },
-      {
-        'icon': Icons.folder,
-        'title': 'السجل الطبي',
-        'subtitle': 'سجلاتك الطبية',
-        'action': 'history',
-      },
-      {
-        'icon': Icons.medical_information,
-        'title': 'التقدّم كطبيب',
-        'subtitle': 'انضم كطبيب في DrD',
-        'action': 'doctor_application',
-      },
-    ];
-
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: services.length,
-      itemBuilder: (context, index) {
-        final service = services[index];
-        return _buildServiceCard(
-          context,
-          icon: service['icon'] as IconData,
-          title: service['title'] as String,
-          subtitle: service['subtitle'] as String,
-          action: service['action'] as String,
-        );
-      },
-    );
-  }
-
-  Widget _buildServiceCard(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String action,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey[200]!, width: 1),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _handleServiceTap(context, action),
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 40, color: const Color(0xFF0097A7)),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: Colors.grey[800],
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[500],
-                        fontSize: 11,
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -479,22 +321,58 @@ class HomeScreen extends StatelessWidget {
 /// كاملة للمجموعة، ومحصور بمساواتين على `recipientId`/`isRead` فلا يحتاج
 /// فهرساً مركّباً جديداً (Firestore يدمج فهارس الحقل المفرد تلقائياً لمثل
 /// هذا الاستعلام).
-class _NotificationBell extends StatelessWidget {
+class _NotificationBell extends StatefulWidget {
   const _NotificationBell({required this.uid});
 
   final String uid;
 
+  @override
+  State<_NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<_NotificationBell> {
   static const _countCap = 50;
 
+  /// ===== المرحلة 7: البثّ يُنشأ مرّة واحدة =====
+  ///
+  /// كان `stream:` يُبنى داخل `build()`. الجرس يقع في شريط الرئيسية، وهي
+  /// شاشة تُعيد البناء عند كل تغيّر في `FirebaseAuthService` — وكل إعادة
+  /// بناء كانت تُنشئ استعلاماً جديداً، فيُغلق `StreamBuilder` المستمع
+  /// القديم ويفتح آخر. أي أن كل إعادة بناء تُكلّف دورة إنصات كاملة على
+  /// Firestore بدل أن تُعاد قراءة نتيجة قائمة.
+  ///
+  /// البثّ الآن حقل في الحالة، يُنشأ عند التركيب فقط. الاستعلام كما هو:
+  /// محدود بـ `limit`، ومحصور بمساواتين على `recipientId`/`isRead`، والبثّ
+  /// الحيّ مبرَّر لأن العدّاد يجب أن يتغيّر لحظة وصول إشعار.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _unread;
+
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
+  void initState() {
+    super.initState();
+    _unread = _buildStream(widget.uid);
+  }
+
+  @override
+  void didUpdateWidget(covariant _NotificationBell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // المعرّف لا يتغيّر عملياً (تسجيل الخروج يهدم الشجرة)، لكن تركه بلا
+    // معالجة يعني بثّاً لمستخدم سابق لو تغيّر يوماً.
+    assert(oldWidget.uid == widget.uid,
+        'تغيّر معرّف المستخدم دون إعادة بناء الجرس');
+  }
+
+  static Stream<QuerySnapshot<Map<String, dynamic>>> _buildStream(String uid) =>
+      FirebaseFirestore.instance
           .collection('notifications')
           .where('recipientId', isEqualTo: uid)
           .where('isRead', isEqualTo: false)
           .limit(_countCap)
-          .snapshots(),
+          .snapshots();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _unread,
       builder: (context, snapshot) {
         final unread = snapshot.data?.docs.length ?? 0;
         return Stack(
@@ -519,15 +397,15 @@ class _NotificationBell extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   decoration: BoxDecoration(
-                    color: Colors.red,
+                    color: Theme.of(context).colorScheme.error,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   constraints: const BoxConstraints(minWidth: 16),
                   child: Text(
                     unread >= _countCap ? '$_countCap+' : '$unread',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Colors.white,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onError,
                         fontSize: 10,
                         fontWeight: FontWeight.bold),
                   ),

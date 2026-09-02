@@ -1,3 +1,21 @@
+// ⚠️ ميزة مكتملة لكنها **غير موصولة بأي مسار تنقّل** (مراجعة المرحلة 5ب).
+//
+// منظومة `ratings` غير منظومة `reviews`:
+//   - `reviews` = المراجعة العلنية للطبيب (نجوم + تعليق) التي يكتبها المريض
+//     من «مواعيدي». صارت في المرحلة 4 من الخادم وحده (`functions/reviews.js`).
+//   - `ratings` = تقييم خاص ثنائي الاتجاه: `patient_to_doctor` لجودة الخدمة،
+//     و`doctor_to_patient` **للحالة الصحية للمريض** — أي بيانات طبية.
+//
+// الحزمة كاملة (كيان + مستودع + مزوّد + شاشتان + عناصر عرض) وقواعد
+// Firestore تغطّي المجموعة منذ المرحلة 0، لكن لا شاشة تفتح هاتين الشاشتين.
+// لم تُحذف في المرحلة 5ب عن قصد: حذف ميزة مصمَّمة ليس من عمل مرحلة UX،
+// ووصلها يحتاج قراراً منتجياً أولاً (من يرى التقييم الصحي؟ ومتى؟)، ثم
+// تشديد قاعدة الإنشاء في `firestore.rules` — فهي اليوم تسمح لأي مستخدم
+// مسجَّل بكتابة `doctor_to_patient` باسمه دون التحقق من أنه طبيب فعلاً.
+// التفاصيل في تقرير المرحلة 5ب، القسمان «م» و«ت».
+//
+// لهذا السبب أيضاً بقيت ألوانها الثابتة كما هي: لا يمكن التحقق بصرياً من
+// شاشة لا تُفتح، وتعديلها بلا اختبار يضيف مخاطرة بلا فائدة.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/rating_model.dart';
 import '../../domain/repositories/rating_repository.dart';
@@ -6,6 +24,12 @@ import '../../core/utils/app_logger.dart';
 
 /// تنفيذ Firestore لـ Rating Repository
 class FirestoreRatingRepository implements RatingRepository {
+  /// سقف قراءة.
+  ///
+  /// المنظومة غير موصولة بأي مسار (انظر الرأس)، لكن استعلاماً مفتوحاً في
+  /// الشيفرة فخّ جاهز: من يصلها لاحقاً يرث قراءة تنمو بلا حدّ.
+  static const int _scanCap = 200;
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const String _ratingsCollection = 'ratings';
@@ -108,6 +132,7 @@ class FirestoreRatingRepository implements RatingRepository {
           .where('toUserId', isEqualTo: patientId)
           .where('ratingType', isEqualTo: 'doctor_to_patient')
           .orderBy('createdAt', descending: true)
+          .limit(_scanCap)
           .get();
 
       return query.docs
@@ -127,6 +152,7 @@ class FirestoreRatingRepository implements RatingRepository {
           .where('toUserId', isEqualTo: doctorId)
           .where('ratingType', isEqualTo: 'patient_to_doctor')
           .orderBy('createdAt', descending: true)
+          .limit(_scanCap)
           .get();
 
       return query.docs
@@ -154,6 +180,7 @@ class FirestoreRatingRepository implements RatingRepository {
           .where('createdAt', isGreaterThanOrEqualTo: startOfDay)
           .where('createdAt', isLessThan: endOfDay)
           .where('healthConditionRating', isEqualTo: null)
+          .limit(_scanCap)
           .get();
 
       return query.docs

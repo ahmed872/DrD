@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../widgets/app_widgets.dart';
 
 import '../../core/utils/app_logger.dart';
 import '../providers/firebase_auth_service.dart';
@@ -51,9 +52,9 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('تم إرسال طلبك، سيراجعه فريق DrD قريباً'),
-          backgroundColor: Colors.green,
+          backgroundColor: Theme.of(context).colorScheme.tertiary,
         ));
         setState(() {});
       }
@@ -61,8 +62,8 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
       AppLogger.error('فشل إرسال طلب التوثيق', e, s);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('تعذّر إرسال الطلب: $e'),
-          backgroundColor: Colors.red,
+          content: const Text('تعذّر إرسال الطلب، حاول مرة أخرى'),
+          backgroundColor: Theme.of(context).colorScheme.error,
         ));
       }
     } finally {
@@ -79,7 +80,7 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
       appBar: AppBar(
         title: const Text('التقدّم كطبيب'),
         centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: uid == null
           ? const Center(child: Text('يجب تسجيل الدخول'))
@@ -92,6 +93,17 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                // بدون هذا الفرع يسقط خطأ البثّ (صلاحية مرفوضة، انقطاع
+                // شبكة) إلى `status == null`، فيُعرض للطبيب نموذج فارغ كأنه
+                // لم يتقدّم قط — فيعيد الإرسال فوق طلب قائم.
+                if (snapshot.hasError) {
+                  return ErrorStateView(
+                    message: 'تعذّر عرض حالة طلبك الآن. تحقّق من اتصالك '
+                        'وأعد المحاولة.',
+                    onRetry: () => setState(() {}),
+                  );
+                }
+
                 final data = snapshot.data?.data();
                 final status = data?['status'] as String?;
 
@@ -112,16 +124,18 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.hourglass_top, size: 56, color: Colors.orange),
+          Icon(Icons.hourglass_top,
+              size: 56, color: Theme.of(context).colorScheme.secondary),
           const SizedBox(height: 16),
           const Text('طلبك قيد المراجعة',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'سيصلك تحديث بمجرد أن يراجع فريق DrD طلبك.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 24),
           _readOnlyField('التخصص', data['specialization'] ?? ''),
@@ -135,12 +149,13 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
   }
 
   Widget _buildApprovedView() {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.check_circle, size: 56, color: Colors.green),
+          Icon(Icons.check_circle,
+              size: 56, color: Theme.of(context).colorScheme.tertiary),
           SizedBox(height: 16),
           Text('تم قبولك كطبيب في DrD',
               textAlign: TextAlign.center,
@@ -149,7 +164,8 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
           Text(
             'أعد تسجيل الدخول إن لم تظهر لوحة الطبيب بعد.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -158,11 +174,15 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
 
   Widget _readOnlyField(String label, String value) {
     return Align(
-      alignment: Alignment.centerRight,
+      // اتجاهي: «البداية» تصير اليمين في العربية واليسار لو تُرجم التطبيق.
+      alignment: AlignmentDirectional.centerStart,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(label,
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12)),
           const SizedBox(height: 4),
           Text(value, style: const TextStyle(fontSize: 15)),
         ],
@@ -191,16 +211,18 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.red[50],
+                  color: Theme.of(context).colorScheme.errorContainer,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red[100]!),
+                  border:
+                      Border.all(color: Theme.of(context).colorScheme.error),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text('طلبك السابق رُفض',
+                    Text('طلبك السابق رُفض',
                         style: TextStyle(
-                            fontWeight: FontWeight.bold, color: Colors.red)),
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.error)),
                     const SizedBox(height: 6),
                     Text(rejected['rejectionReason'] ?? '—',
                         textAlign: TextAlign.right),
@@ -209,10 +231,11 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
               ),
               const SizedBox(height: 20),
             ],
-            const Text(
+            Text(
               'قدّم طلباً ليراجعه فريق DrD. لا يمنحك هذا صلاحية طبيب فوراً.',
               textAlign: TextAlign.right,
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
             TextFormField(
@@ -242,17 +265,20 @@ class _DoctorApplicationScreenState extends State<DoctorApplicationScreen> {
                   ? null
                   : () => _submit(uid, isResubmit: isResubmit),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0097A7),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               child: _isSubmitting
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
+                          color: Theme.of(context).colorScheme.onPrimary,
+                          strokeWidth: 2))
                   : Text(isResubmit ? 'إعادة التقديم' : 'إرسال الطلب',
-                      style: const TextStyle(color: Colors.white)),
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.onPrimary)),
             ),
           ],
         ),

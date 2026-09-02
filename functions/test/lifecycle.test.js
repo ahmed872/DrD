@@ -175,10 +175,111 @@ describe('cancelAppointment — المصادقة والملكية', () => {
     expect(doc.status).toBe('Booked');
   });
 
-  test('الطبيب لا يستطيع استدعاء الإلغاء عن هذا الطريق', async () => {
+  test('طبيب آخر لا يلغي موعداً ليس عنده', async () => {
     const appt = await book(PATIENT, { doctorId: DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
-    expect(await reasonOf(cancel(DOCTOR, { appointmentId: appt.appointmentId })))
+    expect(await reasonOf(cancel(GROUP_DOCTOR, { appointmentId: appt.appointmentId })))
       .toBe('permission-denied');
+
+    const doc = await getAppointment(appt.appointmentId);
+    expect(doc.status).toBe('Booked');
+  });
+});
+
+// ===================== إلغاء الطبيب (المرحلة 10) =====================
+
+describe('cancelAppointment — إلغاء الطبيب', () => {
+  // كان الطبيب يلغي بكتابة مباشرة من العميل (`BookingService.cancelAsDoctor`):
+  // معاملة تُنقص العدّاد وتحذف المريض من `patientIds` وتضع الحالة `Cancelled`.
+  // المرحلة 10 نقلت ذلك إلى هنا، فصارت سلطة الإلغاء واحدة للطرفين.
+
+  test('طبيب الموعد يلغيه ويُحرَّر مقعد المريض', async () => {
+    const appt = await book(PATIENT, { doctorId: DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
+    const res = await cancel(DOCTOR, { appointmentId: appt.appointmentId });
+    expect(res.status).toBe('Cancelled');
+
+    const doc = await getAppointment(appt.appointmentId);
+    expect(doc.status).toBe('Cancelled');
+    expect(doc.cancelledBy).toBe(DOCTOR);
+    expect(doc.cancelledByRole).toBe('doctor');
+
+    // الجوهري: المقعد المُحرَّر هو مقعد **المريض** لا مقعد الطبيب.
+    // تمرير معرّف الطبيب إلى `planSlotRelease` كان سيجعل التحرير لا يفعل
+    // شيئاً، فيبقى العدّاد مرفوعاً على موعد ملغى وتُحجب الخانة عن غيره.
+    const slot = await getSlot(appt.slotId);
+    expect(slot.bookedCount).toBe(0);
+    expect(slot.patientIds).not.toContain(PATIENT);
+  });
+
+  test('الخانة تعود قابلة للحجز بعد إلغاء الطبيب', async () => {
+    const appt = await book(PATIENT, { doctorId: DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
+    await cancel(DOCTOR, { appointmentId: appt.appointmentId });
+
+    const again = await book(OTHER, { doctorId: DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
+    expect(again.status).toBe('Booked');
+  });
+
+  test('الطبيب لا تُفرض عليه مهلة المريض', async () => {
+    // نفس الموعد الذي يرفض المريض إلغاءه لقرب وقته (`SAME_DAY_SLOT` بعد
+    // ساعة بالضبط من `NOW`) — الطبيب يلغيه: طارئ أو إغلاق يوم. المسار
+    // المباشر الذي حلّت هذه الدالة محلّه لم يكن يفحص وقتاً إطلاقاً.
+    const appt = await book(
+      PATIENT, { doctorId: DOCTOR, date: SAME_DAY_DATE, time: SAME_DAY_SLOT });
+    const late = new Date('2030-03-01T06:30:00Z'); // نصف ساعة قبل الموعد.
+
+    expect(await reasonOf(cancel(PATIENT, { appointmentId: appt.appointmentId }, late)))
+      .toBe('cancellation-deadline-passed');
+
+    const res = await cancel(DOCTOR, { appointmentId: appt.appointmentId }, late);
+    expect(res.status).toBe('Cancelled');
+  });
+
+  test('إلغاء الطبيب المكرَّر لا يُنقص العدّاد مرتين', async () => {
+    const appt = await book(PATIENT, { doctorId: DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
+    await cancel(DOCTOR, { appointmentId: appt.appointmentId });
+    const second = await cancel(DOCTOR, { appointmentId: appt.appointmentId });
+    expect(second.alreadyCancelled).toBe(true);
+
+    const slot = await getSlot(appt.slotId);
+    expect(slot.bookedCount).toBe(0);
+  });
+
+  test('الطبيب لا يلغي موعداً تم الكشف فيه', async () => {
+    const appt = await book(PATIENT, { doctorId: DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
+    await db.collection('appointments').doc(appt.appointmentId)
+      .update({ status: 'Completed' });
+    expect(await reasonOf(cancel(DOCTOR, { appointmentId: appt.appointmentId })))
+      .toBe('appointment-completed');
+  });
+
+  test('الطرفان يُبلَّغان حين يلغي الطبيب', async () => {
+    const appt = await book(PATIENT, { doctorId: DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
+    await cancel(DOCTOR, { appointmentId: appt.appointmentId });
+
+    const snap = await db.collection('notifications')
+      .where('appointmentId', '==', appt.appointmentId).get();
+    const recipients = snap.docs.map((d) => d.data().recipientId);
+    // المريض تحديداً: هو الطرف الذي لم يُلغِ، ويحتاج الإبلاغ أكثر لا أقل.
+    expect(recipients).toContain(PATIENT);
+    expect(recipients).toContain(DOCTOR);
+  });
+
+  test('الطبيب لا يلغي في خانة مجموعة إلا مقعد المريض المعني', async () => {
+    const first = await book(
+      OTHER, { doctorId: GROUP_DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
+    const second = await book(
+      THIRD, { doctorId: GROUP_DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
+    expect(first.slotId).toBe(second.slotId);
+
+    await cancel(GROUP_DOCTOR, { appointmentId: first.appointmentId });
+
+    const slot = await getSlot(first.slotId);
+    expect(slot.bookedCount).toBe(1);
+    expect(slot.patientIds).not.toContain(OTHER);
+    expect(slot.patientIds).toContain(THIRD);
+
+    // وموعد المريض الآخر لم يُمَسّ.
+    const untouched = await getAppointment(second.appointmentId);
+    expect(untouched.status).toBe('Booked');
   });
 });
 
@@ -504,6 +605,11 @@ describe('rescheduleAppointment — النقل الفعلي', () => {
 });
 
 describe('rescheduleAppointment — التزامن', () => {
+  // معاملتان متنافستان على نفس المستند: المحاكي يعيد المحاولة داخلياً،
+  // فيتجاوز زمنُها أحياناً مهلة jest الافتراضية (5 ثوانٍ) تحت الحِمل.
+  // مهلة صريحة أوسع تمنع فشلاً لا علاقة له بما يختبره الاختبار.
+  const CONCURRENCY_TIMEOUT_MS = 30000;
+
   test('مريضان يعيدان الجدولة إلى نفس الخانة الفردية الأخيرة: واحد فقط ينجح', async () => {
     const a = await book(PATIENT, { doctorId: DOCTOR, date: FUTURE_DATE, time: '09:00' });
     const b = await book(OTHER, { doctorId: DOCTOR, date: FUTURE_DATE, time: '09:30' });
@@ -522,7 +628,7 @@ describe('rescheduleAppointment — التزامن', () => {
     const newSlot = await getSlot(slotIdFor(DOCTOR, FUTURE_DATE_2, '12:00'));
     expect(newSlot.bookedCount).toBe(1);
     expect(newSlot.capacity).toBe(1);
-  });
+  }, CONCURRENCY_TIMEOUT_MS);
 
   test('إعادة جدولة وحجز مباشر يتنافسان على نفس الخانة: لا حجز مضاعف أبداً', async () => {
     const appt = await book(PATIENT, { doctorId: DOCTOR, date: FUTURE_DATE, time: SLOT_TIME });
@@ -538,5 +644,5 @@ describe('rescheduleAppointment — التزامن', () => {
     // السعة فردية: مهما نجح، لا يمكن أن يشغلها أكثر من مريض واحد أبداً.
     expect(newSlot.bookedCount).toBe(1);
     expect(newSlot.patientIds.length).toBe(1);
-  });
+  }, CONCURRENCY_TIMEOUT_MS);
 });

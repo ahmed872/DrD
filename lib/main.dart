@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'core/theme/app_theme.dart';
@@ -43,6 +46,7 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     ).timeout(const Duration(seconds: 15));
     firebaseReady = true;
+    await _connectEmulatorsIfRequested();
     AppLogger.success('تم تهيئة Firebase بنجاح');
   } on TimeoutException {
     AppLogger.error('انتهت مهلة الاتصال بـ Firebase');
@@ -51,6 +55,34 @@ void main() async {
   }
 
   runApp(MedicalApp(firebaseReady: firebaseReady));
+}
+
+/// وصل التطبيق بمحاكيات Firebase المحلية — للتطوير والمراجعة البصرية فقط.
+///
+/// `bool.fromEnvironment` ثابتة وقت الترجمة: بلا
+/// `--dart-define=USE_FIREBASE_EMULATOR=true` تُسقط هذه الدالة كلها من
+/// النسخة المبنية، فمسار الإنتاج لا يتغيّر ولا يحمل شيئاً منها.
+///
+/// أُضيفت في المرحلة 6 لأن مراجعة شاشات الطبيب بصرياً تتطلّب جلسة طبيب
+/// حقيقية، ولا سبيل إليها في بيئة بلا اعتمادات إنتاج.
+Future<void> _connectEmulatorsIfRequested() async {
+  const useEmulator = bool.fromEnvironment('USE_FIREBASE_EMULATOR');
+  if (!useEmulator) return;
+
+  const host = String.fromEnvironment(
+    'FIREBASE_EMULATOR_HOST',
+    defaultValue: '127.0.0.1',
+  );
+  try {
+    await FirebaseAuth.instance.useAuthEmulator(host, 9099);
+    FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
+    // المرحلة 8: التحليلات كلها عبر دوال قابلة للاستدعاء، فمراجعتها
+    // بصرياً تتطلّب وصل محاكي الدوال أيضاً.
+    FirebaseFunctions.instance.useFunctionsEmulator(host, 5001);
+    AppLogger.warning('متصل بمحاكيات Firebase على $host — ليست بيئة إنتاج');
+  } catch (e, s) {
+    AppLogger.error('تعذّر الاتصال بالمحاكيات', e, s);
+  }
 }
 
 class MedicalApp extends StatelessWidget {
