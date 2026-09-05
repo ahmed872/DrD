@@ -143,31 +143,32 @@ class _StartupErrorApp extends StatelessWidget {
       home: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off,
-                      size: 64, color: AppColors.primary),
-                  const SizedBox(height: 20),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
+          // `Builder` ضروري لا تجميلي: سياق `build` هنا **فوق** `MaterialApp`،
+          // فقراءة النسق منه تعطي النسق الافتراضي لا نسق DrD.
+          body: Builder(
+            builder: (context) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(DrdSpacing.xl),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cloud_off,
+                        size: 64, color: context.colors.primary),
+                    const SizedBox(height: DrdSpacing.lg),
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: context.text.titleLarge,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 15, height: 1.7),
-                  ),
-                ],
+                    const SizedBox(height: DrdSpacing.sm),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: context.text.bodyMedium
+                          ?.copyWith(color: context.drd.muted),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
