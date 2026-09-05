@@ -113,35 +113,26 @@ describe('users', () => {
   });
 });
 
-describe('تقييم الطبيب (الحقول المجمَّعة)', () => {
-  test('مراجعة صحيحة: زيادة واحدة وقيمة ضمن النطاق', async () => {
-    await assertSucceeds(updateDoc(doc(asPatient(), 'users', DOCTOR), {
+describe('تقييم الطبيب — الحقول المجمَّعة صارت للخادم وحده', () => {
+  // كانت هنا قاعدة `isReviewAggregateUpdate` تسمح لأي مستخدم مسجَّل بزيادة
+  // `reviews` بواحد وكتابة أي قيمة في `rating`. أُزيلت: لا قاعدة أمان تستطيع
+  // التحقّق من صحة *حساب* متوسط، فالحساب انتقل إلى `syncDoctorRating`.
+
+  test('المريض لا يكتب في تقييم الطبيب إطلاقاً', async () => {
+    await assertFails(updateDoc(doc(asPatient(), 'users', DOCTOR), {
       rating: 4.2, reviews: 11,
     }));
   });
 
-  test('لا يمكن تزوير عدد المراجعات', async () => {
-    // القاعدة القديمة كانت تسمح بهذا.
+  test('ولا حتى بزيادة واحدة بقيمة سليمة (ما كان مسموحاً سابقاً)', async () => {
     await assertFails(updateDoc(doc(asPatient(), 'users', DOCTOR), {
-      rating: 5, reviews: 99999,
-    }));
-  });
-
-  test('لا يمكن وضع تقييم خارج 0..5', async () => {
-    await assertFails(updateDoc(doc(asPatient(), 'users', DOCTOR), {
-      rating: 99, reviews: 11,
+      rating: 4, reviews: 11,
     }));
   });
 
   test('الطبيب لا يرفع تقييم نفسه', async () => {
     await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
-      rating: 5, reviews: 11,
-    }));
-  });
-
-  test('لا يمكن تمرير حقول أخرى مع التقييم', async () => {
-    await assertFails(updateDoc(doc(asPatient(), 'users', DOCTOR), {
-      rating: 4.2, reviews: 11, price: 0,
+      rating: 5, reviews: 999,
     }));
   });
 });
@@ -152,31 +143,33 @@ describe('slots — منع الحجز المزدوج', () => {
   test('لا يمكن تجاوز سعة الخانة', async () => {
     // جوهر الضمان: الخانة سعتها 1 ومحجوزة بالفعل.
     await assertFails(updateDoc(doc(asOther(), 'slots', SLOT), {
-      bookedCount: 2, patientIds: [PATIENT, OTHER],
+      bookedCount: 2,
     }));
   });
 
   test('لا يمكن توسيع السعة للتحايل', async () => {
     await assertFails(updateDoc(doc(asOther(), 'slots', SLOT), {
-      capacity: 99, bookedCount: 2, patientIds: [PATIENT, OTHER],
+      capacity: 99, bookedCount: 2,
     }));
   });
 
   test('الإلغاء ينقص العدّاد', async () => {
     await assertSucceeds(updateDoc(doc(asPatient(), 'slots', SLOT), {
-      bookedCount: 0, patientIds: [],
+      bookedCount: 0,
     }));
   });
 
-  test('إنشاء خانة جديدة يبدأ بحجز واحد باسم صاحب الطلب', async () => {
+  test('إنشاء خانة جديدة يبدأ بحجز واحد', async () => {
     await assertSucceeds(setDoc(doc(asPatient(), 'slots', `${DOCTOR}_2030-02-02_10-00`), {
       doctorId: DOCTOR, appointmentDate: '2030-02-02', startTime: '10:00',
-      capacity: 1, bookedCount: 1, patientIds: [PATIENT],
+      capacity: 1, bookedCount: 1,
     }));
   });
 
-  test('لا يمكن إنشاء خانة محجوزة باسم شخص آخر', async () => {
-    await assertFails(setDoc(doc(asOther(), 'slots', `${DOCTOR}_2030-03-03_10-00`), {
+  test('لا تُنشأ خانة تحمل هويّات المرضى', async () => {
+    // `slots` مقروءة لكل مستخدم مسجَّل، فحمل الهويّات فيها يكشف مَن حجز
+    // عند أي طبيب ومتى. العدّاد وحده هو ما يجوز أن يكون عاماً.
+    await assertFails(setDoc(doc(asPatient(), 'slots', `${DOCTOR}_2030-03-03_10-00`), {
       doctorId: DOCTOR, appointmentDate: '2030-03-03', startTime: '10:00',
       capacity: 1, bookedCount: 1, patientIds: [PATIENT],
     }));
@@ -275,22 +268,99 @@ describe('ratings — بيانات طبية', () => {
   });
 });
 
-describe('reviews — مراجعات علنية', () => {
-  test('المريض يكتب مراجعة باسمه', async () => {
-    await assertSucceeds(setDoc(doc(asPatient(), 'reviews', 'rev1'), {
-      doctorId: DOCTOR, patientId: PATIENT, rating: 5, comment: 'ممتاز',
+describe('reviews — مراجعات مربوطة بزيارة', () => {
+  // معرّف المراجعة = معرّف الموعد، فالتفرّد مجاني والقاعدة تستطيع التحقّق
+  // من الزيارة نفسها.
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'appointments', 'visit_done'), {
+        doctorId: DOCTOR, patientId: PATIENT,
+        appointmentDate: '2020-01-01', startTime: '09:00', status: 'Completed',
+      });
+      await setDoc(doc(db, 'appointments', 'visit_booked'), {
+        doctorId: DOCTOR, patientId: PATIENT,
+        appointmentDate: '2030-01-01', startTime: '11:00', status: 'Booked',
+      });
+      await setDoc(doc(db, 'reviews', 'visit_done'), {
+        doctorId: DOCTOR, patientId: PATIENT,
+        appointmentId: 'visit_done', rating: 5, comment: 'ممتاز',
+      });
+    });
+  });
+
+  test('المريض يراجع زيارة تمّت فعلاً', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await deleteDoc(doc(ctx.firestore(), 'reviews', 'visit_done'));
+    });
+    await assertSucceeds(setDoc(doc(asPatient(), 'reviews', 'visit_done'), {
+      doctorId: DOCTOR, patientId: PATIENT,
+      appointmentId: 'visit_done', rating: 5, comment: 'شكراً',
     }));
   });
 
-  test('لا يمكن كتابة مراجعة باسم مريض آخر', async () => {
-    await assertFails(setDoc(doc(asOther(), 'reviews', 'rev2'), {
-      doctorId: DOCTOR, patientId: PATIENT, rating: 1, comment: 'سيء',
+  test('لا مراجعة بلا زيارة', async () => {
+    await assertFails(setDoc(doc(asOther(), 'reviews', 'ghost'), {
+      doctorId: DOCTOR, patientId: OTHER, appointmentId: 'ghost', rating: 1,
     }));
   });
 
-  test('التقييم خارج 1..5 مرفوض', async () => {
-    await assertFails(setDoc(doc(asPatient(), 'reviews', 'rev3'), {
-      doctorId: DOCTOR, patientId: PATIENT, rating: 100, comment: '',
+  test('لا مراجعة لزيارة لم تتم بعد', async () => {
+    await assertFails(setDoc(doc(asPatient(), 'reviews', 'visit_booked'), {
+      doctorId: DOCTOR, patientId: PATIENT,
+      appointmentId: 'visit_booked', rating: 5,
+    }));
+  });
+
+  test('لا مراجعة لزيارة شخص آخر', async () => {
+    await assertFails(setDoc(doc(asOther(), 'reviews', 'visit_done'), {
+      doctorId: DOCTOR, patientId: OTHER,
+      appointmentId: 'visit_done', rating: 1,
+    }));
+  });
+
+  test('الطبيب لا يراجع نفسه', async () => {
+    // كان مسموحاً: القاعدة كانت تفحص `patientId == uid` فقط، فيمرّ
+    // `doctorId == patientId == self`. تصبح ثغرة فعلية بمجرد نقل حساب
+    // المتوسط إلى الخادم، لأن التقييم المزوّر سيُحتسب.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'appointments', 'self_visit'), {
+        doctorId: DOCTOR, patientId: DOCTOR,
+        appointmentDate: '2020-01-01', startTime: '09:00', status: 'Completed',
+      });
+    });
+    await assertFails(setDoc(doc(asDoctor(), 'reviews', 'self_visit'), {
+      doctorId: DOCTOR, patientId: DOCTOR,
+      appointmentId: 'self_visit', rating: 5,
+    }));
+  });
+
+  test('التقييم خارج 1..5 مرفوض عند الإنشاء', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await deleteDoc(doc(ctx.firestore(), 'reviews', 'visit_done'));
+    });
+    await assertFails(setDoc(doc(asPatient(), 'reviews', 'visit_done'), {
+      doctorId: DOCTOR, patientId: PATIENT,
+      appointmentId: 'visit_done', rating: 100,
+    }));
+  });
+
+  test('وخارج 1..5 مرفوض عند التعديل أيضاً', async () => {
+    // كان النطاق مفحوصاً عند الإنشاء فقط: أنشئ بـ 5 ثم عدّل إلى 999.
+    await assertFails(updateDoc(doc(asPatient(), 'reviews', 'visit_done'), {
+      rating: 999,
+    }));
+  });
+
+  test('تعديل التقييم ضمن النطاق مسموح لصاحبه', async () => {
+    await assertSucceeds(updateDoc(doc(asPatient(), 'reviews', 'visit_done'), {
+      rating: 3, comment: 'غيّرت رأيي',
+    }));
+  });
+
+  test('لا يُغيَّر الطبيب أو المريض في مراجعة قائمة', async () => {
+    await assertFails(updateDoc(doc(asPatient(), 'reviews', 'visit_done'), {
+      doctorId: DOCTOR2,
     }));
   });
 });
@@ -649,5 +719,236 @@ describe('مطابقة الاستعلامات بالقواعد', () => {
 
   test('لا سرد لفهرس أرقام الجوال', async () => {
     await assertFails(getDocs(query(collection(asAnon(), 'phone_index'))));
+  });
+});
+
+// ===========================================================================
+// اختبارات انحدار — المرحلة صفر (الجولة الثانية)
+// ===========================================================================
+
+describe('انحدار: إعادة الحجز بعد الإلغاء', () => {
+  // معرّف الموعد محسوب من (طبيب + تاريخ + وقت + مريض)، فإعادة الحجز تكتب فوق
+  // نفس المستند — `update` لا `create`. قاعدة الإلغاء وحدها كانت ترفض ذلك،
+  // فمن ألغى موعداً لم يكن يستطيع حجزه ثانية أبداً.
+  const SLOT = `${DOCTOR}_2030-01-01_09-00`;
+  const APPT = `${SLOT}__${PATIENT}`;
+
+  const seedWith = (status, extra = {}) =>
+    testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'appointments', APPT), {
+        doctorId: DOCTOR, patientId: PATIENT,
+        appointmentDate: '2030-01-01', startTime: '09:00', slotId: SLOT,
+        status, patientName: 'مريض', patientPhone: '201000000002',
+        reason: 'كشف', price: 200, ...extra,
+      });
+    });
+
+  const rebook = (extra = {}) =>
+    setDoc(doc(asPatient(), 'appointments', APPT), {
+      doctorId: DOCTOR, patientId: PATIENT,
+      appointmentDate: '2030-01-01', startTime: '09:00', slotId: SLOT,
+      status: 'Booked', patientName: 'مريض', patientPhone: '201000000002',
+      reason: 'كشف جديد', price: 200, createdAt: new Date(), ...extra,
+    });
+
+  test('المريض يعيد حجز خانة ألغاها', async () => {
+    await seedWith('Cancelled');
+    await assertSucceeds(rebook());
+  });
+
+  test('وتعمل مع الصيغ القديمة للإلغاء', async () => {
+    await seedWith('canceled');
+    await assertSucceeds(rebook());
+  });
+
+  test('لا إعادة حجز فوق زيارة مكتملة', async () => {
+    await seedWith('Completed', { diagnosis: 'التهاب', notes: 'ملاحظة' });
+    await assertFails(rebook());
+  });
+
+  test('لا إعادة حجز فوق موعد قائم', async () => {
+    await seedWith('Booked');
+    await assertFails(rebook());
+  });
+
+  test('إعادة الحجز لا تمحو تشخيصاً موجوداً', async () => {
+    // `affectedKeys()` يشمل الحقول المحذوفة، فمحاولة الكتابة بدون التشخيص
+    // تُرصد كتغيير عليه وتُرفض.
+    await seedWith('Cancelled', { diagnosis: 'تشخيص سابق' });
+    await assertFails(rebook());
+  });
+
+  test('إعادة الحجز لا تحقن تشخيصاً', async () => {
+    await seedWith('Cancelled');
+    await assertFails(rebook({ diagnosis: 'مزروع' }));
+  });
+
+  test('إعادة الحجز لا تنقل الموعد لوقت آخر', async () => {
+    await seedWith('Cancelled');
+    await assertFails(rebook({ startTime: '08:00' }));
+  });
+});
+
+describe('انحدار: قائمة سماح حقول مستند المستخدم', () => {
+  test('المستخدم لا يمنح نفسه حقل تحقّق', async () => {
+    // القاعدة السابقة كانت قائمة منع تحمي `role`/`rating`/`reviews` فقط،
+    // فأي حقل جديد كان مسموحاً. أول شاشة تعرض "طبيب موثّق" اعتماداً على حقل
+    // كهذا كانت ستصبح قابلة للتزوير من العميل.
+    await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      isVerified: true,
+    }));
+    await assertFails(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      verificationStatus: 'approved',
+    }));
+    await assertFails(updateDoc(doc(asPatient(), 'users', PATIENT), {
+      accountStatus: 'premium',
+    }));
+  });
+
+  test('ولا يُهرّبه ضمن تعديل مشروع', async () => {
+    await assertFails(updateDoc(doc(asPatient(), 'users', PATIENT), {
+      name: 'اسم جديد', isVerified: true,
+    }));
+  });
+
+  test('ولا عند إنشاء الحساب', async () => {
+    const fresh = testEnv.authenticatedContext('fresh_user').firestore();
+    await assertFails(setDoc(doc(fresh, 'users', 'fresh_user'), {
+      role: 'patient', name: 'جديد', phone: '201555555555',
+      isVerified: true,
+    }));
+  });
+
+  test('التعديلات المشروعة ما زالت تعمل', async () => {
+    await assertSucceeds(updateDoc(doc(asPatient(), 'users', PATIENT), {
+      name: 'اسم جديد', gender: 'female', birthDate: '1991-02-02',
+    }));
+    await assertSucceeds(updateDoc(doc(asDoctor(), 'users', DOCTOR), {
+      clinicNameAr: 'عيادة النور', price: 250, specialization: 'أسنان',
+      workingHours: '09:00 AM - 05:00 PM',
+    }));
+  });
+
+  test('وإنشاء حساب مريض عادي ما زال يعمل', async () => {
+    const fresh = testEnv.authenticatedContext('fresh_ok').firestore();
+    await assertSucceeds(setDoc(doc(fresh, 'users', 'fresh_ok'), {
+      role: 'patient', name: 'جديد', phone: '201555555556',
+      email: 'n@e.com', birthDate: '1990-01-01', gender: 'male',
+      emailVerified: true, createdAt: new Date(),
+    }));
+  });
+});
+
+describe('encounters — السجل السريري', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'appointments', 'visit_1'), {
+        doctorId: DOCTOR, patientId: PATIENT,
+        appointmentDate: '2020-01-01', startTime: '09:00', status: 'Completed',
+      });
+      await setDoc(doc(db, 'encounters', 'enc_1'), {
+        doctorId: DOCTOR, patientId: PATIENT, appointmentId: 'visit_1',
+        encounterDate: '2020-01-01', diagnosis: 'التهاب',
+        prescription: 'مضاد حيوي', clinicalNotes: 'يشكو من ألم',
+      });
+    });
+  });
+
+  test('المريض يقرأ سجله، والطبيب المؤلِّف كذلك', async () => {
+    await assertSucceeds(getDoc(doc(asPatient(), 'encounters', 'enc_1')));
+    await assertSucceeds(getDoc(doc(asDoctor(), 'encounters', 'enc_1')));
+  });
+
+  test('طبيب آخر لا يقرأ السجل', async () => {
+    // الوصول لطرف ثالث يمرّ عبر مشاركة صريحة من المريض (المرحلة الرابعة)،
+    // لا عبر توسيع هذه القاعدة.
+    await assertFails(getDoc(doc(asOtherDoctor(), 'encounters', 'enc_1')));
+  });
+
+  test('مريض آخر لا يقرأ السجل', async () => {
+    await assertFails(getDoc(doc(asOther(), 'encounters', 'enc_1')));
+  });
+
+  test('المريض لا يعدّل التشخيص ولا الوصفة ولا الملاحظات', async () => {
+    await assertFails(updateDoc(doc(asPatient(), 'encounters', 'enc_1'), {
+      diagnosis: 'تشخيص من عند المريض',
+    }));
+    await assertFails(updateDoc(doc(asPatient(), 'encounters', 'enc_1'), {
+      prescription: 'دواء',
+    }));
+    await assertFails(updateDoc(doc(asPatient(), 'encounters', 'enc_1'), {
+      clinicalNotes: 'ملاحظة مزوّرة',
+    }));
+  });
+
+  test('المريض لا يُنشئ سجلاً سريرياً', async () => {
+    await assertFails(setDoc(doc(asPatient(), 'encounters', 'enc_fake'), {
+      doctorId: DOCTOR, patientId: PATIENT, appointmentId: 'visit_1',
+      encounterDate: '2020-01-01', diagnosis: 'مخترع',
+    }));
+  });
+
+  test('المريض لا يحذف سجلاً', async () => {
+    await assertFails(deleteDoc(doc(asPatient(), 'encounters', 'enc_1')));
+  });
+
+  test('الطبيب يُنشئ سجلاً لموعد عنده', async () => {
+    await assertSucceeds(setDoc(doc(asDoctor(), 'encounters', 'enc_2'), {
+      doctorId: DOCTOR, patientId: PATIENT, appointmentId: 'visit_1',
+      encounterDate: '2020-01-01', diagnosis: 'تشخيص',
+    }));
+  });
+
+  test('الطبيب لا يُنشئ سجلاً لمريض لا موعد له عنده', async () => {
+    // هذا ما يمنع طبيباً من تأليف سجل لأي مريض يعرف معرّفه.
+    await assertFails(setDoc(doc(asOtherDoctor(), 'encounters', 'enc_3'), {
+      doctorId: DOCTOR2, patientId: PATIENT, appointmentId: 'visit_1',
+      encounterDate: '2020-01-01', diagnosis: 'تدخّل',
+    }));
+  });
+
+  test('الطبيب لا يؤلّف باسم طبيب آخر', async () => {
+    await assertFails(setDoc(doc(asOtherDoctor(), 'encounters', 'enc_4'), {
+      doctorId: DOCTOR, patientId: PATIENT, appointmentId: 'visit_1',
+      encounterDate: '2020-01-01',
+    }));
+  });
+
+  test('المؤلِّف يعدّل سجله، وغيره لا', async () => {
+    await assertSucceeds(updateDoc(doc(asDoctor(), 'encounters', 'enc_1'), {
+      diagnosis: 'تشخيص محدَّث',
+    }));
+    await assertFails(updateDoc(doc(asOtherDoctor(), 'encounters', 'enc_1'), {
+      diagnosis: 'تدخّل',
+    }));
+  });
+
+  test('لا يُنقل السجل إلى مريض أو طبيب آخر', async () => {
+    await assertFails(updateDoc(doc(asDoctor(), 'encounters', 'enc_1'), {
+      patientId: OTHER,
+    }));
+    await assertFails(updateDoc(doc(asDoctor(), 'encounters', 'enc_1'), {
+      doctorId: DOCTOR2,
+    }));
+  });
+
+  test('المريض يسرد سجلاته، ولا يسرد سجلات غيره', async () => {
+    await assertSucceeds(getDocs(query(
+      collection(asPatient(), 'encounters'),
+      where('patientId', '==', PATIENT),
+    )));
+    await assertFails(getDocs(query(collection(asPatient(), 'encounters'))));
+    await assertFails(getDocs(query(
+      collection(asOther(), 'encounters'),
+      where('patientId', '==', PATIENT),
+    )));
+  });
+
+  test('نسخ التصحيح لا تُكتب من العميل', async () => {
+    await assertFails(setDoc(
+      doc(asDoctor(), 'encounters', 'enc_1', 'revisions', 'r1'),
+      { diagnosis: 'قديم' },
+    ));
   });
 });

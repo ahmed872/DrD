@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../core/constants/appointment_status.dart';
 import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/utils/app_logger.dart';
@@ -61,7 +62,7 @@ class _PatientMyAppointmentsScreenState
             'endTime': endTime,
             'duration': data['duration'] ?? 30,
             'reason': data['reason'] ?? '',
-            'status': data['status'] ?? 'Scheduled',
+            'status': data['status'] ?? AppointmentStatus.booked.wireValue,
             'price': data['price'] ?? 0,
             'doctorId': data['doctorId'],
             'notes': data['notes'] ?? '',
@@ -145,29 +146,9 @@ class _PatientMyAppointmentsScreenState
   }
 
   void _showAppointmentDetails(Map<String, dynamic> appointment) {
-    final statusMap = {
-      'upcoming': 'قادم',
-      'Scheduled': 'مجدول',
-      'Booked': 'محجوز',
-      'pending': 'قيد الانتظار',
-      'Completed': 'مكتمل',
-      'Cancelled': 'ملغي',
-      'Rejected': 'مرفوض',
-    };
-
-    final statusColorMap = {
-      'upcoming': Colors.blue,
-      'Scheduled': Colors.blue,
-      'Booked': Colors.blue,
-      'pending': Colors.orange,
-      'Completed': Colors.green,
-      'Cancelled': Colors.red,
-      'Rejected': Colors.red,
-    };
-
-    final currentStatusText = appointment['status'] as String;
-    final statusStr = statusMap[currentStatusText] ?? currentStatusText;
-    final statusColor = statusColorMap[currentStatusText] ?? Colors.grey;
+    final currentStatus = AppointmentStatus.parse(appointment['status']);
+    final statusStr = currentStatus.arabicLabel;
+    final statusColor = _statusColor(currentStatus);
 
     final dateStr =
         DateFormat('yyyy-MM-dd', 'ar').format(appointment['date'] as DateTime);
@@ -281,7 +262,7 @@ class _PatientMyAppointmentsScreenState
                   _buildDetailRow('الهاتف:', clinicPhone),
               ],
 
-              if (currentStatusText == 'Completed') ...[
+              if (currentStatus == AppointmentStatus.completed) ...[
                 const SizedBox(height: 16),
                 const Center(
                   child: Text(
@@ -390,45 +371,31 @@ class _PatientMyAppointmentsScreenState
       final doctorId = appointment['doctorId'];
       final auth = Provider.of<FirebaseAuthService>(context, listen: false);
 
-      // Add review to 'reviews' collection
-      await FirebaseFirestore.instance.collection('reviews').add({
+      // معرّف المراجعة = معرّف الموعد.
+      //
+      // هذا يمنح التفرّد مجاناً — مراجعة واحدة لكل زيارة — ويسمح لقاعدة
+      // الأمان بالتحقّق من الموعد نفسه: هل هو لهذا المريض؟ هل تمّ فعلاً؟
+      // كانت الكتابة السابقة `.add()` بمعرّف عشوائي، فلا تفرّد ولا تحقّق.
+      final appointmentId = appointment['id'] as String;
+      await FirebaseFirestore.instance
+          .collection('reviews')
+          .doc(appointmentId)
+          .set({
         'doctorId': doctorId,
         'patientId': auth.userId,
         'patientName': auth.userName ?? 'مريض',
-        'appointmentId': appointment['id'],
+        'appointmentId': appointmentId,
         'rating': rating,
         'comment': comment,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // Update doctor's overall rating
-      final docRef =
-          FirebaseFirestore.instance.collection('users').doc(doctorId);
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final docData = await transaction.get(docRef);
-        if (docData.exists) {
-          final data = docData.data()!;
-
-          // Safely parse existing rating/reviews, defaulting to 0 if not exist
-          int currentReviews = 0;
-          if (data.containsKey('reviews') && data['reviews'] != null) {
-            currentReviews = (data['reviews'] as num).toInt();
-          }
-
-          double currentRating = 0.0;
-          if (data.containsKey('rating') && data['rating'] != null) {
-            currentRating = (data['rating'] as num).toDouble();
-          }
-
-          double newRating = ((currentRating * currentReviews) + rating) /
-              (currentReviews + 1);
-
-          transaction.update(docRef, {
-            'rating': newRating,
-            'reviews': currentReviews + 1,
-          });
-        }
-      });
+      // متوسط تقييم الطبيب لم يعد يُحسب هنا.
+      //
+      // كانت الشاشة تقرأ `users/{doctorId}` وتكتب `rating` و`reviews` في
+      // معاملة من العميل — أي أن رقم الثقة الوحيد في التطبيق كان تحت سيطرة
+      // أي مستخدم مسجَّل. الحساب انتقل إلى `syncDoctorRating` على الخادم،
+      // وقاعدة الأمان لم تعد تسمح للعميل بلمس الحقلين إطلاقاً.
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -481,18 +448,15 @@ class _PatientMyAppointmentsScreenState
   }
 
   List<Map<String, dynamic>> get _filteredAppointments {
-    final activeStatuses = ['upcoming', 'Scheduled', 'Booked', 'pending'];
-    final pastStatuses = ['Completed', 'Cancelled', 'Rejected'];
-
-    if (_selectedFilterIndex == 0) {
-      return _allAppointments
-          .where((app) => activeStatuses.contains(app['status']))
-          .toList();
-    } else {
-      return _allAppointments
-          .where((app) => pastStatuses.contains(app['status']))
-          .toList();
-    }
+    // كانت القسمة هنا على قائمتين نصّيتين مكتوبتين يدوياً، ولا تحتويان
+    // `NoShow` ولا `PendingConfirmation` — فموعد في أي من الحالتين كان
+    // يختفي من التبويبين معاً ولا يراه المريض إطلاقاً. القسمة الآن مانعة
+    // جامعة: كل موعد يظهر في تبويب واحد بالضبط.
+    final upcoming = _selectedFilterIndex == 0;
+    return _allAppointments
+        .where((app) =>
+            AppointmentStatus.parse(app['status']).isActive == upcoming)
+        .toList();
   }
 
   @override
@@ -613,9 +577,8 @@ class _PatientMyAppointmentsScreenState
     final status = appointment['status'] as String;
 
     // التحقق من حالة الموعد
-    final cancellableStatuses = ['upcoming', 'Scheduled', 'Booked', 'pending'];
-    if (!cancellableStatuses.contains(status)) {
-      return false; // لا يمكن إلغاء إذا كان مكتملاً أو ملغياً
+    if (!AppointmentStatus.parse(status).isCancellable) {
+      return false; // لا يمكن إلغاء ما تم أو أُلغي بالفعل
     }
 
     // التحقق من التاريخ الفعلي
@@ -660,29 +623,9 @@ class _PatientMyAppointmentsScreenState
     final bool isUpcoming = _selectedFilterIndex == 0;
     final bool canCancel = _canCancelAppointment(appointment);
 
-    final statusMap = {
-      'upcoming': 'قادم',
-      'Scheduled': 'مجدول',
-      'Booked': 'محجوز',
-      'pending': 'قيد الانتظار',
-      'Completed': 'مكتمل',
-      'Cancelled': 'ملغي',
-      'Rejected': 'مرفوض',
-    };
-
-    final statusColorMap = {
-      'upcoming': Colors.blue,
-      'Scheduled': Colors.blue,
-      'Booked': Colors.blue,
-      'pending': Colors.orange,
-      'Completed': Colors.green,
-      'Cancelled': Colors.red,
-      'Rejected': Colors.red,
-    };
-
-    final currentStatusText = appointment['status'] as String;
-    final statusStr = statusMap[currentStatusText] ?? currentStatusText;
-    final statusColor = statusColorMap[currentStatusText] ?? Colors.grey;
+    final currentStatus = AppointmentStatus.parse(appointment['status']);
+    final statusStr = currentStatus.arabicLabel;
+    final statusColor = _statusColor(currentStatus);
 
     final dateStr =
         DateFormat('yyyy-MM-dd', 'ar').format(appointment['date'] as DateTime);
@@ -828,7 +771,8 @@ class _PatientMyAppointmentsScreenState
                 ),
               ],
 
-              if (appointment['status'] == 'Completed') ...[
+              if (AppointmentStatus.parse(appointment['status']) ==
+                  AppointmentStatus.completed) ...[
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -853,5 +797,23 @@ class _PatientMyAppointmentsScreenState
         ),
       ),
     );
+  }
+}
+
+/// لون الحالة — مصدر واحد بدل خريطتين مكرَّرتين في هذا الملف.
+Color _statusColor(AppointmentStatus status) {
+  switch (status) {
+    case AppointmentStatus.booked:
+      return Colors.blue;
+    case AppointmentStatus.completed:
+      return Colors.green;
+    case AppointmentStatus.cancelled:
+      return Colors.red;
+    case AppointmentStatus.noShow:
+      return Colors.redAccent;
+    case AppointmentStatus.pendingConfirmation:
+      return Colors.orange;
+    case AppointmentStatus.expired:
+      return Colors.grey;
   }
 }

@@ -134,9 +134,41 @@ class BookingService {
     // الفعلية، وهي تعمل: تقرأ مستند الخانة (المسموح بقراءته) داخل معاملة
     // ذرّية، فلا يمكن لاثنين تجاوز السعة.
 
+    // كشف التكرار: هل لهذا المريض حجز قائم في هذه الخانة بالفعل؟
+    //
+    // كان يُفحص عبر `patientIds` داخل مستند الخانة — وهو حقل مقروء لكل
+    // مستخدم مسجَّل، فيكشف مَن حجز عند أي طبيب ومتى.
+    //
+    // البديل الطبيعي كان قراءة مستند الموعد ذي المعرّف المحسوب داخل المعاملة،
+    // لكن قراءة مستند **غير موجود** تُقيَّم على قاعدة `allow read: if isOwner()`
+    // و`resource` عندها `null`، فتفشل القاعدة بخطأ null وتُرفض القراءة. أي أن
+    // ذلك الحل كان سيكسر **كل حجز أول** — التقطه اختبار التزامن الجديد.
+    //
+    // ولا يجوز حلّه بالسماح بقراءة المستندات غير الموجودة: معرّف الموعد
+    // محسوب ومعروف الشكل، فالسماح يكشف "هل لهذا المريض موعد عند هذا الطبيب
+    // في هذا الوقت؟" لمن يعرف المعرّفين.
+    //
+    // الاستعلام أدناه مقيَّد بصاحب الطلب نفسه، فتسمح به القاعدة، ويعطي إجابة
+    // دقيقة. والضمان الصلب يبقى في القواعد: كتابة موعد فوق موعد قائم مرفوضة،
+    // فتفشل المعاملة كلها ولا يُرفع العدّاد.
+    final duplicate = await _hasActiveBookingInSlot(
+      doctorId: doctorId,
+      patientId: patientId,
+      dateStr: dateStr,
+      time: normalizedTime,
+    );
+    if (duplicate) {
+      return const BookingResult.failed(
+        BookingFailure.alreadyBookedBySamePatient,
+        'أنت حاجز هذا الموعد بالفعل',
+      );
+    }
+
     try {
       await _db.runTransaction<void>((transaction) async {
         final slotRef = _slots.doc(slotId);
+        final appointmentRef = _appointments.doc(appointmentId);
+
         final slotSnapshot = await transaction.get(slotRef);
 
         if (!slotSnapshot.exists) {
@@ -147,24 +179,11 @@ class BookingService {
             'startTime': normalizedTime,
             'capacity': capacity,
             'bookedCount': 1,
-            'patientIds': [patientId],
             'createdAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
           });
         } else {
           final data = slotSnapshot.data()!;
-          final patientIds = List<String>.from(
-            (data['patientIds'] as List<dynamic>? ?? const <dynamic>[])
-                .map((e) => e.toString()),
-          );
-
-          if (patientIds.contains(patientId)) {
-            throw const _BookingException(
-              BookingFailure.alreadyBookedBySamePatient,
-              'أنت حاجز هذا الموعد بالفعل',
-            );
-          }
-
           final bookedCount = (data['bookedCount'] as num?)?.toInt() ?? 0;
           // سعة الخانة المسجّلة وقت إنشائها هي المرجع، حتى لا يغيّر الطبيب
           // إعداداته فيُفسد حجوزات قائمة.
@@ -179,14 +198,16 @@ class BookingService {
 
           transaction.update(slotRef, {
             'bookedCount': bookedCount + 1,
-            'patientIds': FieldValue.arrayUnion([patientId]),
             'updatedAt': FieldValue.serverTimestamp(),
           });
         }
 
         // الموعد يُكتب داخل نفس المعاملة: إمّا ينجح القفل والموعد معاً، أو
         // لا يُكتب أي منهما. لا توجد حالة وسطى تترك عدّاداً مرفوعاً بلا موعد.
-        transaction.set(_appointments.doc(appointmentId), {
+        //
+        // `cancelledAt` يُحذف صراحةً: إعادة حجز موعد ملغى يجب ألا تُبقي أثر
+        // الإلغاء السابق، وقائمة السماح في القواعد تتوقّع اختفاءه.
+        transaction.set(appointmentRef, {
           ...appointmentData,
           'doctorId': doctorId,
           'patientId': patientId,
@@ -240,9 +261,10 @@ class BookingService {
 
         final data = appointmentSnapshot.data()!;
         final slotId = data['slotId'] as String?;
-        // يُقرأ من المستند نفسه بدل تمريره من الواجهة: الطبيب يُلغي مواعيد
-        // مرضاه، ولا يملك معرّف المريض في يده عند الضغط على زر الإلغاء.
-        final patientId = (data['patientId'] ?? '').toString();
+
+        // إلغاء موعد ملغى بالفعل يجب ألّا ينقص العدّاد مرة ثانية، وإلّا ظهرت
+        // الخانة متاحة لأكثر مما تتسع.
+        if (!AppointmentStatus.parse(data['status']).isActive) return;
 
         // المواعيد القديمة لا تحمل `slotId`؛ نلغيها بدون لمس أي قفل.
         if (slotId != null && slotId.isNotEmpty) {
@@ -254,7 +276,6 @@ class BookingService {
             transaction.update(slotRef, {
               // `clamp` يحمي من عدّاد سالب لو تكرّر الإلغاء لأي سبب.
               'bookedCount': (bookedCount - 1).clamp(0, 1 << 30),
-              'patientIds': FieldValue.arrayRemove([patientId]),
               'updatedAt': FieldValue.serverTimestamp(),
             });
           }
@@ -314,6 +335,38 @@ class BookingService {
       );
     }
     return availability;
+  }
+
+  /// هل للمريض حجز قائم في هذه الخانة بالذات؟
+  ///
+  /// الاستعلام مقيَّد بـ `patientId` الخاص بصاحب الطلب، وهو الشكل الوحيد الذي
+  /// تسمح به قاعدة الأمان على `appointments` — الفلترة بالطبيب والتاريخ وحدهما
+  /// تُرجع مواعيد مرضى آخرين فيُرفض الاستعلام كاملاً.
+  Future<bool> _hasActiveBookingInSlot({
+    required String doctorId,
+    required String patientId,
+    required String dateStr,
+    required String time,
+  }) async {
+    try {
+      final snapshot = await _appointments
+          .where('doctorId', isEqualTo: doctorId)
+          .where('patientId', isEqualTo: patientId)
+          .where('appointmentDate', isEqualTo: dateStr)
+          .get();
+
+      return snapshot.docs.any((doc) {
+        final data = doc.data();
+        if (!AppointmentStatus.parse(data['status']).isActive) return false;
+        final raw = data['startTime'] ?? data['time'];
+        return raw != null && SlotId.normalizeTime(raw.toString()) == time;
+      });
+    } catch (e) {
+      // فشل الفحص المسبق لا يوقف الحجز: القواعد هي الضمان الفعلي، وهذا
+      // الاستعلام موجود لتحسين الرسالة لا لتأمين العملية.
+      AppLogger.warning('تعذّر فحص الحجز المكرّر: $e');
+      return false;
+    }
   }
 
   /// هل للمريض موعد قائم عند هذا الطبيب في هذا اليوم؟

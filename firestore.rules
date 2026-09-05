@@ -30,22 +30,30 @@ service cloud.firestore {
       return isSignedIn() && userDoc().role == 'doctor';
     }
 
-    // الحقول التي لا يجوز للمستخدم تغييرها بنفسه.
+    // الحقول التي يجوز لصاحب الحساب كتابتها في مستنده — قائمة سماح.
     //
-    // - `role`: بدونه يستطيع أي مريض ترقية نفسه إلى طبيب من العميل مباشرة،
-    //   فيرى كل مواعيد العيادة وبيانات مرضاها.
-    // - `rating` و`reviews`: حقول مجمَّعة تُحسب من مراجعات المرضى. لو تُركت
-    //   لصاحب الحساب لاستطاع الطبيب أن يكتب لنفسه 5 نجوم و500 مراجعة.
-    //   تحديثها الشرعي يمرّ عبر `isReviewAggregateUpdate()` وحدها.
+    // القاعدة السابقة كانت قائمة **منع**: تحمي `role` و`rating` و`reviews`
+    // وتترك كل ما عداها مفتوحاً. النتيجة أن المستخدم يستطيع إضافة أي حقل
+    // جديد لمستنده — `isVerified` أو `verificationStatus` أو `badge` — وهي
+    // حقول لا يقرأها أحد اليوم، لكن أول شاشة تعرض "طبيب موثّق" اعتماداً على
+    // حقل من هذه ستكون قابلة للتزوير من العميل. أُثبت ذلك على المحاكي.
     //
-    // `phone` غير محمي هنا عمداً: شاشة إعدادات الطبيب تسمح بتعديل الرقم،
-    // ومنعه كان سيكسر ميزة قائمة. (مزامنة `phone_index` مسؤولية التطبيق.)
-    function keepsProtectedFields() {
-      return request.resource.data.role == resource.data.role
-          && request.resource.data.get('rating', 0)
-             == resource.data.get('rating', 0)
-          && request.resource.data.get('reviews', 0)
-             == resource.data.get('reviews', 0);
+    // قائمة السماح تقلب الافتراضي: كل حقل جديد **ممنوع** حتى يُضاف هنا
+    // صراحةً. الحقول المميّزة (`role`, `rating`, `reviews`, وأي حقل تحقّق
+    // مستقبلي) تبقى خارجها للأبد — تُكتب من الخادم وحده.
+    //
+    // القائمة مشتقّة من الكتابات الفعلية في التطبيق:
+    //   - التسجيل وإعدادات المريض: name, phone, email, birthDate, gender
+    //   - إعدادات العيادة: clinicName*, specialization*, bio*, price, ...
+    function selfWritableFields() {
+      return [
+        'name', 'phone', 'email', 'birthDate', 'gender', 'emailVerified',
+        'updatedAt',
+        'clinicNameAr', 'clinicNameEn', 'clinicLocation',
+        'specialization', 'specializationEn', 'bio', 'bioEn',
+        'sessionDuration', 'maxPatientsPerSlot', 'bookingSystemType',
+        'price', 'workingHours', 'workingDays'
+      ];
     }
 
     function unchanged(field) {
@@ -55,30 +63,14 @@ service cloud.firestore {
     // ===================== المستخدمون =====================
 
     match /users/{userId} {
-      // تحديث متوسط تقييم الطبيب بعد إضافة مراجعة.
+      // كانت هنا `isReviewAggregateUpdate()`: قاعدة تسمح لأي مستخدم مسجَّل
+      // بزيادة `reviews` بواحد وكتابة أي قيمة في `rating` لأي طبيب. كانت
+      // تتحقّق من **شكل** التغيير لا من **حقّ** صاحبه فيه، فحلقة بسيطة تُنزل
+      // منافساً إلى صفر أو ترفع صديقاً إلى خمسة. أُثبت ذلك على المحاكي.
       //
-      // القاعدة الحالية في مشروعك هي:
-      //   hasOnly(['rating', 'reviews'])
-      // وهي تسمح لأي مستخدم مسجَّل بكتابة **أي قيمة** في تقييم أي طبيب —
-      // فيستطيع شخص أن يضع لطبيب منافس صفراً، أو يرفع تقييم نفسه إلى 5،
-      // أو يكتب `reviews: 99999`، كل ذلك بطلب واحد من العميل.
-      //
-      // الشروط أدناه تُبقي الميزة تعمل لكن تحصرها في زيادة مراجعة واحدة
-      // بقيمة ضمن النطاق المسموح، ولطبيب غير صاحب الطلب.
-      //
-      // ملاحظة: الحل الأمثل نقل الحساب إلى Cloud Function تُشغَّل عند الكتابة
-      // في `reviews`، ثم منع تعديل هذين الحقلين من العميل نهائياً.
-      function isReviewAggregateUpdate() {
-        return isSignedIn()
-          && request.resource.data.diff(resource.data)
-               .affectedKeys().hasOnly(['rating', 'reviews'])
-          && request.resource.data.rating is number
-          && request.resource.data.rating >= 0
-          && request.resource.data.rating <= 5
-          && request.resource.data.reviews == resource.data.get('reviews', 0) + 1
-          && resource.data.role == 'doctor'
-          && request.auth.uid != userId;
-      }
+      // لا يمكن لقاعدة أمان أن تتحقّق من صحة *حساب* المتوسط، لذا أُزيلت
+      // القاعدة نهائياً: `rating` و`reviews` صارا من اختصاص الخادم وحده،
+      // تحسبهما دالة `syncDoctorRating` من مجموعة `reviews`.
 
       // القراءة: صاحب الحساب يقرأ مستنده. الأطباء بحاجة لأن يكونوا مرئيين
       // للمرضى حتى يمكن حجز المواعيد، ولذلك يُسمح لأي مستخدم مسجَّل بقراءة
@@ -96,18 +88,27 @@ service cloud.firestore {
       // إلى زرّ اختيار يتحكم فيه المستخدم نفسه.
       //
       // الآن كل حساب جديد مريض. الترقية إلى `doctor` لا تحدث من العميل
-      // إطلاقاً — لا عند الإنشاء (هذه القاعدة) ولا عند التعديل
-      // (`keepsProtectedFields`). حسابات الأطباء القائمة لا تتأثر، لأن هذه
-      // القاعدة تخص الإنشاء وحده.
+      // إطلاقاً — لا عند الإنشاء (هذه القاعدة) ولا عند التعديل (قائمة السماح
+      // أدناه). حسابات الأطباء القائمة لا تتأثر، لأن هذه القاعدة تخص الإنشاء
+      // وحده.
       //
-      // ملاحظة مهمة: نظام طلبات الأطباء ومراجعة المشرف لم يُبنَ بعد (مرحلة
-      // لاحقة). حتى ذلك الحين تُفعَّل حسابات الأطباء يدوياً من وحدة تحكم
+      // وقائمة الحقول تُطبَّق عند الإنشاء أيضاً: بدونها يستطيع مستخدم جديد أن
+      // يُنشئ مستنده ومعه `isVerified: true` من أول لحظة، فيتجاوز حماية
+      // التعديل كلها بباب خلفي.
+      //
+      // ملاحظة مهمة: نظام طلبات الأطباء ومراجعة المشرف لم يُبنَ بعد (المرحلة
+      // الثانية). حتى ذلك الحين تُفعَّل حسابات الأطباء يدوياً من وحدة تحكم
       // Firebase. راجع docs/SECURITY.md.
       allow create: if isUser(userId)
-                    && request.resource.data.role == 'patient';
+                    && request.resource.data.role == 'patient'
+                    && request.resource.data.keys().hasOnly(
+                         selfWritableFields().concat(['role', 'createdAt']));
 
-      allow update: if (isUser(userId) && keepsProtectedFields())
-                    || isReviewAggregateUpdate();
+      // التعديل: قائمة سماح صارمة. كل حقل غير مذكور في `selfWritableFields()`
+      // ممنوع — بما في ذلك أي حقل تحقّق أو صلاحية يُضاف مستقبلاً.
+      allow update: if isUser(userId)
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys().hasOnly(selfWritableFields());
 
       // الحذف ممنوع من العميل — يمر عبر Cloud Function حتى تُنظَّف
       // البيانات المرتبطة (المواعيد، الفهرس، التقييمات) معاً.
@@ -147,14 +148,31 @@ service cloud.firestore {
     // لا يكفي أن يتحقق التطبيق من الامتلاء، لأن أي عميل معدَّل يستطيع تخطّي
     // ذلك الفحص. القواعد هنا تفرض الشرط على الخادم: العدّاد يزيد بواحد فقط،
     // ولا يتجاوز السعة، والسعة نفسها لا تُغيَّر بعد إنشاء الخانة.
+    // **عدّادات فقط — بلا هويات.**
+    //
+    // كانت الخانة تحمل `patientIds`: مصفوفة بمعرّفات المرضى الحاجزين. وبما أن
+    // القراءة متاحة لكل مستخدم مسجَّل (وهي ضرورية لعرض الأوقات المتاحة)، كان
+    // ذلك يعني أن أي مستخدم يستطيع معرفة **مَن حجز عند أي طبيب وفي أي وقت** —
+    // قائمة حضور عيادة كاملة.
+    //
+    // السبب الجذري أن قواعد Firestore لا تُرشِّح الحقول عند القراءة: مستند
+    // يخلط عدّاداً عاماً بهويّات خاصة يكشف الخاص لكل من يحتاج العام.
+    //
+    // كشف التكرار (هل حجز هذا المريض هذه الخانة من قبل؟) انتقل إلى قراءة
+    // مستند الموعد ذي المعرّف المحسوب داخل نفس المعاملة — والمريض يملك ذلك
+    // المستند فيقرأه بصلاحيته.
+    //
+    // ملاحظة هجرة: القاعدة تمنع `patientIds` عند **الإنشاء** فقط. الخانات
+    // القائمة في قاعدة البيانات ما زالت تحمل الحقل، وتعديلها (إلغاء حجز مثلاً)
+    // يجب أن يبقى ممكناً. يُنظَّف الحقل من المستندات القديمة بسكربت إداري —
+    // راجع scripts/README.md.
     match /slots/{slotId} {
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
                     && request.resource.data.bookedCount == 1
                     && request.resource.data.capacity >= 1
-                    && request.resource.data.patientIds.size() == 1
-                    && request.resource.data.patientIds[0] == request.auth.uid;
+                    && !request.resource.data.keys().hasAny(['patientIds']);
 
       allow update: if isSignedIn()
                     && unchanged('capacity')
@@ -166,7 +184,6 @@ service cloud.firestore {
                       (
                         request.resource.data.bookedCount == resource.data.bookedCount + 1
                         && request.resource.data.bookedCount <= resource.data.capacity
-                        && request.resource.data.patientIds.hasAll([request.auth.uid])
                       )
                       // إلغاء: نقص بواحد، ولا يقل عن الصفر.
                       || (
@@ -246,6 +263,33 @@ service cloud.firestore {
             && !isTerminalStatus(resource.data.get('status', 'Booked'));
       }
 
+      function isCancelledStatus(status) {
+        return status in ['Cancelled', 'cancelled', 'Canceled', 'canceled'];
+      }
+
+      // إعادة الحجز بعد الإلغاء.
+      //
+      // معرّف الموعد محسوب من (الطبيب + التاريخ + الوقت + المريض)، فمريض
+      // يعيد حجز نفس الخانة يكتب فوق **نفس المستند** — وهو `update` في نظر
+      // القواعد لا `create`. بدون هذا الشرط كانت قاعدة الإلغاء أعلاه ترفض
+      // إعادة الحجز نهائياً: من ألغى موعداً لم يكن يستطيع حجزه مرة أخرى
+      // أبداً. والأسوأ أن `BookingService` يترجم `permission-denied` إلى
+      // «تم حجز هذا الموعد للتو»، فيقرأ المريض سبباً لا علاقة له بالحقيقة.
+      //
+      // القائمة هنا حقول الحجز وحدها. الحقول السريرية خارجها عمداً،
+      // و`affectedKeys()` يشمل الحقول **المحذوفة** أيضاً — فلا يستطيع مريض
+      // محو تشخيص بإعادة حجز موعد ألغاه الطبيب بعد اكتماله.
+      function isPatientRebooking() {
+        return isPatientOfRecord()
+            && isCancelledStatus(resource.data.get('status', ''))
+            && request.resource.data.status == 'Booked'
+            && changedKeys().hasOnly([
+                 'status', 'createdAt', 'cancelledAt', 'updatedAt', 'slotId',
+                 'reason', 'price', 'patientName', 'patientPhone',
+                 'doctorName', 'doctorNameEn', 'doctorSpecialization'
+               ]);
+      }
+
       // الطبيب: حالة الموعد وبياناته السريرية.
       //
       // قائمة سماح أيضاً — فلا يعدّل الطبيب `price` أو `reason` أو
@@ -283,10 +327,72 @@ service cloud.firestore {
                        ]);
 
       allow update: if keepsIdentity()
-                    && (isPatientCancellation() || isDoctorClinicalUpdate());
+                    && (isPatientCancellation()
+                        || isPatientRebooking()
+                        || isDoctorClinicalUpdate());
 
       // لا حذف — الإلغاء يتم بتغيير الحالة، حتى يبقى سجل العيادة كاملاً.
       allow delete: if false;
+    }
+
+    // ===================== السجل السريري =====================
+
+    // مجموعة `encounters`: السجل الطبي الحقيقي — زيارة واحدة = مستند واحد.
+    //
+    // القواعد تسبق الكود عمداً. الحقول السريرية تعيش اليوم على مستند الموعد،
+    // وهو ما جعل الفصل بين "بيانات حجز" و"بيانات سريرية" فصلاً على مستوى
+    // الحقل داخل مستند واحد. المجموعة المستقلة تجعل الفصل على مستوى المجموعة:
+    // الطبيب يكتب، والمريض يقرأ ولا يكتب أبداً — لا عند الإنشاء ولا عند
+    // التعديل.
+    //
+    // الملكية مزدوجة بالمعنى المنتَجي: **المريض يملك المعلومة** (يقرأها
+    // ويقرّر مشاركتها لاحقاً)، و**الطبيب يملك التأليف** (هو وحده من يكتب).
+    //
+    // لا تُقرأ من طرف ثالث من هنا إطلاقاً: وصول طبيب آخر يمرّ عبر مشاركة
+    // صريحة من المريض (المرحلة الرابعة)، لا عبر توسيع هذه القاعدة.
+    match /encounters/{encounterId} {
+      function isPatientOfRecord() {
+        return isUser(resource.data.patientId);
+      }
+
+      function isAuthoringDoctor() {
+        return isUser(resource.data.doctorId);
+      }
+
+      // الموعد الذي نشأت عنه الزيارة — هو ما يُثبت أن للطبيب علاقة مشروعة
+      // بهذا المريض. بدونه يستطيع أي طبيب إنشاء سجل لأي مريض.
+      function sourceAppointment() {
+        return get(/databases/$(database)/documents/appointments/$(request.resource.data.appointmentId)).data;
+      }
+
+      allow read: if isPatientOfRecord() || isAuthoringDoctor();
+
+      allow create: if isSignedIn()
+                    && request.resource.data.doctorId == request.auth.uid
+                    && request.resource.data.appointmentId is string
+                    && request.resource.data.encounterDate is string
+                    && sourceAppointment().doctorId == request.auth.uid
+                    && sourceAppointment().patientId
+                       == request.resource.data.patientId;
+
+      // التعديل للمؤلِّف وحده، وطرفا السجل وموعده ثابتون.
+      allow update: if isAuthoringDoctor()
+                    && unchanged('doctorId')
+                    && unchanged('patientId')
+                    && unchanged('appointmentId');
+
+      // لا حذف: السجل الطبي لا يُمحى. التصحيح يكون بتعديل مصحوب بنسخة سابقة
+      // في `revisions/` (المرحلة الثالثة).
+      allow delete: if false;
+
+      match /revisions/{revisionId} {
+        // نسخ التصحيح تُكتب من الخادم وحده (Cloud Function عند التعديل).
+        allow read: if isSignedIn() && (
+                      isUser(get(/databases/$(database)/documents/encounters/$(encounterId)).data.patientId)
+                      || isUser(get(/databases/$(database)/documents/encounters/$(encounterId)).data.doctorId)
+                    );
+        allow write: if false;
+      }
     }
 
     // ===================== التقييمات التفصيلية =====================
@@ -322,19 +428,58 @@ service cloud.firestore {
 
     // مجموعة منفصلة يكتبها المريض من شاشة "مواعيدي" (نجوم + تعليق).
     // القراءة متاحة لكل مستخدم مسجَّل لأنها جزء من اختيار الطبيب.
+    // ثلاث ثغرات كانت هنا معاً، وأُغلقت معاً عمداً:
+    //
+    //   1. لا شرط على وجود زيارة إطلاقاً — أي مستخدم مسجَّل يقيّم أي طبيب.
+    //   2. لا شرط يمنع `doctorId == patientId` — الطبيب يقيّم نفسه.
+    //   3. النطاق 1..5 مفحوص عند الإنشاء **فقط**؛ التعديل بلا فحص، فيكفي
+    //      إنشاء تقييم بـ 5 ثم تعديله إلى 999.
+    //
+    // الثلاثة أُثبتت على المحاكي. الأولى وحدها كانت تبدو أخطرها، لكن الثانية
+    // والثالثة تصبحان استغلالاً فعلياً بمجرد نقل حساب المتوسط إلى الخادم —
+    // لأن التقييم المزوّر سيُحتسب بأمانة عندئذ. لذلك لا يجوز إصلاح أحدها دون
+    // البقية.
+    //
+    // معرّف المستند = معرّف الموعد. هذا يمنح التفرّد مجاناً: مراجعة واحدة لكل
+    // زيارة، دون أي فحص إضافي.
     match /reviews/{reviewId} {
+      // الموعد الذي تخصّه هذه المراجعة. `get()` واحد يُعاد استخدامه —
+      // Firestore يوحّد الاستدعاءات المتطابقة داخل الطلب الواحد.
+      function reviewedAppointment() {
+        return get(/databases/$(database)/documents/appointments/$(reviewId)).data;
+      }
+
+      function isCompletedStatus(status) {
+        return status in ['Completed', 'completed', 'Done', 'done'];
+      }
+
+      // القراءة متاحة لكل مستخدم مسجَّل لأنها جزء من اختيار الطبيب.
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
                     && request.resource.data.patientId == request.auth.uid
+                    && request.resource.data.appointmentId == reviewId
+                    && request.resource.data.rating is number
+                    && request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5
+                    // زيارة حقيقية، للمريض نفسه، وقد تمّت فعلاً.
+                    && reviewedAppointment().patientId == request.auth.uid
+                    && reviewedAppointment().doctorId
+                       == request.resource.data.doctorId
+                    && isCompletedStatus(
+                         reviewedAppointment().get('status', ''))
+                    // ولا يقيّم الطبيب نفسه، حتى لو حجز عند نفسه.
+                    && reviewedAppointment().doctorId != request.auth.uid;
+
+      // التعديل: النطاق يُفحص هنا أيضاً، والطرفان ثابتان.
+      allow update: if isSignedIn()
+                    && isUser(resource.data.patientId)
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys().hasOnly(
+                           ['rating', 'comment', 'updatedAt'])
                     && request.resource.data.rating is number
                     && request.resource.data.rating >= 1
                     && request.resource.data.rating <= 5;
-
-      allow update: if isSignedIn()
-                    && isUser(resource.data.patientId)
-                    && unchanged('patientId')
-                    && unchanged('doctorId');
 
       allow delete: if isSignedIn() && isUser(resource.data.patientId);
     }

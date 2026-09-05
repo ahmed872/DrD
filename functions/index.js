@@ -70,6 +70,57 @@ exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(a
 });
 
 // ============================================================================
+// حساب متوسط تقييم الطبيب — على الخادم حصراً.
+//
+// كان هذا الحساب يجري في العميل: شاشة "مواعيدي" تقرأ `users/{doctorId}`
+// وتكتب `rating` و`reviews` في معاملة. وكانت قاعدة الأمان تسمح لأي مستخدم
+// مسجَّل بزيادة العدّاد بواحد وكتابة أي قيمة في المتوسط — أي أن رقم الثقة
+// الوحيد في التطبيق كان تحت سيطرة العميل. حلقة بسيطة تُنزل منافساً إلى صفر.
+//
+// قاعدة أمان لا تستطيع التحقّق من صحة *حساب* متوسط، لذا لا حل إلا نقله إلى
+// الخادم. الدالة تعيد الحساب من الصفر عند كل كتابة في `reviews` بدل التعديل
+// التزايدي: أبطأ نظرياً، لكنه لا ينحرف أبداً ويصحّح نفسه لو اختلّت البيانات.
+//
+// التكلفة: قراءة واحدة لكل مراجعة قائمة للطبيب، مرة عند كل مراجعة جديدة.
+// عند عشرات المراجعات لكل طبيب هذا لا يُذكر ضمن الحصة المجانية.
+exports.syncDoctorRating = functions.firestore
+  .document("reviews/{reviewId}")
+  .onWrite(async (change, context) => {
+    const after = change.after.exists ? change.after.data() : null;
+    const before = change.before.exists ? change.before.data() : null;
+    const doctorId = (after && after.doctorId) || (before && before.doctorId);
+    if (!doctorId) return null;
+
+    const db = admin.firestore();
+    const snapshot = await db
+      .collection("reviews")
+      .where("doctorId", "==", doctorId)
+      .get();
+
+    let sum = 0;
+    let count = 0;
+    snapshot.forEach((doc) => {
+      const value = doc.data().rating;
+      // القيم خارج النطاق تُتجاهل بدل أن تُفسد المتوسط. القاعدة تمنعها عند
+      // الكتابة، وهذا حارس ثانٍ للبيانات القديمة.
+      if (typeof value === "number" && value >= 1 && value <= 5) {
+        sum += value;
+        count += 1;
+      }
+    });
+
+    const rating = count === 0 ? 0 : Math.round((sum / count) * 10) / 10;
+
+    await db
+      .collection("users")
+      .doc(doctorId)
+      .set({ rating, reviews: count }, { merge: true });
+
+    console.log(`Doctor ${doctorId}: rating=${rating} from ${count} review(s)`);
+    return null;
+  });
+
+// ============================================================================
 // أُزيلت دالة `sendOTPEmail`.
 //
 // كانت تستمع على `otps/{docId}` وترسل بريداً إلى **معرّف المستند نفسه**:

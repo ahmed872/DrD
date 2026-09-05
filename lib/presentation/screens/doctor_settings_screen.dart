@@ -635,6 +635,25 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
     if (auth.userId != null) {
       try {
+        // الفهرس أولاً: لو كان الرقم الجديد مملوكاً لحساب آخر نتوقّف قبل
+        // كتابة أي شيء، بدل أن نحفظ رقماً لا يستطيع صاحبه الدخول به.
+        final newPhone = auth.normalizePhoneNumber(_phoneController.text);
+        final oldPhone = (auth.userPhone ?? '').toString();
+        final indexOk =
+            await auth.syncPhoneIndex(oldPhone: oldPhone, newPhone: newPhone);
+        if (!indexOk) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(auth.errorMessage ?? 'تعذّر حفظ رقم الجوال'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
         await FirebaseFirestore.instance
             .collection('users')
             .doc(auth.userId)
@@ -644,7 +663,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           'clinicLocation': _clinicLocationController.text,
           'specialization': _selectedSpecialtyAr ?? '',
           'specializationEn': _selectedSpecialtyEn ?? '',
-          'phone': auth.normalizePhoneNumber(_phoneController.text),
+          'phone': newPhone,
           'bio': _bioAr.text,
           'bioEn': _bioEn.text,
           'sessionDuration': duration,

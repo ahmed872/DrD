@@ -526,13 +526,21 @@ class FirebaseAuthService extends ChangeNotifier {
 
   /// إيجاد البريد الإلكتروني المرتبط برقم جوال.
   ///
-  /// يجرّب `phone_index` أولاً. الحسابات التي أُنشئت قبل وجود هذا الفهرس ليس
-  /// لها مدخل فيه، فيسقط الكود للطريقة القديمة (الاستعلام على `users`) حتى
-  /// لا يفقد أي مستخدم قائم قدرته على تسجيل الدخول. عند نجاح المسار القديم
-  /// يُكتب المدخل الناقص تلقائياً، فتُهاجَر الحسابات تدريجياً مع الاستخدام.
+  /// ## المسار الاحتياطي المحذوف
   ///
-  /// بعد اكتمال الهجرة (راجع `docs/SECURITY.md`) يمكن حذف المسار الاحتياطي
-  /// وإغلاق القراءة العامة على `users` نهائياً.
+  /// كان هنا مسار ثانٍ للحسابات التي أُنشئت قبل وجود `phone_index`: استعلام
+  /// على `users` بفلتر `phone`، يُتبعه كتابة المدخل الناقص — "هجرة تدريجية
+  /// مع الاستخدام" كما كان مكتوباً هنا وفي `docs/SECURITY.md`.
+  ///
+  /// **ذلك المسار لم يعمل ولا مرة واحدة.** الاستعلام يجري *قبل* المصادقة،
+  /// وقاعدة `users` تشترط مستخدماً مسجَّلاً؛ بل إنه مرفوض حتى بعد تسجيل
+  /// الدخول، لأن سرداً مفلتراً على `users` لا يمكن أن يحقّق شرط الملكية.
+  /// أُثبت الأمران على المحاكي. الاستثناء كان يُلتقط ويُسجَّل، ثم يُعرض على
+  /// المستخدم «رقم الجوال أو كلمة المرور غير صحيحة» — أي أن الحساب القديم
+  /// يبدو كأن صاحبه نسي كلمة مروره، بينما هو محبوس خارج التطبيق.
+  ///
+  /// أُزيل المسار بدل تركه يوهم بهجرة لا تحدث. الحسابات القديمة — إن وُجدت —
+  /// تحتاج تعبئة الفهرس مرة واحدة بسكربت إداري: `scripts/backfill_phone_index.js`.
   Future<String?> _resolveEmailForPhone(String cleanedPhone) async {
     try {
       final indexDoc =
@@ -544,36 +552,42 @@ class FirebaseAuthService extends ChangeNotifier {
     } catch (e) {
       AppLogger.warning('تعذّرت قراءة فهرس الجوال: $e');
     }
+    return null;
+  }
+
+  /// نقل مدخل الفهرس عند تغيير رقم الجوال.
+  ///
+  /// شاشة إعدادات العيادة تسمح للطبيب بتعديل رقمه، لكنها كانت تكتب في
+  /// `users` وحدها. تسجيل الدخول يمرّ عبر `phone_index` حصراً، فالطبيب الذي
+  /// يغيّر رقمه يفقد القدرة على الدخول بالرقم الجديد، بينما يظل الرقم القديم
+  /// يشير إلى حسابه. نفس نوع الحبس الذي سبّبه المسار الاحتياطي المحذوف أعلاه.
+  ///
+  /// تُعاد `false` إن كان الرقم الجديد مملوكاً لحساب آخر، فلا يُسرق مدخل
+  /// شخص — وهو نفس الشرط الذي تفرضه قاعدة الأمان على `phone_index`.
+  Future<bool> syncPhoneIndex({
+    required String oldPhone,
+    required String newPhone,
+  }) async {
+    if (_userId == null || oldPhone == newPhone) return true;
 
     try {
-      final legacy = await _firestore
-          .collection('users')
-          .where('phone', isEqualTo: cleanedPhone)
-          .limit(1)
-          .get();
+      final target =
+          await _firestore.collection('phone_index').doc(newPhone).get();
+      if (target.exists && target.data()?['uid'] != _userId) {
+        _errorMessage = 'رقم الجوال مستخدم بحساب آخر';
+        notifyListeners();
+        return false;
+      }
 
-      if (legacy.docs.isEmpty) return null;
-
-      final doc = legacy.docs.first;
-      final email = doc.data()['email'] as String?;
-      if (email == null || email.isEmpty) return null;
-
-      // كتابة المدخل الناقص. الفشل هنا غير مهم — تسجيل الدخول ينجح بأي حال
-      // وسيُعاد المحاولة في المرة القادمة.
-      unawaited(
-        _firestore.collection('phone_index').doc(cleanedPhone).set({
-          'uid': doc.id,
-          'email': email,
-          'backfilledAt': FieldValue.serverTimestamp(),
-        }).catchError((Object e) {
-          AppLogger.warning('تعذّرت تعبئة فهرس الجوال: $e');
-        }),
-      );
-
-      return email;
-    } catch (e) {
-      AppLogger.error('تعذّر إيجاد البريد المرتبط بالرقم', e);
-      return null;
+      await _firestore.collection('phone_index').doc(newPhone).set({
+        'uid': _userId,
+        'email': _userData?['email'] ?? '',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (e, s) {
+      AppLogger.error('تعذّرت مزامنة فهرس الجوال', e, s);
+      return false;
     }
   }
 
