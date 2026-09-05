@@ -12,16 +12,23 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // مفتاح التحكم بنسخة التطبيق:
-  // true = النسخة الخاصة بك لتسجيل الأطباء
-  // false = النسخة التي سيتم نشرها للمرضى فقط
-  static const bool isDoctorRegistrationEnabled = true;
+  // كان هنا مفتاح `isDoctorRegistrationEnabled` وزرّا اختيار "مريض / طبيب".
+  //
+  // المفتاح كان مقصوداً به إخفاء تسجيل الأطباء في نسخة المرضى، لكنه لم يكن
+  // يحمي شيئاً: قواعد Firestore كانت تقبل `role: 'doctor'` من أي عميل بغض
+  // النظر عن قيمته، فأي شخص يصبح طبيباً — يظهر في بحث المرضى، ويُحجز عنده،
+  // ويكتب ملاحظات سريرية على مواعيد مرضى حقيقيين.
+  //
+  // صارت القاعدة على الخادم تقبل `role: 'patient'` وحده، فلم يعد لهذا
+  // الاختيار معنى: تركه كان سيعرض زراً يفشل دائماً بخطأ صلاحيات.
+  //
+  // نظام طلبات الأطباء (تقديم → مراجعة → قبول) لم يُبنَ بعد — لا تُضِف هنا
+  // ما يوحي بوجوده. حسابات الأطباء تُفعَّل يدوياً حالياً.
 
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
-  String _role = 'patient';
   bool _isLogin = true;
   bool _showPassword = false;
   DateTime? _selectedBirthDate;
@@ -147,39 +154,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 // تاريخ الميلاد
                 _buildDateField(),
                 const SizedBox(height: 16),
-
-                // اختيار الدور (في نسخة الأدمن فقط)
-                if (isDoctorRegistrationEnabled) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Radio<String>(
-                        value: 'patient',
-                        groupValue: _role,
-                        activeColor: const Color(0xFF0097A7),
-                        onChanged: (value) {
-                          setState(() {
-                            _role = value!;
-                          });
-                        },
-                      ),
-                      const Text('مريض'),
-                      const SizedBox(width: 16),
-                      Radio<String>(
-                        value: 'doctor',
-                        groupValue: _role,
-                        activeColor: const Color(0xFF0097A7),
-                        onChanged: (value) {
-                          setState(() {
-                            _role = value!;
-                          });
-                        },
-                      ),
-                      const Text('طبيب'),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
 
                 // معلومة عن الدعم (زر WhatsApp)
                 InkWell(
@@ -526,12 +500,11 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // التسجيل المباشر بدون OTP
+      // التسجيل ينشئ حساب مريض دائماً — الدور ليس اختياراً للعميل.
       final signupSuccess = await auth.signupWithPhone(
         normalizedPhone,
         password,
         _nameController.text.trim(),
-        _role, // الدور المحدد (مريض أو طبيب في النسخة الخاصة)
         birthDate: _selectedBirthDate,
         gender: _selectedGender,
         email: _emailController.text.trim(),

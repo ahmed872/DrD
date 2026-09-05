@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../core/constants/appointment_status.dart';
+
 class PatientMedicalHistoryScreen extends StatefulWidget {
   const PatientMedicalHistoryScreen({super.key});
 
@@ -28,16 +30,25 @@ class _PatientMedicalHistoryScreenState
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      // We'll fetch completed appointments as the medical history
+      // السجل الطبي = المواعيد المنتهية.
+      //
+      // كان الاستعلام يفلتر `status == 'Completed'` نصّياً، فيفوّت كل موعد
+      // مخزَّن بصيغة قديمة (`completed`, `done`) ولا يظهر في سجل المريض
+      // إطلاقاً. الفلترة الآن تتم في Dart عبر `AppointmentStatus.parse` الذي
+      // يعرف كل الصيغ التاريخية — وبلا فهرس مركّب إضافي، لأن عدد مواعيد
+      // المريض الواحد صغير بطبيعته.
       final snapshot = await FirebaseFirestore.instance
           .collection('appointments')
           .where('patientId', isEqualTo: user.uid)
-          .where('status', isEqualTo: 'Completed')
           .get();
 
       List<Map<String, dynamic>> records = [];
       for (var doc in snapshot.docs) {
         final data = doc.data();
+        if (AppointmentStatus.parse(data['status']) !=
+            AppointmentStatus.completed) {
+          continue;
+        }
         records.add({
           'id': doc.id,
           'date': data['appointmentDate'] ?? '',

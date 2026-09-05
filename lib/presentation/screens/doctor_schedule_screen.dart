@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/constants/appointment_status.dart';
 import '../../core/utils/app_logger.dart';
 
 class DoctorScheduleScreen extends StatefulWidget {
@@ -60,7 +61,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           'patientNameEn': data['patientNameEn'] ?? 'Unknown',
           'time': data['startTime'] ?? data['time'] ?? '00:00',
           'duration': data['duration'] ?? 30,
-          'status': data['status'] ?? 'pending',
+          'status': data['status'] ?? AppointmentStatus.booked.wireValue,
           'phone': data['patientPhone'] ?? '-',
           'reason': data['reason'] ?? 'Consultation',
           'notes': data['notes'] ?? '',
@@ -136,17 +137,21 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ فصل المواعيد القادمة عن المكتملة
+    // فصل المواعيد القادمة عن المكتملة.
+    //
+    // كانت المقارنة هنا نصّية مباشرة على أربع صيغ مكتوبة يدوياً، فأي موعد
+    // مخزَّن بصيغة أخرى (`confirmed` مثلاً) كان يختفي من القائمتين معاً.
+    // `AppointmentStatus.parse` هو المرجع الوحيد لتفسير الحالة وهو يعرف كل
+    // الصيغ التاريخية.
     final pendingAppointments = _appointments
-        .where((apt) =>
-            apt['status'] == 'pending' ||
-            apt['status'] == 'Booked' ||
-            apt['status'] == 'Scheduled' ||
-            apt['status'] == 'upcoming')
+        .where((apt) => AppointmentStatus.parse(apt['status']).isActive)
         .toList();
 
-    final completedAppointments =
-        _appointments.where((apt) => apt['status'] == 'Completed').toList();
+    final completedAppointments = _appointments
+        .where((apt) =>
+            AppointmentStatus.parse(apt['status']) ==
+            AppointmentStatus.completed)
+        .toList();
 
     final appointmentsToShow = _selectedStatusFilter == 0
         ? pendingAppointments
@@ -451,10 +456,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
   }
 
   Widget _buildAppointmentCard(Map<String, dynamic> appointment) {
-    final isPending = (appointment['status'] == 'pending' ||
-        appointment['status'] == 'Booked' ||
-        appointment['status'] == 'Scheduled' ||
-        appointment['status'] == 'upcoming');
+    final isPending = AppointmentStatus.parse(appointment['status']).isActive;
     final statusColor = isPending ? Colors.orange : Colors.green;
     final statusLabel = isPending ? 'قيد الانتظار' : 'مكتملة';
 
@@ -762,7 +764,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
       await FirebaseFirestore.instance
           .collection('appointments')
           .doc(appointmentId)
-          .update({'status': 'Completed'});
+          .update({'status': AppointmentStatus.completed.wireValue});
 
       await _fetchAppointments();
 
@@ -1049,38 +1051,25 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     );
   }
 
-  String _getStatusLabel(String status) {
-    switch (status) {
-      case 'pending':
-      case 'Booked':
-      case 'Scheduled':
-      case 'upcoming':
-        return 'قيد الانتظار';
-      case 'Completed':
-        return 'مكتملة';
-      case 'Cancelled':
-        return 'ملغاة';
-      case 'Rejected':
-        return 'مرفوضة';
-      default:
-        return status;
-    }
-  }
+  // التسمية واللون يمرّان عبر `AppointmentStatus` بدل مطابقة نصية يدوية،
+  // فتُعرض الحالات المخزَّنة بصيغ قديمة بشكل صحيح بدل أن يظهر النص الخام
+  // للطبيب كما هو.
+  String _getStatusLabel(String status) =>
+      AppointmentStatus.parse(status).arabicLabel;
 
   Color _getStatusColor(String status) {
-    switch (status) {
-      case 'pending':
-      case 'Booked':
-      case 'Scheduled':
-      case 'upcoming':
+    switch (AppointmentStatus.parse(status)) {
+      case AppointmentStatus.booked:
         return Colors.orange;
-      case 'Completed':
+      case AppointmentStatus.completed:
         return Colors.green;
-      case 'Cancelled':
+      case AppointmentStatus.cancelled:
         return Colors.red;
-      case 'Rejected':
+      case AppointmentStatus.noShow:
         return Colors.redAccent;
-      default:
+      case AppointmentStatus.pendingConfirmation:
+        return Colors.amber;
+      case AppointmentStatus.expired:
         return Colors.grey;
     }
   }

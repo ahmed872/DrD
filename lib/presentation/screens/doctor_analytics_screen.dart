@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/constants/appointment_status.dart';
+
 class DoctorAnalyticsScreen extends StatefulWidget {
   const DoctorAnalyticsScreen({super.key});
 
@@ -111,15 +113,19 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         weekdayCounts[appDate.weekday] =
             (weekdayCounts[appDate.weekday] ?? 0) + 1;
 
-        final status = data['status'] ?? '';
-        if (status == 'Completed') {
-          completed++;
-          revenue += (data['price'] ?? 0).toDouble();
-        } else if (status == 'Canceled' ||
-            status == 'Cancelled' ||
-            status == 'Rejected' ||
-            status == 'NoShow') {
-          cancelled++;
+        // كانت المقارنة نصّية على صيغ مكتوبة يدوياً، فمواعيد مخزَّنة بصيغة
+        // `completed` أو `done` لم تكن تُحتسب في الإيراد ولا في نسبة الإنجاز.
+        switch (AppointmentStatus.parse(data['status'])) {
+          case AppointmentStatus.completed:
+            completed++;
+            revenue += (data['price'] ?? 0).toDouble();
+          case AppointmentStatus.cancelled:
+          case AppointmentStatus.noShow:
+            cancelled++;
+          case AppointmentStatus.booked:
+          case AppointmentStatus.pendingConfirmation:
+          case AppointmentStatus.expired:
+            break;
         }
       }
 

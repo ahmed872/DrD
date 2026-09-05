@@ -86,9 +86,25 @@ service cloud.firestore {
       allow read: if isUser(userId)
                   || (isSignedIn() && resource.data.role == 'doctor');
 
-      // الإنشاء: عند التسجيل فقط، وبمعرّف يطابق حساب المصادقة.
+      // الإنشاء: عند التسجيل فقط، وبمعرّف يطابق حساب المصادقة، و**بدور مريض
+      // حصراً**.
+      //
+      // القاعدة السابقة كانت `role in ['doctor', 'patient']`، أي أن العميل هو
+      // من يختار دوره. وشاشة التسجيل كانت تعرض زرّي "مريض / طبيب" فعلاً، فأي
+      // شخص يصبح طبيباً بضغطة واحدة: يظهر في بحث المرضى، ويُحجز عنده، ويكتب
+      // ملاحظات سريرية على مواعيد مرضى حقيقيين. كل ثقة في التطبيق كانت تستند
+      // إلى زرّ اختيار يتحكم فيه المستخدم نفسه.
+      //
+      // الآن كل حساب جديد مريض. الترقية إلى `doctor` لا تحدث من العميل
+      // إطلاقاً — لا عند الإنشاء (هذه القاعدة) ولا عند التعديل
+      // (`keepsProtectedFields`). حسابات الأطباء القائمة لا تتأثر، لأن هذه
+      // القاعدة تخص الإنشاء وحده.
+      //
+      // ملاحظة مهمة: نظام طلبات الأطباء ومراجعة المشرف لم يُبنَ بعد (مرحلة
+      // لاحقة). حتى ذلك الحين تُفعَّل حسابات الأطباء يدوياً من وحدة تحكم
+      // Firebase. راجع docs/SECURITY.md.
       allow create: if isUser(userId)
-                    && request.resource.data.role in ['doctor', 'patient'];
+                    && request.resource.data.role == 'patient';
 
       allow update: if (isUser(userId) && keepsProtectedFields())
                     || isReviewAggregateUpdate();
@@ -166,9 +182,84 @@ service cloud.firestore {
 
     // ===================== المواعيد =====================
 
+    // مستند الموعد يحمل شيئين مختلفين في الحساسية والسلطة:
+    //
+    //   1. بيانات الحجز — يكتبها المريض عند الحجز (الوقت، سبب الزيارة، السعر).
+    //   2. بيانات سريرية — يكتبها الطبيب بعد الكشف (`notes`, `diagnosis`, …)
+    //      وهي التي تُعرض للمريض لاحقاً بوصفها "سجله الطبي".
+    //
+    // القاعدة السابقة كانت `allow update: if isOwner() && <4 حقول ثابتة>`،
+    // أي أن **المريض يستطيع الكتابة في كل ما عدا تلك الأربعة**: يمسح ملاحظة
+    // الطبيب السريرية، أو يكتب تشخيصاً من عنده، أو يعلّم موعده "مكتمل"
+    // فيصنع زيارة طبية لم تحدث. أُثبت ذلك على المحاكي قبل هذا التعديل.
+    //
+    // الحل هنا ليس منع التحديث — فالمريض له حق مشروع في الإلغاء — بل فصل
+    // السلطة على مستوى الحقل: قائمة سماح ضيقة لكل طرف.
     match /appointments/{appointmentId} {
+      function isPatientOfRecord() {
+        return isUser(resource.data.patientId);
+      }
+
+      function isDoctorOfRecord() {
+        return isUser(resource.data.doctorId);
+      }
+
       function isOwner() {
-        return isUser(resource.data.patientId) || isUser(resource.data.doctorId);
+        return isPatientOfRecord() || isDoctorOfRecord();
+      }
+
+      function changedKeys() {
+        return request.resource.data.diff(resource.data).affectedKeys();
+      }
+
+      // هوية الموعد: لا يغيّرها أي طرف، مهما كان دوره.
+      function keepsIdentity() {
+        return unchanged('doctorId')
+            && unchanged('patientId')
+            && unchanged('appointmentDate')
+            && unchanged('startTime');
+      }
+
+      // الحالات النهائية: موعد وصل إليها لم يعد قابلاً للإلغاء من المريض.
+      //
+      // مكتوبة كقائمة منع (لا قائمة سماح) عمداً: قاعدة البيانات تحتوي على
+      // صيغ تاريخية متعددة للحالة، وقائمة السماح كانت ستمنع إلغاء مواعيد
+      // قائمة كُتبت بصيغة قديمة. القائمة هنا تحاكي `_legacyAliases` في
+      // lib/core/constants/appointment_status.dart بكل صيغها.
+      function isTerminalStatus(status) {
+        return status in [
+          'Completed', 'completed', 'Done', 'done',
+          'NoShow', 'noShow', 'noshow', 'no_show',
+          'Cancelled', 'cancelled', 'Canceled', 'canceled'
+        ];
+      }
+
+      // المريض: الإلغاء فقط.
+      //
+      // `hasOnly` هو جوهر الحماية — أي حقل آخر في نفس الطلب يُسقط الشرط،
+      // فلا يمكن تمرير `diagnosis` أو `notes` مع الإلغاء.
+      function isPatientCancellation() {
+        return isPatientOfRecord()
+            && changedKeys().hasOnly(['status', 'cancelledAt'])
+            && request.resource.data.status == 'Cancelled'
+            // لا يُلغى ما تم بالفعل: إلغاء زيارة مكتملة يمحو سجلاً طبياً.
+            && !isTerminalStatus(resource.data.get('status', 'Booked'));
+      }
+
+      // الطبيب: حالة الموعد وبياناته السريرية.
+      //
+      // قائمة سماح أيضاً — فلا يعدّل الطبيب `price` أو `reason` أو
+      // `patientName` التي كتبها المريض عند الحجز.
+      //
+      // `completedAt` و`updatedAt` و`prescription` و`treatment` لا يكتبها
+      // أي كود اليوم؛ هي محجوزة لسلطة الطبيب مسبقاً حتى لا تُفتح هذه
+      // القاعدة مرة أخرى عند بناء السجل السريري.
+      function isDoctorClinicalUpdate() {
+        return isDoctorOfRecord()
+            && changedKeys().hasOnly([
+                 'status', 'cancelledAt', 'completedAt', 'updatedAt',
+                 'notes', 'diagnosis', 'prescription', 'treatment'
+               ]);
       }
 
       // المريض يرى مواعيده، والطبيب يرى المواعيد المحجوزة عنده فقط.
@@ -177,19 +268,22 @@ service cloud.firestore {
       // الحجز: المريض يكتب باسمه هو، بحالة ابتدائية `Booked` فقط.
       // منع تعيين حالة أخرى يمنع مريضاً من تسجيل نفسه "مكتمل" لتفادي رسوم
       // أو للتلاعب بإحصاءات الطبيب.
+      //
+      // ومنع الحقول السريرية عند الإنشاء يغلق الباب الخلفي: بدونه يستطيع
+      // المريض حجز موعد ومعه `diagnosis` جاهز، فيظهر في سجله الطبي بمجرد
+      // أن يعلّم الطبيب الزيارة مكتملة.
       allow create: if isUser(request.resource.data.patientId)
                     && request.resource.data.status == 'Booked'
                     && request.resource.data.doctorId is string
                     && request.resource.data.appointmentDate is string
-                    && request.resource.data.startTime is string;
+                    && request.resource.data.startTime is string
+                    && !request.resource.data.keys().hasAny([
+                         'notes', 'diagnosis', 'prescription', 'treatment',
+                         'completedAt'
+                       ]);
 
-      // التحديث: الطرفان يستطيعان تغيير الحالة، لكن لا أحد ينقل الموعد
-      // لطبيب آخر أو لمريض آخر أو لوقت آخر.
-      allow update: if isOwner()
-                    && unchanged('doctorId')
-                    && unchanged('patientId')
-                    && unchanged('appointmentDate')
-                    && unchanged('startTime');
+      allow update: if keepsIdentity()
+                    && (isPatientCancellation() || isDoctorClinicalUpdate());
 
       // لا حذف — الإلغاء يتم بتغيير الحالة، حتى يبقى سجل العيادة كاملاً.
       allow delete: if false;
@@ -270,15 +364,18 @@ service cloud.firestore {
       allow delete: if isRecipient();
     }
 
-    // ===================== كلمات المرور لمرة واحدة =====================
+    // ===================== كلمات المرور لمرة واحدة (أُزيلت) ===============
 
-    // تُكتب من العميل ليقرأها Cloud Function ويرسلها بالبريد. لا يجوز لأحد
-    // قراءتها من العميل إطلاقاً، وإلا أمكن سرقة رمز تحقق شخص آخر.
-    match /otps/{otpId} {
-      allow read: if false;
-      allow create: if true;
-      allow update, delete: if false;
-    }
+    // كانت هنا قاعدة `match /otps/{otpId}` بـ `allow create: if true` — أي
+    // إنشاء بلا مصادقة إطلاقاً. وكانت دالة `sendOTPEmail` ترسل بريداً إلى
+    // **معرّف المستند نفسه**، والمعرّف يختاره الطالب. النتيجة: أي شخص على
+    // الإنترنت يستطيع أن يجعل حساب Gmail الخاص بالمشروع يرسل رسائل إلى أي
+    // عنوان، بلا حد، حتى يُعلَّق الحساب.
+    //
+    // ولم يكن للمجموعة أي مستخدم: لا سطر واحد في lib/ يكتب في `otps`،
+    // واستعادة كلمة المرور تمر عبر `sendPasswordResetEmail` من Firebase Auth
+    // مباشرة. أُزيلت القاعدة والدالة معاً، فصارت المجموعة مغلقة تماماً
+    // بحكم القاعدة الافتراضية أدناه.
 
     // ===================== الافتراضي =====================
 

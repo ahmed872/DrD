@@ -19,6 +19,12 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
   List<Map<String, dynamic>> _allPatients = [];
   bool _isLoading = true;
 
+  /// يفرّق بين "لا يوجد مرضى" و"تعذّر التحميل".
+  ///
+  /// الشاشة كانت تعرض الحالتين بنفس الشكل، فبدا خطأ الصلاحيات وكأنه عيادة
+  /// بلا مرضى.
+  bool _loadFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -32,6 +38,27 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
     super.dispose();
   }
 
+  /// بناء قائمة مرضى الطبيب من مستندات المواعيد وحدها.
+  ///
+  /// ## لماذا لا تُقرأ `users` هنا؟
+  ///
+  /// كانت هذه الدالة تقرأ `users/{patientId}` لكل مريض. قواعد Firestore تسمح
+  /// بقراءة مستند مستخدم لصاحبه فقط، أو لأي مستخدم مسجَّل إن كان **طبيباً**؛
+  /// مستند المريض ليس واحداً منهما، فالقراءة تُرفض بـ `permission-denied`.
+  ///
+  /// وبما أن القراءة كانت داخل الحلقة داخل `try` الخارجي، فإن أول مريض كان
+  /// يرمي استثناءً فتُهجر القائمة كلها ويُعرض للطبيب "لا يوجد مرضى" بلا أي
+  /// رسالة خطأ. الشاشة كانت فارغة دائماً في الإنتاج.
+  ///
+  /// الحل ليس توسيع صلاحية القراءة على `users` — ذلك يفتح بيانات كل المرضى
+  /// لكل طبيب. الاسم ورقم الهاتف منسوخان أصلاً في مستند الموعد وقت الحجز
+  /// (`patientName` و`patientPhone`)، والطبيب يقرأ مواعيده بصلاحية كاملة.
+  ///
+  /// النتيجة: لا استعلام مرفوض، ولا صلاحية جديدة، ونفس المعلومات.
+  ///
+  /// ما فُقد بهذا التغيير: البريد الإلكتروني (غير منسوخ في الموعد) و`nameEn`
+  /// و`age` — وآخرها لم يكن حقيقياً أصلاً: التطبيق لا يكتب `age` في أي مكان،
+  /// فكانت الشاشة تعرض "٣٠ سنة" لكل مريض على وجه الأرض.
   Future<void> _fetchPatients() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -44,81 +71,72 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
           .where('doctorId', isEqualTo: auth.userId)
           .get();
 
-      Map<String, List<QueryDocumentSnapshot>> patientAppointments = {};
-      for (var doc in appointmentsSnapshot.docs) {
+      final patientAppointments = <String, List<Map<String, dynamic>>>{};
+      for (final doc in appointmentsSnapshot.docs) {
         final data = doc.data();
         final patientId = data['patientId'] as String?;
         if (patientId != null) {
-          patientAppointments.putIfAbsent(patientId, () => []).add(doc);
+          patientAppointments.putIfAbsent(patientId, () => []).add(data);
         }
       }
 
-      List<Map<String, dynamic>> loadedPatients = [];
+      final loadedPatients = <Map<String, dynamic>>[];
       final now = DateTime.now();
 
-      for (var entry in patientAppointments.entries) {
-        String patientId = entry.key;
-        List<QueryDocumentSnapshot> apps = entry.value;
-
-        int totalVisits = apps.length;
+      for (final entry in patientAppointments.entries) {
+        final patientId = entry.key;
+        final apps = entry.value;
 
         DateTime? lastVisit;
         DateTime? nextAppointment;
         String? nextTime;
 
-        for (var appDoc in apps) {
-          final appData = appDoc.data() as Map<String, dynamic>;
+        // الاسم والهاتف يُؤخذان من أحدث موعد، لأن المريض قد يكون غيّر اسمه
+        // بين زيارتين والنسخة الأحدث هي الأقرب للصحيح.
+        DateTime? newestDate;
+        String? patientName;
+        String? patientPhone;
+
+        for (final appData in apps) {
           final dateStr = appData['appointmentDate'] as String?;
-          final timeStr =
-              appData['startTime'] as String? ?? appData['time'] as String?;
+          final timeStr = (appData['startTime'] ?? appData['time']) as String?;
           if (dateStr == null) continue;
 
-          try {
-            DateTime appDate = DateTime.parse(dateStr);
-            if (appDate.isBefore(now)) {
-              if (lastVisit == null || appDate.isAfter(lastVisit)) {
-                lastVisit = appDate;
-              }
-            } else if (appDate.isAfter(now) || appDate.isAtSameMomentAs(now)) {
-              if (nextAppointment == null ||
-                  appDate.isBefore(nextAppointment)) {
-                nextAppointment = appDate;
-                nextTime = timeStr;
-              }
+          final appDate = DateTime.tryParse(dateStr);
+          if (appDate == null) continue;
+
+          if (newestDate == null || appDate.isAfter(newestDate)) {
+            newestDate = appDate;
+            patientName = appData['patientName'] as String?;
+            patientPhone = appData['patientPhone'] as String?;
+          }
+
+          if (appDate.isBefore(now)) {
+            if (lastVisit == null || appDate.isAfter(lastVisit)) {
+              lastVisit = appDate;
             }
-          } catch (e) {}
+          } else {
+            if (nextAppointment == null || appDate.isBefore(nextAppointment)) {
+              nextAppointment = appDate;
+              nextTime = timeStr;
+            }
+          }
         }
 
-        lastVisit ??= DateTime.now();
-
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(patientId)
-            .get();
-        final userData = userDoc.data() ?? {};
-
-        String fallbackName = 'مريض غير معروف';
-        try {
-          fallbackName =
-              (apps.first.data() as Map<String, dynamic>)['patientName'] ??
-                  fallbackName;
-        } catch (e) {}
-
-        final patientName =
-            userData['name'] ?? userData['userName'] ?? fallbackName;
+        lastVisit ??= now;
 
         loadedPatients.add({
           'id': patientId,
-          'name': patientName,
-          'nameEn': userData['nameEn'] ?? 'Unknown Patient',
-          'phone': userData['phone'] ?? 'غير متوفر / N/A',
-          'email': userData['email'] ?? 'غير متوفر / N/A',
-          'age': userData['age'] ?? 30, // Default if missing
+          'name': (patientName == null || patientName.isEmpty)
+              ? 'مريض غير معروف'
+              : patientName,
+          'phone': (patientPhone == null || patientPhone.isEmpty)
+              ? 'غير متوفر'
+              : patientPhone,
           'lastVisit': lastVisit,
-          'totalVisits': totalVisits,
+          'totalVisits': apps.length,
           'nextAppointment': nextAppointment,
           'nextTime': nextTime,
-          'notes': 'لا توجد ملاحظات / No notes',
           'status': nextAppointment != null ? 'active' : 'inactive',
         });
       }
@@ -129,24 +147,26 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
           _isLoading = false;
         });
       }
-    } catch (e) {
-      AppLogger.info('Error fetching patients: $e');
+    } catch (e, s) {
+      // الفشل هنا لم يعد صامتاً: الشاشة الفارغة كانت تخفي خطأ صلاحيات لشهور.
+      AppLogger.error('تعذّر تحميل قائمة المرضى', e, s);
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _loadFailed = true;
+        });
       }
     }
   }
 
   List<Map<String, dynamic>> _getFilteredAndSortedPatients() {
+    final term = _searchController.text.trim().toLowerCase();
     var filtered = _allPatients.where((patient) {
-      final matchesSearch = patient['name']
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase()) ||
-          patient['phone'].contains(_searchController.text) ||
-          patient['email']
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase());
-      return matchesSearch;
+      if (term.isEmpty) return true;
+      // البريد الإلكتروني لم يعد ضمن البيانات المتاحة للطبيب — البحث بالاسم
+      // أو الهاتف، وهما المنسوخان في مستند الموعد.
+      return (patient['name'] as String).toLowerCase().contains(term) ||
+          (patient['phone'] as String).contains(term);
     }).toList();
 
     // Sort
@@ -209,7 +229,9 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               const SizedBox(height: 24),
 
               // Patients List
-              if (filteredPatients.isEmpty)
+              if (_loadFailed)
+                _buildErrorState()
+              else if (filteredPatients.isEmpty)
                 _buildEmptyState()
               else
                 _buildPatientsList(filteredPatients),
@@ -359,6 +381,46 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
     );
   }
 
+  /// حالة الفشل، منفصلة عن حالة "لا يوجد مرضى".
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 60),
+        child: Column(
+          children: [
+            Icon(Icons.cloud_off, size: 72, color: Colors.grey[400]),
+            const SizedBox(height: 20),
+            Text(
+              'تعذّر تحميل قائمة المرضى',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[700],
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'تأكد من اتصالك بالإنترنت ثم أعد المحاولة',
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: () {
+                setState(() => _loadFailed = false);
+                _fetchPatients();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -446,53 +508,19 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                     ),
                   ),
                 ),
-                // Name and Age
+                // اسم المريض.
+                //
+                // كان هنا أيضاً "٣٠ سنة" لكل مريض — التطبيق لا يكتب حقل `age`
+                // إطلاقاً، فكانت القيمة الافتراضية تُعرض كعمر حقيقي. عرض سنّ
+                // مختلَق في شاشة طبية أسوأ من عدم عرض السنّ.
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            ' سنة',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: Colors.grey[500]),
-                          ),
-                          Text(
-                            patient['age'].toString(),
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.grey[500],
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                          ),
-                          Text(
-                            ' • ',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: Colors.grey[500]),
-                          ),
-                          Text(
-                            patient['name'],
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        patient['nameEn'],
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Colors.grey[500]),
-                      ),
-                    ],
+                  child: Text(
+                    patient['name'] as String,
+                    textAlign: TextAlign.end,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -507,14 +535,6 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               icon: Icons.phone,
               label: 'الهاتف / Phone',
               value: patient['phone'],
-            ),
-            const SizedBox(height: 10),
-
-            _patientDetailRow(
-              context,
-              icon: Icons.email,
-              label: 'البريد الإلكتروني / Email',
-              value: patient['email'],
             ),
             const SizedBox(height: 10),
 

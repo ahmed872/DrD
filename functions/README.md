@@ -1,125 +1,76 @@
-# 📧 إرسال OTP عبر البريد الإلكتروني
+# Cloud Functions — DrD
 
-## 🚀 خطوات التثبيت والتفعيل
+## الدوال الموجودة
 
-### 1️⃣ تثبيت Firebase CLI (مرة واحدة فقط)
-
-```bash
-npm install -g firebase-tools
-firebase login
-```
-
-### 2️⃣ إعداد Gmail App Password
-
-Firebase Functions تحتاج بريد Gmail مع كلمة مرور خاصة:
-
-1. اذهب إلى: https://myaccount.google.com/security
-2. اضغط **"تطبيقات كلمات المرور"** (اذا لم تظهر، فعّل المصادقة الثنائية أولاً)
-3. اختر "البريد" و "Windows"
-4. ستحصل على كلمة مرور 16 حرف
-5. احفظها (ستحتاجها الآن!)
-
-### 3️⃣ تعيين متغيرات البيئة
-
-```bash
-cd functions
-firebase functions:config:set gmail.user="your-email@gmail.com" gmail.password="your-app-password"
-```
-
-مثال:
-
-```bash
-cd functions
-firebase functions:config:set gmail.user="doctor.heldoc@gmail.com" gmail.password="abcd efgh ijkl mnop"
-```
-
-### 4️⃣ نشر الـ Cloud Function
-
-```bash
-firebase deploy --only functions
-```
-
-ستظهر رسالة:
-
-```
-✔ Deploy complete!
-
-Function URL: https://region-project.cloudfunctions.net/sendOTPEmail
-```
-
-### ✅ اختبار النظام
-
-1. افتح التطبيق
-2. اضغط "إنشاء حساب جديد"
-3. أدخل بريدك الإلكتروني
-4. اضغط "إرسال الكود"
-5. تحقق من صندوق الوارد - الكود سيصل! 📬
+| الدالة | النوع | الحالة |
+|---|---|---|
+| `checkAppointments` | مجدولة (كل 5 دقائق) | **لا تفعل شيئاً حالياً** — انظر أدناه |
 
 ---
 
-## 🔐 ملاحظات أمان مهمة
+## ⚠️ `checkAppointments` لا تُرسل أي تذكير
 
-❌ **لا تضع كلمة المرور في الكود مباشرة** - استخدم Firebase Config
+الدالة تستعلم عن المواعيد هكذا:
 
-⚠️ **كلمة مرور التطبيق آمنة أكثر من كلمة المرور الأصلية** - لا تشاركها
-
-🛡️ **Firebase Functions تتحكم في الوصول** - كود لا يمكن تشغيله إلا من Firestore
-
----
-
-## 📱 محتوى الإيميل المرسل
-
-- ✉️ بريد احترافي بتصميم استجابي
-- 🔐 رمز OTP بحجم كبير وواضح
-- ⏱️ مؤشر انتهاء الصلاحية (10 دقائق)
-- 🛡️ تحذير الأمان (لا تشارك الرمز)
-- 📍 عربي 100%
-
----
-
-## 🐛 استكشاف الأخطاء
-
-### الإيميل لا يصل
-
-1. تحقق من Gmail Security: https://myaccount.google.com/security
-2. فعّل "تطبيقات أقل أماناً" إذا لزم الأمر
-3. تحقق من سجل Firebase Functions:
-   ```bash
-   firebase functions:log
-   ```
-
-### خطأ Authentication
-
-```bash
-firebase functions:config:unset gmail
-firebase functions:config:set gmail.user="YOUR_EMAIL@gmail.com" gmail.password="YOUR_APP_PASSWORD"
-firebase deploy --only functions
+```js
+db.collection("appointments").where("status", "==", "Scheduled")
+...
+if (!data.date || !data.time) continue;
 ```
 
-### شغّل الـ Emulator محلياً
+بينما التطبيق يكتب:
+
+- `status: "Booked"` — وليس `"Scheduled"` (راجع `lib/core/constants/appointment_status.dart`)
+- `appointmentDate` و`startTime` — وليس `date` و`time`
+
+عدم تطابق مزدوج، فالنتيجة صفر مستندات في كل تشغيل. **لم يُرسَل أي تذكير
+موعد منذ نُشرت هذه الدالة**، رغم أنها تُستدعى 288 مرة يومياً.
+
+لم تُصلَح في هذه المرحلة عمداً: إصلاحها يعني تفعيل إشعارات لا توجد لها شاشة
+في التطبيق (لا يقرأ أي كود مجموعة `notifications`). تُعالَج مع بناء مركز
+الإشعارات في مرحلة لاحقة، ويجب حينها أيضاً:
+
+- تضييق الاستعلام على تاريخ اليوم بدل مسح المجموعة كاملة (تكلفة القراءات)
+- تقليل التكرار من 5 دقائق إلى 15
+- استخدام `AppointmentStatus` كمصدر وحيد لأسماء الحالات
+
+---
+
+## أُزيلت: `sendOTPEmail`
+
+كانت دالة تستمع على `otps/{docId}` وترسل بريداً عبر Gmail إلى **معرّف
+المستند** — والمعرّف يختاره من يكتب المستند. وكانت قاعدة الأمان المقابلة:
+
+```
+match /otps/{otpId} {
+  allow create: if true;    // بلا مصادقة إطلاقاً
+}
+```
+
+أي أن أي شخص على الإنترنت كان يستطيع جعل حساب Gmail الخاص بالمشروع يرسل
+رسالة إلى أي عنوان، بلا حد. أُزيلت الدالة والقاعدة والاعتماد على `nodemailer`
+معاً، بعد التأكد من أن لا شيء في `lib/` يكتب في `otps`:
+
+- التسجيل ينشئ الحساب مباشرة بلا رمز تحقق
+- استعادة كلمة المرور تستدعي `FirebaseAuth.sendPasswordResetEmail`
+
+لا حاجة لأي إعداد بريد في هذا المشروع الآن.
+
+---
+
+## التشغيل محلياً
 
 ```bash
 cd functions
 npm install
-firebase emulators:start --only functions
+firebase emulators:start --only functions,firestore
 ```
 
----
+## النشر
 
-## 📊 مراقبة الإيميلات المرسلة
+```bash
+firebase deploy --only functions
+```
 
-في Firebase Console:
-
-1. اذهب إلى **Firestore Database**
-2. شوف collection **"otps"**
-3. كل بريد له سجل: `{ emailSent: true, sentAt: timestamp }`
-
----
-
-## 🎯 الخطوة التالية (Production)
-
-عندما تكون جاهز للـ production:
-
-- استخدم خدمة بريد احترافية (SendGrid, Mailgun)
-- أو استخدم Firebase Admin SDK في backend خاص
-- أو استخدم AWS SES
+> Cloud Functions تتطلب خطة Blaze. الحصة المجانية ضمنها (2 مليون استدعاء
+> شهرياً) تكفي هذا المشروع بفارق كبير؛ اضبط تنبيه ميزانية عند 1$ للاطمئنان.

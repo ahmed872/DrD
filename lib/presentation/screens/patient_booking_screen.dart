@@ -66,10 +66,17 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   String? _selectedTime;
   String? _consultationReason;
 
-  /// الوقت (`HH:mm`) → عدد الحجوزات القائمة فيه.
-  Map<String, int> _bookedSlots = {};
+  /// الوقت (`HH:mm`) → إشغال الخانة، مقروءاً من مجموعة `slots`.
+  Map<String, SlotAvailability> _slotAvailability = {};
   bool _isLoadingSlots = false;
   bool _hasAppointmentToday = false;
+
+  /// فشل تحميل الإشغال.
+  ///
+  /// بدون هذه الراية كانت الشاشة تعرض كل الأوقات متاحة عند فشل الاستعلام —
+  /// وهو بالضبط ما كان يحدث في الإنتاج. عرض "غير متاح مؤقتاً" أصدق من عرض
+  /// أوقات لا نعرف حالتها.
+  bool _slotsLoadFailed = false;
 
   @override
   void initState() {
@@ -86,7 +93,8 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     if (_selectedDoctorId == null || _selectedDate == null) return;
     setState(() {
       _isLoadingSlots = true;
-      _bookedSlots.clear();
+      _slotAvailability.clear();
+      _slotsLoadFailed = false;
       _hasAppointmentToday = false;
       _selectedTime = null;
     });
@@ -94,9 +102,9 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     try {
       final auth = Provider.of<FirebaseAuthService>(context, listen: false);
 
-      // الاستعلامان يعتمدان الآن على BookingService، وهو نفس المصدر الذي
-      // يستخدمه الحجز — فلا تختلف الواجهة عمّا ستقبله قاعدة البيانات.
-      final taken = await _bookingService.bookedCountsFor(
+      // الإشغال يُقرأ من `slots` — المجموعة التي يقرأها الحجز نفسه — بدل
+      // `appointments` التي كانت قاعدة الأمان ترفض استعلامها للمريض.
+      final availability = await _bookingService.availabilityFor(
         doctorId: _selectedDoctorId!,
         date: _selectedDate!,
       );
@@ -108,12 +116,13 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
 
       if (mounted) {
         setState(() {
-          _bookedSlots = taken;
+          _slotAvailability = availability;
           _hasAppointmentToday = patientAlreadyBooked;
         });
       }
-    } catch (e) {
-      AppLogger.error('تعذّر جلب الخانات المحجوزة', e);
+    } catch (e, s) {
+      AppLogger.error('تعذّر جلب حالة الخانات', e, s);
+      if (mounted) setState(() => _slotsLoadFailed = true);
     } finally {
       if (mounted) setState(() => _isLoadingSlots = false);
     }
@@ -567,6 +576,33 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
         const SizedBox(height: 16),
         if (_isLoadingSlots)
           const Center(child: CircularProgressIndicator())
+        else if (_slotsLoadFailed)
+          // لا تُعرض أوقات لا نعرف حالتها: عرضها متاحةً بينما قد تكون محجوزة
+          // هو بالضبط الخطأ الذي كان يقع فيه هذا الملف.
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey[300]!),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.cloud_off, color: Colors.grey[600]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'تعذّر التحقق من الأوقات المتاحة.\n'
+                    'تأكد من اتصالك بالإنترنت ثم اختر التاريخ مرة أخرى.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.grey[800]),
+                  ),
+                ),
+              ],
+            ),
+          )
         else if (_hasAppointmentToday)
           Container(
             padding: const EdgeInsets.all(12),
@@ -612,15 +648,23 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                       : 1;
                   // التوحيد ضروري: الخانات المولّدة بصيغة `HH:mm` والمحجوزة
                   // قادمة من قاعدة البيانات بصيغ متعددة.
-                  final int bookedCount =
-                      _bookedSlots[SlotId.normalizeTime(time)] ?? 0;
+                  final slot = _slotAvailability[SlotId.normalizeTime(time)];
+                  final int bookedCount = slot?.booked ?? 0;
+                  // السعة المسجَّلة على الخانة هي المرجع — وهي نفسها التي
+                  // تفرضها المعاملة وقاعدة الأمان. إن لم يوجد مستند خانة بعد
+                  // فلا أحد حجز، والمرجع إعدادات الطبيب الحالية.
+                  final int effectiveCapacity = slot?.capacity ?? maxPerSlot;
 
-                  if (bookedCount >= maxPerSlot) {
+                  if (bookedCount >= effectiveCapacity) {
                     return const SizedBox.shrink();
                   }
 
-                  return _buildTimeSlot(time,
-                      sysType == 'Grouped' ? (maxPerSlot - bookedCount) : null);
+                  return _buildTimeSlot(
+                    time,
+                    sysType == 'Grouped'
+                        ? (effectiveCapacity - bookedCount)
+                        : null,
+                  );
                 })
                 .where((widget) => widget is! SizedBox)
                 .toList(),

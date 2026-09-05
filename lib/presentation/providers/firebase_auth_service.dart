@@ -96,11 +96,21 @@ class FirebaseAuthService extends ChangeNotifier {
     await _onAuthStateChanged(user);
   }
 
+  /// الدور الوحيد الذي يجوز للعميل إنشاؤه.
+  ///
+  /// كانت هذه الدالة تستقبل `role` من شاشة التسجيل، وكانت الشاشة تعرض زرّي
+  /// "مريض / طبيب" — أي أن المستخدم يختار صلاحياته بنفسه، وقواعد Firestore
+  /// كانت تقبل ذلك. صار الدور ثابتاً هنا، والقاعدة على الخادم ترفض أي قيمة
+  /// أخرى، فلا يوجد مسار — لا في الواجهة ولا في الشبكة — يمنح صلاحية طبيب.
+  ///
+  /// ترقية حساب إلى طبيب تتم اليوم يدوياً من وحدة تحكم Firebase، إلى أن
+  /// يُبنى نظام طلبات الأطباء ومراجعة المشرف في مرحلة لاحقة.
+  static const String _signupRole = 'patient';
+
   Future<bool> signupWithPhone(
     String phoneNumber,
     String password,
-    String name,
-    String role, {
+    String name, {
     DateTime? birthDate,
     String? gender,
     String? email,
@@ -167,7 +177,7 @@ class FirebaseAuthService extends ChangeNotifier {
         'phone': cleanedPhone,
         'email': cleanedEmail,
         'name': name,
-        'role': role,
+        'role': _signupRole,
         'birthDate': birthDate?.toIso8601String(),
         'gender': gender,
         'emailVerified': true, // تعيينها مفعّلة تلقائياً

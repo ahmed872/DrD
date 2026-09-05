@@ -1,17 +1,11 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const nodemailer = require("nodemailer");
 
 admin.initializeApp();
 
-// إعدادات البريد (استخدم Gmail مع App Password)
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER, // بريد Gmail
-    pass: process.env.EMAIL_PASSWORD, // App Password من Gmail
-  },
-});
+// كان هنا ناقل بريد (nodemailer + Gmail) تستخدمه دالة `sendOTPEmail` وحدها.
+// أُزيلت الدالة (انظر أسفل الملف) فلم يبق له مستخدم، وأُزيل معه الاعتماد على
+// nodemailer ومتغيّرات EMAIL_USER / EMAIL_PASSWORD.
 
 // إرسال الإشعارات بناءً على مواعيد الحضور وغيرها
 exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(async (context) => {
@@ -75,69 +69,20 @@ exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(a
   return null;
 });
 
-// مراقبة collection 'otps' وإرسال إيميل عند إضافة OTP جديد
-exports.sendOTPEmail = functions.firestore
-  .document("otps/{docId}")
-  .onCreate(async (snap, context) => {
-    const data = snap.data();
-    const email = context.params.docId;
-    const otpCode = data.code;
-    const expiryTime = data.expiryTime;
-
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "🔐 رمز التحقق الخاص بك - Medical Appointment App",
-      html: `
-        <div style="font-family: 'Arial', sans-serif; direction: rtl; text-align: right; background-color: #f5f5f5; padding: 20px;">
-          <div style="background-color: white; border-radius: 10px; padding: 30px; max-width: 500px; margin: 0 auto;">
-            <h2 style="color: #2c3e50; margin-bottom: 20px;">مرحباً بك!</h2>
-            
-            <p style="color: #555; font-size: 16px; margin-bottom: 20px;">
-              تم طلب رمز التحقق الخاص بك لتطبيق الحجز الطبي.
-            </p>
-            
-            <div style="background-color: #e8f4f8; border-left: 4px solid #3498db; padding: 20px; margin: 20px 0; border-radius: 5px;">
-              <p style="color: #999; margin: 0; font-size: 14px;">رمز التحقق:</p>
-              <h1 style="color: #3498db; font-size: 40px; letter-spacing: 5px; margin: 10px 0; font-family: 'Courier New', monospace;">
-                ${otpCode}
-              </h1>
-              <p style="color: #999; margin: 10px 0; font-size: 12px;">
-                ⏱️ ينتهي الصلاحية في 10 دقائق
-              </p>
-            </div>
-            
-            <p style="color: #e74c3c; background-color: #fadbd8; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              ⚠️ لا تشارك هذا الرمز مع أحد. نحن لن نطلبه منك عبر البريد الإلكتروني.
-            </p>
-            
-            <p style="color: #555; font-size: 14px; margin-top: 20px;">
-              إذا لم تطلب هذا الرمز، يرجى تجاهل هذا البريد الإلكتروني.
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-            
-            <p style="color: #999; font-size: 12px; text-align: center;">
-              © 2026 Medical Appointment App | جميع الحقوق محفوظة
-            </p>
-          </div>
-        </div>
-      `,
-    };
-
-    try {
-      await transporter.sendMail(mailOptions);
-      console.log(`✅ Email sent to: ${email}`);
-      
-      // تحديث الـ Firestore لتسجيل أن الإيميل تم إرساله
-      await admin.firestore().collection("otps").doc(email).update({
-        emailSent: true,
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      
-      return { success: true, message: "Email sent successfully" };
-    } catch (error) {
-      console.error(`❌ Error sending email to ${email}:`, error);
-      return { success: false, error: error.message };
-    }
-  });
+// ============================================================================
+// أُزيلت دالة `sendOTPEmail`.
+//
+// كانت تستمع على `otps/{docId}` وترسل بريداً إلى **معرّف المستند نفسه**:
+//
+//     const email = context.params.docId;   // يختاره الطالب
+//     await transporter.sendMail({ to: email, ... });
+//
+// وكانت قاعدة الأمان المقابلة `allow create: if true` — بلا مصادقة. أي أن أي
+// شخص على الإنترنت كان يستطيع إنشاء مستند باسم أي بريد إلكتروني فيُرسل حساب
+// Gmail الخاص بالمشروع رسالة إلى ذلك العنوان، بلا حد ولا تحقق. ذلك يكفي
+// لإغراق شخص بالرسائل، ولاستنفاد حصة الإرسال، ولتعليق حساب Gmail نفسه.
+//
+// ولم يكن للدالة أي مستخدم: لا يوجد سطر واحد في lib/ يكتب في `otps`، وشاشة
+// "نسيت كلمة المرور" تستدعي `FirebaseAuth.sendPasswordResetEmail` مباشرة،
+// وشاشة التسجيل تنشئ الحساب بلا رمز تحقق. أُزيلت الدالة والقاعدة معاً.
+// ============================================================================
