@@ -101,6 +101,25 @@
         { "fieldPath": "doctorId", "order": "ASCENDING" },
         { "fieldPath": "encounterDate", "order": "DESCENDING" }
       ]
+    },
+    {
+      "//": "مشاركات المريض، الأحدث أولاً (MedicalShareService.watchPatientShares). القيد على patientId هو نفسه ما تُثبته قاعدة الأمان.",
+      "collectionGroup": "medical_shares",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "patientId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "صندوق الطبيب: ما وُجّه إليه وهو نشط (MedicalShareService.watchDoctorInbox). قيد الحالة ليس ترشيحاً في الواجهة — القاعدة تشترطه، واستعلام بدونه يُرفض كاملاً.",
+      "collectionGroup": "medical_shares",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientDoctorId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

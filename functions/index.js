@@ -368,3 +368,136 @@ exports.onEncounterWritten = functions.firestore
     console.log(`encounter ${encounterId}: ${before ? "updated" : "created"}`);
     return null;
   });
+
+// ============================================================================
+// بناء لقطة المشاركة الطبية — المرحلة الرابعة.
+//
+// ## لماذا يكتب الخادمُ اللقطة
+//
+// هذا هو الشرط الأمني المحوري في هذه الميزة. لو كتب المريض المحتوى السريري
+// بنفسه لاستطاع **اختلاق تشخيص** ونسبته إلى طبيبه ثم عرضه على طبيب آخر —
+// تزوير طبي بعواقب علاجية حقيقية، لا مجرد خلل بيانات. لذلك المريض يرسل
+// معرّفات سجلاته فقط، والدالة تقرأها بصلاحية الخادم وتتحقّق أنه يملكها.
+//
+// ## لماذا لقطة لا وصول حيّ
+//
+// المريض وافق على نصّ بعينه رآه لحظة المشاركة. لو قرأ الطبيب السجل الحيّ
+// لتغيّر ما يراه كلما عدّله الطبيب المؤلِّف — أي أن الموافقة تنسحب على محتوى
+// لم يوافق عليه أحد. اللقطة تربط الموافقة بالمحتوى لا بالموقع.
+//
+// `sourceUpdatedAt` يثبّت أي نسخة من السجل التُقطت، ويتقاطع مع نسخ
+// `revisions/` من المرحلة الثالثة.
+// ============================================================================
+
+/** الحقول السريرية التي تُنسخ إلى اللقطة. */
+function buildSnapshot(encounterId, e) {
+  return {
+    encounterId,
+    encounterDate: e.encounterDate || "",
+    // اسم الطبيب المؤلِّف وتخصصه — يحتاجهما المستقبِل ليفهم السياق.
+    // معرّفه الخام لا يُنسخ: ليس ضرورياً للاستشارة.
+    doctorName: e.doctorName || "",
+    doctorSpecialization: e.doctorSpecialization || "",
+    diagnosis: e.diagnosis || "",
+    clinicalNotes: e.clinicalNotes || "",
+    treatmentPlan: e.treatmentPlan || "",
+    followUpNotes: e.followUpNotes || "",
+    followUpDate: e.followUpDate || "",
+    // أي نسخة من السجل التُقطت — يبقى معروفاً حتى لو عُدِّل السجل لاحقاً.
+    sourceUpdatedAt: e.updatedAt || null,
+  };
+}
+
+exports.onMedicalShareWritten = functions.firestore
+  .document("medical_shares/{shareId}")
+  .onWrite(async (change, context) => {
+    const shareId = context.params.shareId;
+    const before = change.before.exists ? change.before.data() : null;
+    const after = change.after.exists ? change.after.data() : null;
+
+    // الحذف ممنوع بالقاعدة؛ حارس ثانٍ.
+    if (!after) return null;
+
+    const db = admin.firestore();
+
+    // الإلغاء: تدوين فقط. الوصول انقطع بالقاعدة نفسها لحظة تغيّر الحالة.
+    if (before && before.status !== after.status) {
+      if (after.status === "revoked") {
+        const batch = db.batch();
+        auditEntry(batch, db, {
+          action: "medical_share.revoked",
+          subjectId: shareId,
+          actorId: after.patientId,
+          details: {
+            recipientDoctorId: after.recipientDoctorId,
+            encounterIds: after.encounterIds || [],
+          },
+        });
+        await batch.commit();
+      }
+      return null;
+    }
+
+    // ما عدا الإنشاء المعلّق لا يعني الدالة شيئاً. والشرط يجعلها متوافقة
+    // مع التكرار: إعادة تشغيلها على مشاركة نشطة لا تعيد بناء اللقطة.
+    if (before || after.status !== "pending") return null;
+
+    const patientId = after.patientId;
+    const requested = Array.from(new Set(after.encounterIds || []));
+
+    const reject = async (reason) => {
+      await change.after.ref.update({
+        status: "rejected",
+        rejectionReason: reason,
+        rejectedAt: FieldValue.serverTimestamp(),
+      });
+      console.log(`medical_share ${shareId}: rejected — ${reason}`);
+    };
+
+    if (requested.length === 0) {
+      return reject("لم تُحدَّد أي سجلات للمشاركة.");
+    }
+
+    // قراءة السجلات دفعةً واحدة بدل قراءة لكل معرّف.
+    const refs = requested.map((id) => db.collection("encounters").doc(id));
+    const docs = await db.getAll(...refs);
+
+    const snapshots = [];
+    for (const snap of docs) {
+      if (!snap.exists) {
+        return reject("أحد السجلات المختارة لم يعد موجوداً.");
+      }
+      const e = snap.data();
+      // **الفحص الحاسم**: المريض يملك هذا السجل فعلاً.
+      //
+      // القاعدة لا تستطيع فحص قائمة معرّفات، فالسلطة هنا. بدونه يستطيع
+      // مريض أن يشارك سجل مريض آخر بمجرد معرفة معرّفه.
+      if (e.patientId !== patientId) {
+        return reject("لا يمكن مشاركة سجل لا يخصّك.");
+      }
+      snapshots.push(buildSnapshot(snap.id, e));
+    }
+
+    const batch = db.batch();
+    batch.update(change.after.ref, {
+      snapshots,
+      status: "active",
+      activatedAt: FieldValue.serverTimestamp(),
+    });
+    auditEntry(batch, db, {
+      action: "medical_share.created",
+      subjectId: shareId,
+      actorId: patientId,
+      details: {
+        recipientDoctorId: after.recipientDoctorId,
+        encounterIds: requested,
+        snapshotCount: snapshots.length,
+      },
+    });
+    await batch.commit();
+
+    console.log(
+      `medical_share ${shareId}: active with ${snapshots.length} snapshot(s)`
+    );
+    return null;
+  });

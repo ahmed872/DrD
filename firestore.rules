@@ -720,6 +720,104 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ===================== مشاركة السجلات الطبية =====================
+
+    // مشاركة يبدأها المريض وحده، بموافقة صريحة، على **لقطة ثابتة** لا على
+    // السجل الحيّ.
+    //
+    // ## لماذا لقطة لا وصول مباشر
+    //
+    // لو مُنح الطبيب المستقبِل حقّ قراءة `encounters` مباشرةً لتغيّر ما
+    // يراه كلما عدّل الطبيب المؤلِّف سجله — والمريض وافق على نصّ بعينه، لا
+    // على مستند متغيّر. اللقطة تجعل الموافقة مرتبطة بالمحتوى الذي رآه
+    // المريض ووافق عليه.
+    //
+    // ## لماذا يكتب الخادمُ اللقطة
+    //
+    // هذا هو الشرط الأمني المحوري في هذه المجموعة. لو كتب المريض المحتوى
+    // السريري بنفسه لاستطاع **اختلاق تشخيص** ونسبته إلى طبيبه ثم عرضه على
+    // طبيب آخر — وهو تزوير طبي بعواقب علاجية حقيقية. المريض يطلب المشاركة
+    // بمعرّفات سجلاته فقط، ودالة `onMedicalShareWritten` تقرأ السجلات
+    // بصلاحية الخادم، وتتحقّق أنه يملكها، ثم تكتب اللقطة.
+    //
+    // ولذلك تبدأ المشاركة `pending`: الطبيب لا يقرأ شيئاً حتى يوثّق الخادمُ
+    // المحتوى. النافذة **تفشل مغلقة**.
+    match /medical_shares/{shareId} {
+
+      function isSharingPatient() {
+        return isUser(resource.data.patientId);
+      }
+
+      function isRecipient() {
+        return isUser(resource.data.recipientDoctorId);
+      }
+
+      // كل ما يجوز للمريض كتابته. لاحظ ما ليس هنا: `snapshots` و`status`
+      // بعد الإنشاء و`activatedAt` و`rejectionReason` — يكتبها الخادم.
+      function patientFields() {
+        return [
+          'patientId', 'patientName',
+          'recipientDoctorId', 'recipientDoctorName',
+          'recipientDoctorSpecialization',
+          'encounterIds', 'status', 'createdAt'
+        ];
+      }
+
+      // المستقبِل طبيب معتمَد — بالآلية القائمة نفسها، لا بآلية ثانية.
+      // `role == 'doctor'` لا يكتبه عميل إطلاقاً: يكتبه الخادم بعد موافقة
+      // المشرف (المرحلة الثانية).
+      function recipientIsApprovedDoctor() {
+        return get(/databases/$(database)/documents/users/$(request.resource.data.recipientDoctorId))
+                 .data.role == 'doctor';
+      }
+
+      // القراءة:
+      //   - المريض يرى مشاركاته كلها، بأي حالة.
+      //   - الطبيب المستقبِل يرى ما وُجّه إليه **وهو نشط فقط**.
+      //
+      // شرط `active` على الطبيب هو ما يجعل الإلغاء فعّالاً فوراً: مشاركة
+      // ملغاة تصبح غير مقروءة منه في نفس اللحظة، لا «مخفية» في الواجهة.
+      //
+      // والشرطان مبنيان على `resource.data`، فاستعلام القائمة يجب أن يحمل
+      // القيود نفسها:
+      //   where('patientId', '==', uid)                            ← المريض
+      //   where('recipientDoctorId','==',uid) + where('status','==','active')
+      //                                                            ← الطبيب
+      // استعلام الطبيب بلا قيد الحالة يُرفض كاملاً — وهو المقصود.
+      allow read: if isSharingPatient()
+                  || (isRecipient() && resource.data.status == 'active');
+
+      // الإنشاء: المريض، لنفسه، بحالة `pending`، وبلا محتوى سريري.
+      allow create: if isUser(request.resource.data.patientId)
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.keys().hasOnly(patientFields())
+                    && request.resource.data.patientName is string
+                    && request.resource.data.patientName.size() <= 100
+                    && request.resource.data.recipientDoctorId is string
+                    && request.resource.data.recipientDoctorId != request.auth.uid
+                    && request.resource.data.encounterIds is list
+                    && request.resource.data.encounterIds.size() >= 1
+                    // حدّ أعلى يمنع مشاركة بحجم غير محدود في مستند واحد.
+                    && request.resource.data.encounterIds.size() <= 20
+                    && recipientIsApprovedDoctor();
+
+      // التعديل الوحيد المسموح للعميل: الإلغاء.
+      //
+      // كل ما عداه ثابت — المستقبِل، والسجلات، واللقطة، وتاريخ الإنشاء.
+      // `hasOnly` على الحقول المتغيّرة هو ما يمنع تمرير أي شيء آخر مع
+      // الإلغاء.
+      allow update: if isSharingPatient()
+                    && resource.data.status in ['pending', 'active']
+                    && request.resource.data.status == 'revoked'
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys().hasOnly(['status', 'revokedAt'])
+                    && request.resource.data.revokedAt is timestamp;
+
+      // لا حذف: سجل الموافقة لا يُمحى، وإلا ضاع أثر ما شُورك ومتى.
+      // الإلغاء تغييرُ حالة، لا محو.
+      allow delete: if false;
+    }
+
     // ===================== سجل التدقيق =====================
 
     // يكتبه الخادم وحده (Cloud Functions تتجاوز القواعد)، ولا يقرأه أي عميل

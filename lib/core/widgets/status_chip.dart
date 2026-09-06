@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/appointment_status.dart';
 import '../constants/doctor_application_status.dart';
+import '../constants/medical_share_status.dart';
 import '../theme/design_tokens.dart';
 import 'drd_tone.dart';
 
@@ -33,6 +34,12 @@ class StatusChip extends StatelessWidget {
       : label = status.arabicLabel,
         tone = _applicationToneOf(status),
         icon = _applicationIconOf(status);
+
+  /// يبني الرقاقة من حالة مشاركة سجل طبي.
+  StatusChip.medicalShare(MedicalShareStatus status, {super.key})
+      : label = status.arabicLabel,
+        tone = _shareToneOf(status),
+        icon = _shareIconOf(status);
 
   /// أيقونة بديلة عن أيقونة النغمة، حين تشترك حالتان في نغمة واحدة.
   final IconData? icon;
@@ -81,6 +88,25 @@ class StatusChip extends StatelessWidget {
         DoctorApplicationStatus.pending => Icons.hourglass_empty,
         DoctorApplicationStatus.approved => Icons.verified_outlined,
         DoctorApplicationStatus.rejected => Icons.cancel_outlined,
+      };
+
+  /// نغمة حالة المشاركة.
+  ///
+  /// «ملغاة» محايدة لا خطأ: الإلغاء تصرّف مشروع من المريض وحقّه الأصيل في
+  /// هذه الميزة، وصبغه بالأحمر يجعل ممارسة الحق تبدو عطلاً.
+  static DrdTone _shareToneOf(MedicalShareStatus status) => switch (status) {
+        MedicalShareStatus.pending => DrdTone.warning,
+        MedicalShareStatus.active => DrdTone.success,
+        MedicalShareStatus.revoked => DrdTone.neutral,
+        MedicalShareStatus.rejected => DrdTone.error,
+      };
+
+  /// الأيقونة تقول ما تعنيه الحالة فعلاً: هل يرى الطبيب السجل الآن؟
+  static IconData _shareIconOf(MedicalShareStatus status) => switch (status) {
+        MedicalShareStatus.pending => Icons.hourglass_empty,
+        MedicalShareStatus.active => Icons.visibility_outlined,
+        MedicalShareStatus.revoked => Icons.visibility_off_outlined,
+        MedicalShareStatus.rejected => Icons.error_outline,
       };
 
   @override

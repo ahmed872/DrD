@@ -7,6 +7,8 @@ import '../../data/services/doctor_application_service.dart';
 import '../providers/firebase_auth_service.dart';
 import '../widgets/doctor_application_card.dart';
 import 'admin_applications_screen.dart';
+import 'doctor_shared_records_screen.dart';
+import 'patient_shares_screen.dart';
 import 'doctor_application_screen.dart';
 import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
@@ -227,6 +229,12 @@ class HomeScreen extends StatelessWidget {
         'subtitle': 'الأداء والتقارير',
         'action': 'analytics',
       },
+      {
+        'icon': Icons.folder_shared_outlined,
+        'title': 'سجلات مشتركة',
+        'subtitle': 'شاركها المرضى معك',
+        'action': 'shared_with_me',
+      },
     ];
 
     return GridView.builder(
@@ -276,6 +284,12 @@ class HomeScreen extends StatelessWidget {
         'title': 'السجل الطبي',
         'subtitle': 'سجلاتك الطبية',
         'action': 'history',
+      },
+      {
+        'icon': Icons.share_outlined,
+        'title': 'السجلات المشتركة',
+        'subtitle': 'مَن يرى سجلاتك',
+        'action': 'shares',
       },
     ];
 
@@ -384,6 +398,18 @@ class HomeScreen extends StatelessWidget {
           context,
           MaterialPageRoute(
               builder: (_) => const PatientMedicalHistoryScreen()),
+        );
+        break;
+      case 'shares':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PatientSharesScreen()),
+        );
+        break;
+      case 'shared_with_me':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const DoctorSharedRecordsScreen()),
         );
         break;
     }
