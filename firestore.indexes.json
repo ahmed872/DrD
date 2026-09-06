@@ -74,6 +74,15 @@
         { "fieldPath": "role", "order": "ASCENDING" },
         { "fieldPath": "name", "order": "ASCENDING" }
       ]
+    },
+    {
+      "//": "طابور مراجعة طلبات الأطباء: تصفية بالحالة مع ترتيب زمني. المحاكي لا يفرض الفهارس، فغياب هذا الفهرس لا يظهر إلا في الإنتاج.",
+      "collectionGroup": "doctor_applications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
