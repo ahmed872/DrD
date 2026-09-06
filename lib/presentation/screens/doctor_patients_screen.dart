@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 
 class DoctorPatientsScreen extends StatefulWidget {
   const DoctorPatientsScreen({super.key});
@@ -191,9 +193,6 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('المرضى / Patients'),
-          centerTitle: true,
-          backgroundColor: const Color(0xFF0097A7),
-          elevation: 1,
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -206,9 +205,6 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('المرضى / Patients'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -262,24 +258,24 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                   const SizedBox(height: 8),
                   Text(
                     _allPatients.length.toString(),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    style: context.text.headlineSmall?.copyWith(
+                      color: context.colors.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'إجمالي',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.muted,
+                    ),
                   ),
                   Text(
                     'Total',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[400],
-                          fontSize: 10,
-                        ),
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.disabled,
+                      fontSize: 10,
+                    ),
                   ),
                 ],
               ),
@@ -302,24 +298,24 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                   const SizedBox(height: 8),
                   Text(
                     activeCount.toString(),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    style: context.text.headlineSmall?.copyWith(
+                      color: context.drd.success,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'نشطين',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.muted,
+                    ),
                   ),
                   Text(
                     'Active',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[400],
-                          fontSize: 10,
-                        ),
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.disabled,
+                      fontSize: 10,
+                    ),
                   ),
                 ],
               ),
@@ -367,10 +363,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                 onSelected: (selected) {
                   setState(() => _selectedSortIndex = index);
                 },
-                backgroundColor: Colors.grey[100],
-                selectedColor: Colors.blue,
                 labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black87,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
@@ -388,14 +381,13 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 60),
         child: Column(
           children: [
-            Icon(Icons.cloud_off, size: 72, color: Colors.grey[400]),
-            const SizedBox(height: 20),
+            Icon(Icons.cloud_off, size: 72, color: context.drd.muted),
+            const SizedBox(height: DrdSpacing.lg),
             Text(
               'تعذّر تحميل قائمة المرضى',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[700],
-                  ),
+              style: context.text.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -404,7 +396,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
-                  ?.copyWith(color: Colors.grey[600]),
+                  ?.copyWith(color: context.drd.muted),
             ),
             const SizedBox(height: 20),
             OutlinedButton.icon(
@@ -427,21 +419,20 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 80),
         child: Column(
           children: [
-            Icon(Icons.person_off, size: 80, color: Colors.grey[300]),
-            const SizedBox(height: 24),
+            Icon(Icons.person_off, size: 80, color: context.drd.disabled),
+            const SizedBox(height: DrdSpacing.lg),
             Text(
               'لا يوجد مرضى',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: context.text.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'No patients found',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[400],
-                  ),
+              style: context.text.bodyMedium?.copyWith(
+                color: context.drd.muted,
+              ),
             ),
           ],
         ),
@@ -470,10 +461,8 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isActive
-              ? Colors.green.withOpacity(0.3)
-              : Colors.grey.withOpacity(0.2),
-          width: 1.5,
+          color: isActive ? context.colors.primary : context.drd.border,
+          width: DrdSizes.hairline,
         ),
       ),
       child: Padding(
@@ -491,18 +480,21 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isActive
-                        ? Colors.green.withOpacity(0.1)
-                        : Colors.grey.withOpacity(0.1),
+                        ? context.drd.successContainer
+                        : context.colors.surfaceContainerHigh,
                     border: Border.all(
-                      color: isActive ? Colors.green : Colors.grey,
-                      width: 1,
+                      color:
+                          isActive ? context.drd.success : context.drd.border,
+                      width: DrdSizes.hairline,
                     ),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     isActive ? '✨ نشط' : '⏳ غير نشط',
                     style: TextStyle(
-                      color: isActive ? Colors.green : Colors.grey,
+                      color: isActive
+                          ? context.drd.onSuccessContainer
+                          : context.colors.onSurface,
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -548,16 +540,15 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                     children: [
                       Text(
                         'عدد الزيارات / Total Visits',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                        style: context.text.bodySmall?.copyWith(
+                          color: context.drd.muted,
+                        ),
                       ),
                       Text(
                         patient['totalVisits'].toString(),
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style: context.text.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -569,16 +560,15 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                     children: [
                       Text(
                         'آخر زيارة / Last Visit',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                        style: context.text.bodySmall?.copyWith(
+                          color: context.drd.muted,
+                        ),
                       ),
                       Text(
                         DateFormat('d MMMM', 'ar').format(patient['lastVisit']),
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: Colors.orange,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style: context.text.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -592,9 +582,8 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.05),
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
-                  borderRadius: BorderRadius.circular(8),
+                  color: context.drd.successContainer,
+                  borderRadius: DrdRadius.smAll,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -605,10 +594,9 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                         children: [
                           Text(
                             'الموعد التالي / Next Appointment',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.green.shade700,
-                                    ),
+                            style: context.text.bodySmall?.copyWith(
+                              color: context.drd.onSuccessContainer,
+                            ),
                           ),
                           Text(
                             '${DateFormat('d MMMM', 'ar').format(patient['nextAppointment'])} • ${patient['nextTime']}',
@@ -616,16 +604,16 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                                 .textTheme
                                 .titleSmall
                                 ?.copyWith(
-                                  color: Colors.green,
+                                  color: context.drd.onSuccessContainer,
                                   fontWeight: FontWeight.bold,
                                 ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    const Icon(Icons.event_available,
-                        color: Colors.green, size: 24),
+                    const SizedBox(width: DrdSpacing.sm),
+                    Icon(Icons.event_available,
+                        color: context.drd.success, size: 24),
                   ],
                 ),
               ),
@@ -634,16 +622,15 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.05),
-                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                  borderRadius: BorderRadius.circular(8),
+                  color: context.colors.surfaceContainerHigh,
+                  borderRadius: DrdRadius.smAll,
                 ),
                 child: Center(
                   child: Text(
                     'لا يوجد موعد قادم / No upcoming appointment',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[500],
-                        ),
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.muted,
+                    ),
                   ),
                 ),
               ),
@@ -658,9 +645,6 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                 onPressed: () => _viewPatientDetails(patient),
                 icon: const Icon(Icons.visibility),
                 label: const Text('عرض التفاصيل / View Details'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                ),
               ),
             ),
           ],
@@ -685,9 +669,9 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
             children: [
               Text(
                 label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
+                style: context.text.bodySmall?.copyWith(
+                  color: context.drd.muted,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
@@ -701,21 +685,15 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        Icon(icon, color: Colors.blue, size: 18),
+        const SizedBox(width: DrdSpacing.sm),
+        Icon(icon, color: context.drd.muted, size: 18),
       ],
     );
   }
 
   void _viewPatientDetails(Map<String, dynamic> patient) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '👤 ${patient['name']} - عرض التفاصيل / Viewing details',
-        ),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 2),
-      ),
+      AppSnackBar.info('${patient['name']} — عرض التفاصيل / Viewing details'),
     );
   }
 }
