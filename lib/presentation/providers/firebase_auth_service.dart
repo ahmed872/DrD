@@ -40,6 +40,15 @@ class FirebaseAuthService extends ChangeNotifier {
   bool _sessionRestored = false;
   bool get sessionRestored => _sessionRestored;
 
+  /// هل هذا الحساب مشرف؟
+  ///
+  /// تُقرأ من وجود `admins/{uid}` — والمجموعة غير قابلة للكتابة من أي عميل،
+  /// فلا يستطيع أحد منح نفسها. القيمة هنا **للعرض وحده**: إخفاء مدخل
+  /// المراجعة ليس حماية، والحماية الحقيقية في قواعد الأمان التي ترفض كل
+  /// عملية مراجعة من غير مشرف.
+  bool _isAdmin = false;
+  bool get isAdmin => _isAdmin;
+
   @override
   void dispose() {
     _authSubscription?.cancel();
@@ -51,6 +60,7 @@ class FirebaseAuthService extends ChangeNotifier {
       _userId = null;
       _userData = null;
       _emailVerified = false;
+      _isAdmin = false;
     } else {
       _userId = user.uid;
       _emailVerified = true;
@@ -60,9 +70,24 @@ class FirebaseAuthService extends ChangeNotifier {
       } catch (e) {
         AppLogger.error('تعذّر تحميل بيانات المستخدم', e);
       }
+      _isAdmin = await _checkAdmin(user.uid);
     }
     _sessionRestored = true;
     notifyListeners();
+  }
+
+  /// قراءة واحدة لمستند المشرف.
+  ///
+  /// القاعدة تسمح للمشرف بقراءة مستنده هو فقط، فالمستخدم العادي يتلقّى
+  /// `permission-denied` — وهو هنا **إجابة صحيحة** لا خطأ: معناها «لست
+  /// مشرفاً». لذلك يُبتلع الاستثناء بلا تسجيله كعطل.
+  Future<bool> _checkAdmin(String uid) async {
+    try {
+      final doc = await _firestore.collection('admins').doc(uid).get();
+      return doc.exists;
+    } catch (_) {
+      return false;
+    }
   }
 
   String? get userId => _userId;
@@ -103,8 +128,8 @@ class FirebaseAuthService extends ChangeNotifier {
   /// كانت تقبل ذلك. صار الدور ثابتاً هنا، والقاعدة على الخادم ترفض أي قيمة
   /// أخرى، فلا يوجد مسار — لا في الواجهة ولا في الشبكة — يمنح صلاحية طبيب.
   ///
-  /// ترقية حساب إلى طبيب تتم اليوم يدوياً من وحدة تحكم Firebase، إلى أن
-  /// يُبنى نظام طلبات الأطباء ومراجعة المشرف في مرحلة لاحقة.
+  /// الترقية إلى طبيب تمر عبر طلب انضمام ومراجعة مشرف، ويكتب الدورَ
+  /// الخادمُ وحده — لا هذه الدالة ولا أي مسار عميل آخر.
   static const String _signupRole = 'patient';
 
   Future<bool> signupWithPhone(
@@ -437,6 +462,7 @@ class FirebaseAuthService extends ChangeNotifier {
     _userId = null;
     _userData = null;
     _emailVerified = false;
+    _isAdmin = false;
     notifyListeners();
   }
 

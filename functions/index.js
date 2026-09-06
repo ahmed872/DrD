@@ -1,5 +1,12 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+// الاستيراد الوسيطي لا الوصول عبر `admin.firestore.FieldValue`.
+//
+// وقت تشغيل محاكي الدوال يلفّ `firebase-admin` بوسيط لتوجيهه إلى المحاكيات،
+// وتضيع في ذلك الخصائص الساكنة: `admin.firestore.FieldValue` تصبح
+// `undefined` فتنهار الدالة عند أول طابع زمني. الاستيراد المباشر يعمل في
+// الاثنين — المحاكي والإنتاج — فتصبح الدالة قابلة للاختبار فعلاً.
+const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 
 admin.initializeApp();
 
@@ -9,7 +16,7 @@ admin.initializeApp();
 
 // إرسال الإشعارات بناءً على مواعيد الحضور وغيرها
 exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(async (context) => {
-  const now = admin.firestore.Timestamp.now();
+  const now = Timestamp.now();
   const nowMillis = now.toMillis();
   const db = admin.firestore();
   const appointmentsSnapshot = await db.collection("appointments").where("status", "==", "Scheduled").get();
@@ -42,7 +49,7 @@ exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(a
          title: "تذكير بموعدك 🏥",
          body: `موعدك مع ${data.doctorName} بعد أقل من ساعة (${data.time}).`,
          read: false,
-         createdAt: admin.firestore.FieldValue.serverTimestamp()
+         createdAt: FieldValue.serverTimestamp()
        });
        batch.update(doc.ref, { reminderSent: true });
     }
@@ -58,7 +65,7 @@ exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(a
          title: "تنبيه غياب ⚠️",
          body: `عذراً، يبدو أنك لم تحضر موعدك مع ${data.doctorName} الساعة ${data.time}. يرجى تأكيد حضورك مع الطبيب.`,
          read: false,
-         createdAt: admin.firestore.FieldValue.serverTimestamp()
+         createdAt: FieldValue.serverTimestamp()
        });
        batch.update(doc.ref, { noShowWarningSent: true, status: "PendingConfirmation" });
     }
@@ -137,3 +144,126 @@ exports.syncDoctorRating = functions.firestore
 // "نسيت كلمة المرور" تستدعي `FirebaseAuth.sendPasswordResetEmail` مباشرة،
 // وشاشة التسجيل تنشئ الحساب بلا رمز تحقق. أُزيلت الدالة والقاعدة معاً.
 // ============================================================================
+
+// ============================================================================
+// ترقية الطبيب بعد قبول طلبه — المرحلة الثانية.
+//
+// ## لماذا الترقية هنا وليست في القاعدة
+//
+// قواعد Firestore تستطيع أن تمنع كتابة `role`، لكنها لا تستطيع أن تكتبه.
+// ولو فُتح لأي عميل — ولو للمشرف — مسارُ كتابةٍ إلى `users/{uid}.role`
+// لصار الدور حقلاً يتحكم فيه العميل، وهو بالضبط ما أُغلق في المرحلة صفر.
+//
+// لذلك السلطة مقسومة قسمة صريحة:
+//   - **القرار** يُسجَّل في `doctor_applications/{uid}` — يكتبه المشرف
+//     بقاعدة أمان تفرض هويته وسبب الرفض والانتقال المسموح.
+//   - **الصلاحية** تُكتب في `users/{uid}` — من هنا وحده.
+//
+// ## اتساق الحالتين
+//
+// بين القرار والصلاحية نافذة زمنية بالمللي ثانية. النافذة **تفشل مغلقة**:
+// إن لم تُنفَّذ هذه الدالة بقي المستخدم مريضاً، فلا تُمنح صلاحية بغير قرار.
+// العكس — صلاحية بلا قرار — مستحيل بنيوياً لأن لا مسار آخر يكتب `role`.
+//
+// والدالة **متوافقة مع التكرار** (idempotent): تشتقّ الحالة المطلوبة من
+// حالة الطلب في كل مرة بدل أن تعدّل تزايدياً، فإعادة المحاولة بعد فشل
+// جزئي تصل إلى النتيجة نفسها.
+// ============================================================================
+
+/** حالة الطلب التي تمنح صلاحية الطبيب. */
+const APPROVED = "approved";
+
+/** يكتب سطراً في سجل التدقيق. لا يقرأه أي عميل — القاعدة تمنع ذلك. */
+function auditEntry(batch, db, { action, applicationId, actorId, details }) {
+  batch.set(db.collection("audit_logs").doc(), {
+    action,
+    applicationId,
+    actorId: actorId || null,
+    details: details || null,
+    at: FieldValue.serverTimestamp(),
+  });
+}
+
+exports.onDoctorApplicationDecision = functions.firestore
+  .document("doctor_applications/{uid}")
+  .onWrite(async (change, context) => {
+    const uid = context.params.uid;
+    const before = change.before.exists ? change.before.data() : null;
+    const after = change.after.exists ? change.after.data() : null;
+
+    // الحذف ممنوع بالقاعدة؛ هذا حارس ثانٍ لا أكثر.
+    if (!after) return null;
+
+    const beforeStatus = before ? before.status : null;
+    const afterStatus = after.status;
+    if (beforeStatus === afterStatus) return null;
+
+    const db = admin.firestore();
+    const batch = db.batch();
+    const userRef = db.collection("users").doc(uid);
+
+    if (afterStatus === APPROVED) {
+      // الترقية. `merge` لا `set` — لئلا تُمحى بيانات المستخدم القائمة.
+      //
+      // التخصص يُنسخ من الطلب ليبدأ ملف الطبيب مملوءاً بما راجعه المشرف
+      // فعلاً، بدل أن يظهر في بحث المرضى بتخصص فارغ.
+      batch.set(
+        userRef,
+        {
+          role: "doctor",
+          isVerified: true,
+          verificationStatus: APPROVED,
+          specialization: after.specialty || "",
+          doctorApprovedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      auditEntry(batch, db, {
+        action: "doctor_application_approved",
+        applicationId: uid,
+        actorId: after.reviewedBy,
+        details: { specialty: after.specialty || null },
+      });
+    } else if (beforeStatus === APPROVED) {
+      // مسار الخادم وحده: القاعدة لا تسمح بالخروج من `approved` من أي عميل.
+      // موجود هنا حتى يبقى مستند المستخدم متسقاً لو تدخّل الخادم يوماً.
+      batch.set(
+        userRef,
+        {
+          role: "patient",
+          isVerified: false,
+          verificationStatus: afterStatus,
+        },
+        { merge: true }
+      );
+      auditEntry(batch, db, {
+        action: "doctor_access_revoked",
+        applicationId: uid,
+        actorId: after.reviewedBy,
+        details: { newStatus: afterStatus },
+      });
+    } else if (afterStatus === "rejected") {
+      // الرفض لا يغيّر الدور — المستخدم كان مريضاً ويبقى مريضاً.
+      auditEntry(batch, db, {
+        action: "doctor_application_rejected",
+        applicationId: uid,
+        actorId: after.reviewedBy,
+        details: { reason: after.rejectionReason || null },
+      });
+    } else if (afterStatus === "pending") {
+      auditEntry(batch, db, {
+        action: before
+          ? "doctor_application_resubmitted"
+          : "doctor_application_submitted",
+        applicationId: uid,
+        actorId: uid,
+        details: { specialty: after.specialty || null },
+      });
+    }
+
+    await batch.commit();
+    console.log(
+      `doctor_application ${uid}: ${beforeStatus || "none"} -> ${afterStatus}`
+    );
+    return null;
+  });

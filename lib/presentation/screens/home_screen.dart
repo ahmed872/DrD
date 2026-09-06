@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/models/doctor_application.dart';
+import '../../data/services/doctor_application_service.dart';
 import '../providers/firebase_auth_service.dart';
+import '../widgets/doctor_application_card.dart';
+import 'admin_applications_screen.dart';
+import 'doctor_application_screen.dart';
 import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
 import 'doctor_patients_screen.dart';
@@ -26,6 +31,21 @@ class HomeScreen extends StatelessWidget {
           appBar: AppBar(
             title: const Text('الرئيسية'),
             actions: [
+              // مدخل مراجعة الطلبات — للمشرف وحده.
+              //
+              // إخفاؤه عن غيره تنظيم لا حماية: القواعد ترفض قراءة الطلبات
+              // وكتابتها من أي حساب ليس في مجموعة `admins`.
+              if (auth.isAdmin)
+                IconButton(
+                  icon: const Icon(Icons.fact_check_outlined),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AdminApplicationsScreen(),
+                    ),
+                  ),
+                  tooltip: 'مراجعة طلبات الأطباء',
+                ),
               // رابط الإعدادات للمرضى
               if (auth.userRole == 'patient')
                 IconButton(
@@ -105,6 +125,13 @@ class HomeScreen extends StatelessWidget {
                     _buildDoctorServices(context)
                   else
                     _buildPatientServices(context),
+
+                  // دعوة الانضمام كطبيب — **بعد** خدمات المريض عمداً.
+                  //
+                  // من يفتح التطبيق يفتحه ليحجز موعداً. وضع الدعوة فوق
+                  // الحجز يجعل المنتج يبدو كأنه يوظّف أطباء لا كأنه يخدم
+                  // مرضى.
+                  if (!isDoctor) const _DoctorApplicationSection(),
 
                   const SizedBox(height: DrdSpacing.xl),
                 ],
@@ -360,5 +387,81 @@ class HomeScreen extends StatelessWidget {
         );
         break;
     }
+  }
+}
+
+/// قسم طلب الانضمام كطبيب على الصفحة الرئيسية.
+///
+/// يتدفّق مع مستند الطلب، فينتقل من «قدّم طلباً» إلى «قيد المراجعة» إلى
+/// «مقبول» بلا أن يعيد المستخدم فتح التطبيق.
+class _DoctorApplicationSection extends StatefulWidget {
+  const _DoctorApplicationSection();
+
+  @override
+  State<_DoctorApplicationSection> createState() =>
+      _DoctorApplicationSectionState();
+}
+
+class _DoctorApplicationSectionState extends State<_DoctorApplicationSection> {
+  final _service = DoctorApplicationService();
+
+  /// يمنع تكرار طلب تحديث الملف عند كل إعادة بناء.
+  bool _refreshRequested = false;
+
+  /// يعيد قراءة مستند المستخدم بعد القبول.
+  ///
+  /// الترقية تجري على الخادم بعد تسجيل القرار، فحالة الطلب تصل إلى التطبيق
+  /// قبل الدور الجديد. بلا هذه القراءة يبقى المستخدم يرى شاشة المريض بعد
+  /// قبوله حتى يخرج ويدخل من جديد.
+  void _refreshProfileOnce(FirebaseAuthService auth) {
+    if (_refreshRequested) return;
+    _refreshRequested = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) auth.checkSession();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<FirebaseAuthService>();
+    final uid = auth.userId;
+    if (uid == null) return const SizedBox.shrink();
+
+    return StreamBuilder<DoctorApplication>(
+      stream: _service.watchMyApplication(uid),
+      builder: (context, snapshot) {
+        // لا شيء يُعرض قبل وصول الحالة: بطاقة «قدّم طلباً» تومض ثم تتحول
+        // إلى «قيد المراجعة» تربك أكثر مما تفيد.
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox.shrink();
+        }
+        // تعذّر قراءة الطلب لا يمنع المريض من استعمال التطبيق — القسم
+        // يختفي بصمت بدل أن يزرع رسالة خطأ في وسط الصفحة الرئيسية.
+        if (snapshot.hasError || !snapshot.hasData) {
+          return const SizedBox.shrink();
+        }
+
+        final application = snapshot.data!;
+        final approvedButNotYetDoctor =
+            application.status.isApproved && auth.userRole != 'doctor';
+        if (approvedButNotYetDoctor) _refreshProfileOnce(auth);
+
+        return Padding(
+          padding: const EdgeInsets.only(top: DrdSpacing.lg),
+          child: DoctorApplicationCard(
+            application: application,
+            isActivating: approvedButNotYetDoctor,
+            onApply: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DoctorApplicationScreen(
+                  existing: application.status.isEditable ? application : null,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

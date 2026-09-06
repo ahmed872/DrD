@@ -30,6 +30,21 @@ service cloud.firestore {
       return isSignedIn() && userDoc().role == 'doctor';
     }
 
+    // جذر الثقة الإداري.
+    //
+    // وجود المستند وحده هو الصلاحية — لا حقل بداخله يُقرأ، فلا شيء يمكن
+    // تزويره. والمجموعة `admins` غير قابلة للكتابة من أي عميل إطلاقاً
+    // (`allow write: if false` أدناه)، فلا يوجد مسار في الشبكة يمنح أحداً
+    // صفة مشرف: تُنشأ المستندات من وحدة تحكم Firebase أو من الخادم وحده.
+    //
+    // البديل المعتاد (custom claims) أقوى قليلاً لأنه لا يكلّف قراءة، لكنه
+    // يحتاج دالة لضبطه وتحديثاً للرمز عند كل تغيير. المستند يناسب هذا
+    // المشروع: هو نفس نمط التزويد اليدوي المتَّبع أصلاً لحسابات الأطباء.
+    function isAdmin() {
+      return isSignedIn()
+          && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
     // الحقول التي يجوز لصاحب الحساب كتابتها في مستنده — قائمة سماح.
     //
     // القاعدة السابقة كانت قائمة **منع**: تحمي `role` و`rating` و`reviews`
@@ -96,9 +111,9 @@ service cloud.firestore {
       // يُنشئ مستنده ومعه `isVerified: true` من أول لحظة، فيتجاوز حماية
       // التعديل كلها بباب خلفي.
       //
-      // ملاحظة مهمة: نظام طلبات الأطباء ومراجعة المشرف لم يُبنَ بعد (المرحلة
-      // الثانية). حتى ذلك الحين تُفعَّل حسابات الأطباء يدوياً من وحدة تحكم
-      // Firebase. راجع docs/SECURITY.md.
+      // الترقية إلى طبيب تمر الآن عبر `doctor_applications/{uid}` ومراجعة
+      // مشرف، ويكتب الدورَ الخادمُ وحده (`onDoctorApplicationDecision`).
+      // راجع القسم 6 في docs/SECURITY.md.
       allow create: if isUser(userId)
                     && request.resource.data.role == 'patient'
                     && request.resource.data.keys().hasOnly(
@@ -482,6 +497,140 @@ service cloud.firestore {
                     && request.resource.data.rating <= 5;
 
       allow delete: if isSignedIn() && isUser(resource.data.patientId);
+    }
+
+    // ===================== المشرفون =====================
+
+    // مستند فارغ معرّفه هو معرّف المشرف. الوجود = الصلاحية.
+    //
+    // `write: if false` مطلقة وبلا استثناء — لا مشرف يستطيع تعيين مشرف آخر،
+    // ولا مستخدم يستطيع ترقية نفسه. هذا هو ما يجعل `isAdmin()` جديرة بالثقة:
+    // لو كان هناك أي مسار كتابة من العميل لانهار نموذج الصلاحيات كله.
+    match /admins/{adminId} {
+      // المشرف يقرأ مستنده هو ليعرف التطبيق أن يعرض له مدخل المراجعة.
+      allow get: if isUser(adminId);
+      // لا تصفّح للمجموعة: قائمة المشرفين ليست معلومة عامة.
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // ===================== طلبات الأطباء =====================
+
+    // معرّف المستند = معرّف مقدّم الطلب. هذا يمنح ثلاثة أشياء مجاناً:
+    // طلب واحد لكل مستخدم، وربطاً لا يُزوَّر بالحساب، وقاعدة ملكية بسيطة.
+    //
+    // الحقول المميّزة (`status: approved`، `reviewedBy`، `reviewedAt`،
+    // `rejectionReason`) خارج قائمة سماح مقدّم الطلب تماماً، فلا يستطيع
+    // مستخدم أن يصنع لنفسه طلباً مقبولاً مهما فعل.
+    //
+    // **ملاحظة جوهرية:** قبول الطلب هنا لا يمنح صلاحية طبيب بذاته. الصلاحية
+    // تُقرأ من `users/{uid}.role`، ولا يكتبه إلا الخادم (دالة
+    // `onDoctorApplicationDecision`). الفصل مقصود: لو أخفقت الترقية بقي
+    // المستخدم مريضاً — يفشل النظام **مغلقاً**، لا مفتوحاً.
+    match /doctor_applications/{userId} {
+
+      function isApplicant() {
+        return isUser(userId);
+      }
+
+      // كل ما يجوز لمقدّم الطلب لمسه. لاحظ ما ليس هنا: لا `reviewedBy` ولا
+      // `reviewedAt` ولا `rejectionReason`.
+      function applicantFields() {
+        return [
+          'applicantId', 'applicantName', 'specialty', 'professionalBio',
+          'yearsOfExperience', 'applicantNotes', 'status',
+          'submittedAt', 'updatedAt'
+        ];
+      }
+
+      // فحص الشكل على الخادم — لا اكتفاءً بتحقّق الواجهة.
+      //
+      // الحدود ليست تجميلاً: بلا حدّ أعلى يستطيع مستخدم واحد أن يكتب
+      // مستنداً بحجم ميغابايت ويستهلك الحصة، وبلا حدّ أدنى يمتلئ طابور
+      // المراجعة بطلبات فارغة.
+      function validShape() {
+        return request.resource.data.applicantId == userId
+            && request.resource.data.applicantName is string
+            && request.resource.data.applicantName.size() >= 2
+            && request.resource.data.applicantName.size() <= 100
+            && request.resource.data.specialty is string
+            && request.resource.data.specialty.size() >= 2
+            && request.resource.data.specialty.size() <= 80
+            && request.resource.data.professionalBio is string
+            && request.resource.data.professionalBio.size() >= 20
+            && request.resource.data.professionalBio.size() <= 1000
+            && request.resource.data.yearsOfExperience is int
+            && request.resource.data.yearsOfExperience >= 0
+            && request.resource.data.yearsOfExperience <= 70;
+      }
+
+      function changedKeys() {
+        return request.resource.data.diff(resource.data).affectedKeys();
+      }
+
+      // مقدّم الطلب يقرأ طلبه، والمشرف يقرأ الطلبات ليراجعها.
+      // لا أحد غيرهما — لا مريض آخر، ولا طبيب معتمَد.
+      allow read: if isApplicant() || isAdmin();
+
+      // NONE → PENDING
+      allow create: if isApplicant()
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.keys().hasOnly(applicantFields())
+                    && validShape();
+
+      allow update: if
+        // REJECTED → PENDING — إعادة التقديم بعد التصحيح.
+        //
+        // `hasOnly(applicantFields())` على الحقول المتغيّرة يحفظ سجل
+        // المراجعة السابق: `reviewedBy` و`reviewedAt` و`rejectionReason`
+        // تبقى في المستند كما كتبها المشرف، ولا يملك مقدّم الطلب محوها.
+        (
+          isApplicant()
+          && resource.data.status == 'rejected'
+          && request.resource.data.status == 'pending'
+          && changedKeys().hasOnly(applicantFields())
+          && validShape()
+        )
+        // PENDING → APPROVED — للمشرف وحده.
+        || (
+          isAdmin()
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'approved'
+          && changedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy'])
+          // المراجع هو المتصل نفسه — لا يوقّع مشرف باسم مشرف آخر.
+          && request.resource.data.reviewedBy == request.auth.uid
+          && request.resource.data.reviewedAt is timestamp
+        )
+        // PENDING → REJECTED — للمشرف وحده، وبسبب مكتوب.
+        //
+        // السبب مفروض في القاعدة لا في الواجهة: رفض بلا سبب يترك الطبيب
+        // أمام باب مغلق بلا معرفة ما يصحّحه.
+        || (
+          isAdmin()
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'rejected'
+          && changedKeys().hasOnly(
+               ['status', 'reviewedAt', 'reviewedBy', 'rejectionReason'])
+          && request.resource.data.reviewedBy == request.auth.uid
+          && request.resource.data.reviewedAt is timestamp
+          && request.resource.data.rejectionReason is string
+          && request.resource.data.rejectionReason.size() >= 10
+          && request.resource.data.rejectionReason.size() <= 500
+        );
+
+      // لا حذف: الطلب سجلّ قرار إداري، ومحوه يمحو معه أثر المراجعة.
+      allow delete: if false;
+    }
+
+    // ===================== سجل التدقيق =====================
+
+    // يكتبه الخادم وحده (Cloud Functions تتجاوز القواعد)، ولا يقرأه أي عميل
+    // — ولا حتى المشرف. سجل من يوافق على مَن ومتى ليس شاشة في التطبيق؛
+    // يُقرأ من وحدة التحكم عند الحاجة. إبقاؤه مغلقاً تماماً يعني أن لا
+    // تسريب منه ممكن أياً كان الخلل في الواجهة.
+    match /audit_logs/{logId} {
+      allow read: if false;
+      allow write: if false;
     }
 
     // ===================== الإشعارات =====================

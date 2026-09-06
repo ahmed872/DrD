@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../constants/appointment_status.dart';
+import '../constants/doctor_application_status.dart';
 import '../theme/design_tokens.dart';
 import 'drd_tone.dart';
 
@@ -26,6 +27,12 @@ class StatusChip extends StatelessWidget {
 
   final String label;
   final DrdTone tone;
+
+  /// يبني الرقاقة من حالة طلب انضمام طبيب.
+  StatusChip.doctorApplication(DoctorApplicationStatus status, {super.key})
+      : label = status.arabicLabel,
+        tone = _applicationToneOf(status),
+        icon = _applicationIconOf(status);
 
   /// أيقونة بديلة عن أيقونة النغمة، حين تشترك حالتان في نغمة واحدة.
   final IconData? icon;
@@ -54,6 +61,26 @@ class StatusChip extends StatelessWidget {
         AppointmentStatus.noShow => Icons.person_off_outlined,
         AppointmentStatus.cancelled => Icons.cancel_outlined,
         AppointmentStatus.expired => Icons.history_toggle_off,
+      };
+
+  /// نغمة حالة الطلب.
+  ///
+  /// «قيد المراجعة» تحذير لا معلومة: هي الحالة الوحيدة التي تنتظر فعلاً من
+  /// أحد — من المشرف في شاشته، ومن الطبيب صبراً في شاشته.
+  static DrdTone _applicationToneOf(DoctorApplicationStatus status) =>
+      switch (status) {
+        DoctorApplicationStatus.none => DrdTone.neutral,
+        DoctorApplicationStatus.pending => DrdTone.warning,
+        DoctorApplicationStatus.approved => DrdTone.success,
+        DoctorApplicationStatus.rejected => DrdTone.error,
+      };
+
+  static IconData _applicationIconOf(DoctorApplicationStatus status) =>
+      switch (status) {
+        DoctorApplicationStatus.none => Icons.help_outline,
+        DoctorApplicationStatus.pending => Icons.hourglass_empty,
+        DoctorApplicationStatus.approved => Icons.verified_outlined,
+        DoctorApplicationStatus.rejected => Icons.cancel_outlined,
       };
 
   @override
