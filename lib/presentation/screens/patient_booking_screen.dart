@@ -6,6 +6,8 @@ import '../../core/utils/app_logger.dart';
 import '../../core/utils/slot_id.dart';
 import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 
 class PatientBookingScreen extends StatefulWidget {
   final String? initialDoctorId;
@@ -249,9 +251,6 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('احجز موعد'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
       ),
       body: _isLoadingDoctors
           ? const Center(child: CircularProgressIndicator())
@@ -336,10 +335,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           _selectedDoctorId = null;
         });
       },
-      backgroundColor: Colors.grey[100],
-      selectedColor: Colors.blue,
       labelStyle: TextStyle(
-        color: _selectedSpecialization == spec ? Colors.white : Colors.black87,
         fontWeight: _selectedSpecialization == spec
             ? FontWeight.bold
             : FontWeight.normal,
@@ -364,14 +360,12 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           padding: const EdgeInsets.symmetric(vertical: 40),
           child: Column(
             children: [
-              Icon(Icons.person_search, size: 64, color: Colors.grey[300]),
-              const SizedBox(height: 16),
+              Icon(Icons.person_search, size: 64, color: context.drd.disabled),
+              const SizedBox(height: DrdSpacing.md),
               Text(
                 'لم يتم العثور على أطباء',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[500],
-                  fontWeight: FontWeight.w500,
+                style: context.text.titleSmall?.copyWith(
+                  color: context.drd.muted,
                 ),
               ),
             ],
@@ -401,12 +395,13 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
             final isSelected = _selectedDoctorId == doctor['id'];
 
             return Card(
-              elevation: isSelected ? 4 : 2,
+              // الحدّ وحده يميّز البطاقة المحدّدة؛ النسق يرسم البقية.
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: DrdRadius.lgAll,
                 side: BorderSide(
-                  color: isSelected ? Colors.blue : Colors.transparent,
-                  width: 2,
+                  color:
+                      isSelected ? context.colors.primary : context.drd.border,
+                  width: isSelected ? 2 : DrdSizes.hairline,
                 ),
               ),
               child: InkWell(
@@ -428,7 +423,8 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.star, color: Colors.amber, size: 18),
+                              Icon(Icons.star,
+                                  color: context.drd.rating, size: 18),
                               const SizedBox(width: 4),
                               Text(
                                 '${doctor['rating']} (${doctor['reviews']})',
@@ -455,7 +451,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                                   style: Theme.of(context)
                                       .textTheme
                                       .bodySmall
-                                      ?.copyWith(color: Colors.grey[500]),
+                                      ?.copyWith(color: context.drd.muted),
                                 ),
                               ],
                             ),
@@ -465,10 +461,10 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                       const SizedBox(height: 12),
                       Text(
                         doctor['specialization'],
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.blue.shade700,
-                              fontWeight: FontWeight.w500,
-                            ),
+                        style: context.text.bodyMedium?.copyWith(
+                          color: context.colors.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       if (doctor['clinicLocation'] != null &&
@@ -476,8 +472,8 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.location_on,
-                                size: 14, color: Colors.orange),
+                            Icon(Icons.location_on,
+                                size: 14, color: context.drd.muted),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
@@ -486,7 +482,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                                     .textTheme
                                     .bodySmall
                                     ?.copyWith(
-                                      color: Colors.orange[700],
+                                      color: context.drd.muted,
                                       fontWeight: FontWeight.w500,
                                     ),
                               ),
@@ -497,33 +493,30 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                       ],
                       Text(
                         doctor['bio'],
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                        style: context.text.bodySmall?.copyWith(
+                          color: context.drd.muted,
+                        ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: DrdSpacing.xs),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
                             isSelected ? 'محدد ✓' : 'اختر',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color:
-                                      isSelected ? Colors.green : Colors.grey,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: isSelected
+                                          ? context.drd.success
+                                          : context.drd.muted,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                           ),
                           Text(
                             '${doctor['price']} جنيه',
                             style: Theme.of(context)
                                 .textTheme
                                 .titleSmall
-                                ?.copyWith(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.bold),
+                                ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -560,7 +553,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(Icons.calendar_today, color: Colors.blue),
+                  Icon(Icons.calendar_today, color: context.colors.primary),
                   Text(
                     DateFormat('EEEE, d MMMM', 'ar').format(_selectedDate!),
                     style: Theme.of(context)
@@ -579,62 +572,22 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
         else if (_slotsLoadFailed)
           // لا تُعرض أوقات لا نعرف حالتها: عرضها متاحةً بينما قد تكون محجوزة
           // هو بالضبط الخطأ الذي كان يقع فيه هذا الملف.
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.cloud_off, color: Colors.grey[600]),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'تعذّر التحقق من الأوقات المتاحة.\n'
-                    'تأكد من اتصالك بالإنترنت ثم اختر التاريخ مرة أخرى.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey[800]),
-                  ),
-                ),
-              ],
-            ),
+          const AppBanner.warning(
+            title: 'تعذّر التحقق من الأوقات المتاحة',
+            message: 'تأكد من اتصالك بالإنترنت ثم اختر التاريخ مرة أخرى.',
           )
         else if (_hasAppointmentToday)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.red[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.red[200]!),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.warning, color: Colors.red),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'لديك موعد محجوز مسبقاً في هذا اليوم.\nYou already have an appointment booked on this date.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.red[800]),
-                  ),
-                ),
-              ],
-            ),
+          // ليس خطأً: الموعد القائم حقيقة عن حساب المريض، لا فشل إجراء.
+          const AppBanner.warning(
+            message: 'لديك موعد محجوز مسبقاً في هذا اليوم.\n'
+                'You already have an appointment booked on this date.',
           )
         else ...[
           Text(
             'أوقات متاحة / Available Times',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey[600],
-                ),
+            style: context.text.bodySmall?.copyWith(color: context.drd.muted),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: DrdSpacing.xs),
           Wrap(
             alignment: WrapAlignment.end,
             spacing: 8,
@@ -709,10 +662,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       label: Text(label),
       selected: selected,
       onSelected: onSelected,
-      backgroundColor: Colors.grey[100],
-      selectedColor: Colors.green,
       labelStyle: TextStyle(
-        color: selected ? Colors.white : Colors.black87,
         fontWeight: selected ? FontWeight.bold : FontWeight.normal,
       ),
     );
@@ -733,11 +683,8 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
         TextField(
           maxLines: 4,
           onChanged: (value) => setState(() => _consultationReason = value),
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             hintText: 'اشرح سبب الزيارة / Describe your reason for visit',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
           ),
         ),
       ],
@@ -752,16 +699,10 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
 
     return SizedBox(
       width: double.infinity,
-      height: 48,
-      child: ElevatedButton.icon(
-        onPressed: isComplete ? () => _confirmBooking() : null,
+      child: FilledButton.icon(
+        onPressed: isComplete ? _confirmBooking : null,
         icon: const Icon(Icons.check_circle),
         label: const Text('تأكيد الحجز / Confirm Booking'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: Colors.grey[300],
-        ),
       ),
     );
   }
@@ -837,10 +778,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   void _confirmBooking() {
     if (_selectedTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('الرجاء اختيار وقت الموعد / Please select a time'),
-          backgroundColor: Colors.red,
-        ),
+        AppSnackBar.warning('الرجاء اختيار وقت الموعد / Please select a time'),
       );
       return;
     }
@@ -867,25 +805,9 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
               _confirmRow('الوقت / Time', _selectedTime ?? ''),
               _confirmRow('السعر / Price', '${doctor['price']} جنيه'),
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info, color: Colors.blue, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'سيصلك تأكيد عبر البريد الإلكتروني\nYou will receive confirmation via email',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
+              const AppBanner.info(
+                message: 'سيصلك تأكيد عبر البريد الإلكتروني\n'
+                    'You will receive confirmation via email',
               ),
             ],
           ),
@@ -895,7 +817,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('إلغاء / Cancel'),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () async {
               showDialog(
                 context: dialogContext,
@@ -939,11 +861,11 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
               Navigator.pop(dialogContext);
               Navigator.pop(dialogContext);
 
-              messenger.showSnackBar(SnackBar(
-                content: Text(result.message),
-                backgroundColor:
-                    result.isSuccess ? Colors.green : Colors.red[700],
-              ));
+              messenger.showSnackBar(
+                result.isSuccess
+                    ? AppSnackBar.success(result.message)
+                    : AppSnackBar.error(result.message),
+              );
 
               if (result.isSuccess) {
                 navigator.pop();
@@ -953,9 +875,6 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                 await _fetchBookedSlots();
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-            ),
             child: const Text('تأكيد / Confirm'),
           ),
         ],
@@ -985,7 +904,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
-                ?.copyWith(color: Colors.grey[600]),
+                ?.copyWith(color: context.drd.muted),
           ),
         ],
       ),
