@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 import '../providers/firebase_auth_service.dart';
 import 'forgot_password_screen.dart';
 
@@ -37,10 +39,12 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          padding: const EdgeInsets.symmetric(
+            horizontal: DrdSpacing.lg,
+            vertical: DrdSpacing.xl,
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -50,8 +54,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(20),
+                  color: context.colors.primaryContainer,
+                  borderRadius: DrdRadius.lgAll,
                   image: const DecorationImage(
                     image: AssetImage('assets/images/logo.png'),
                     fit: BoxFit.cover,
@@ -61,17 +65,14 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 24),
               Text(
                 'نظام حجز المواعيد',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade900,
-                    ),
+                style: context.text.headlineSmall,
               ),
               const SizedBox(height: 8),
               Text(
                 _isLogin ? 'تسجيل دخول' : 'إنشاء حساب جديد',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                    ),
+                style: context.text.bodyMedium?.copyWith(
+                  color: context.drd.muted,
+                ),
               ),
               const SizedBox(height: 40),
 
@@ -120,14 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       );
                     },
-                    child: const Text(
-                      'نسيت كلمة المرور؟',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF0097A7),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+                    child: const Text('نسيت كلمة المرور؟'),
                   ),
                 ),
               const SizedBox(height: 16),
@@ -155,71 +149,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 _buildDateField(),
                 const SizedBox(height: 16),
 
-                // معلومة عن الدعم (زر WhatsApp)
-                InkWell(
-                  onTap: () {
-                    _openWhatsApp('+201093033884');
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: const Color(0xFF0097A7).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: const Color(0xFF0097A7),
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'للدعم والاستفسارات',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: const Color(0xFF0097A7),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Text(
-                                    'اتصل بنا عبر واتس: ',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  Text(
-                                    '+20 109 303 3884',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF0097A7),
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          Icons.arrow_forward_ios,
-                          color: const Color(0xFF0097A7),
-                          size: 16,
-                        ),
-                      ],
-                    ),
+                // الدعم: لافتة معلومة بإجراء صريح بدل صندوق كامل قابل
+                // للنقر — الصندوق لم يكن يبدو زراً، فكان النقر عليه اكتشافاً
+                // بالمصادفة لا خياراً معروضاً.
+                AppBanner.info(
+                  title: 'للدعم والاستفسارات',
+                  message: 'واتساب: +20 109 303 3884',
+                  action: TextButton.icon(
+                    onPressed: () => _openWhatsApp('+201093033884'),
+                    icon: const Icon(Icons.chat_outlined, size: 18),
+                    label: const Text('افتح واتساب'),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -233,36 +172,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 builder: (context, auth, _) {
                   return SizedBox(
                     width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
+                    child: FilledButton(
                       onPressed: auth.isLoading ? null : _handleAuth,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFF2E7D32), // أخضر احترافي
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
                       child: auth.isLoading
-                          ? const SizedBox(
+                          ? SizedBox(
                               height: 20,
                               width: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation(Colors.white),
+                                // على سطح الزر المملوء، لا على سطح الصفحة.
+                                color: context.colors.onPrimary,
                               ),
                             )
-                          : Text(
-                              _isLogin ? 'دخول' : 'تسجيل',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
+                          : Text(_isLogin ? 'دخول' : 'تسجيل'),
                     ),
                   );
                 },
@@ -273,30 +195,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 builder: (context, auth, _) {
                   if (auth.errorMessage != null) {
                     return Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.red.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.error_outline, color: Colors.red),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                auth.errorMessage!,
-                                style: TextStyle(color: Colors.red.shade700),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      padding: const EdgeInsets.only(top: DrdSpacing.md),
+                      child: AppBanner.error(message: auth.errorMessage!),
                     );
                   }
                   return const SizedBox.shrink();
@@ -311,7 +211,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   Text(
                     _isLogin ? 'ليس لديك حساب؟ ' : 'لديك حساب بالفعل؟ ',
-                    style: TextStyle(color: Colors.grey[600]),
+                    style: TextStyle(color: context.drd.muted),
                   ),
                   TextButton(
                     onPressed: () {
@@ -323,13 +223,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       _passwordController.clear();
                       _nameController.clear();
                     },
-                    child: Text(
-                      _isLogin ? 'سجل الآن' : 'دخول',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0097A7),
-                      ),
-                    ),
+                    child: Text(_isLogin ? 'سجل الآن' : 'دخول'),
                   ),
                 ],
               ),
@@ -340,6 +234,12 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// حقل نص عادي.
+  ///
+  /// كان هنا نحو أربعين سطراً من `InputDecoration`: أربعة إطارات وحشوة
+  /// وأربعة أنماط نصّية، مكرّرة مرة أخرى في حقل كلمة المرور — وباللونين
+  /// مختلفين بينهما (فيروزي في أحدهما وأزرق في الآخر عند التركيز). كل ذلك
+  /// صار في `inputDecorationTheme`، والحقل هنا يصف ما يطلبه فقط.
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -353,45 +253,7 @@ class _LoginScreenState extends State<LoginScreen> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(
-          icon,
-          color: const Color(0xFF0097A7),
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!, width: 1.5),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Color(0xFF0097A7),
-            width: 2,
-          ),
-        ),
-        filled: true,
-        fillColor: Colors.white,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-        labelStyle: TextStyle(
-          color: Colors.grey[700],
-          fontWeight: FontWeight.w500,
-          backgroundColor: Colors.white,
-        ),
-        hintStyle: TextStyle(
-          color: Colors.grey[400],
-          fontSize: 13,
-        ),
-      ),
-      style: TextStyle(
-        fontSize: 15,
-        color: Colors.grey[800],
+        prefixIcon: Icon(icon),
       ),
     );
   }
@@ -405,48 +267,12 @@ class _LoginScreenState extends State<LoginScreen> {
       obscureText: !_showPassword,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(
-          Icons.lock_outline,
-          color: const Color(0xFF0097A7),
-        ),
+        prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
-          icon: Icon(
-            _showPassword ? Icons.visibility : Icons.visibility_off,
-            color: Colors.grey[600],
-          ),
+          icon: Icon(_showPassword ? Icons.visibility : Icons.visibility_off),
+          tooltip: _showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
           onPressed: () => setState(() => _showPassword = !_showPassword),
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!, width: 1.5),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Color(0xFF1565C0),
-            width: 2,
-          ),
-        ),
-        filled: true,
-        fillColor: Colors.white,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-        labelStyle: TextStyle(
-          color: Colors.grey[700],
-          fontWeight: FontWeight.w500,
-          backgroundColor: Colors.white,
-        ),
-      ),
-      style: TextStyle(
-        fontSize: 15,
-        color: Colors.grey[800],
       ),
     );
   }
@@ -572,8 +398,16 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// حقل تاريخ الميلاد.
+  ///
+  /// كان `Container` بحدّ وخلفية بيضاء مكتوبين يدوياً، فبدا مختلفاً عن
+  /// الحقول المجاورة له في نفس النموذج — وفي الوضع الليلي كان يبقى أبيض
+  /// بينما تُظلم بقية الحقول. `InputDecorator` يستعمل نفس تنسيق الحقول،
+  /// فيتطابق الشكل ويتبع الوضعين بلا شرط.
   Widget _buildDateField() {
-    return GestureDetector(
+    final hasDate = _selectedBirthDate != null;
+
+    return InkWell(
       onTap: () async {
         final pickedDate = await showDatePicker(
           context: context,
@@ -585,47 +419,17 @@ class _LoginScreenState extends State<LoginScreen> {
           setState(() => _selectedBirthDate = pickedDate);
         }
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey[300]!, width: 1.5),
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.white,
+      borderRadius: DrdRadius.smAll,
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'تاريخ الميلاد',
+          prefixIcon: Icon(Icons.calendar_today_outlined),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'تاريخ الميلاد',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _selectedBirthDate != null
-                      ? '${_selectedBirthDate!.day}/${_selectedBirthDate!.month}/${_selectedBirthDate!.year}'
-                      : 'اختر التاريخ',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: _selectedBirthDate != null
-                        ? Colors.grey[800]
-                        : Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-            Icon(
-              Icons.calendar_today,
-              color: const Color(0xFF0097A7),
-              size: 20,
-            ),
-          ],
+        child: Text(
+          hasDate
+              ? '${_selectedBirthDate!.day}/${_selectedBirthDate!.month}/${_selectedBirthDate!.year}'
+              : 'اختر التاريخ',
+          style: hasDate ? null : TextStyle(color: context.drd.disabled),
         ),
       ),
     );

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 import '../providers/firebase_auth_service.dart';
 import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
@@ -23,9 +25,6 @@ class HomeScreen extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: const Text('الرئيسية'),
-            centerTitle: true,
-            elevation: 1,
-            backgroundColor: const Color(0xFF0097A7),
             actions: [
               // رابط الإعدادات للمرضى
               if (auth.userRole == 'patient')
@@ -58,8 +57,10 @@ class HomeScreen extends StatelessWidget {
                         ),
                         TextButton(
                           onPressed: () => Navigator.pop(context, true),
-                          child: const Text('تسجيل الخروج',
-                              style: TextStyle(color: Colors.red)),
+                          child: Text(
+                            'تسجيل الخروج',
+                            style: TextStyle(color: context.colors.error),
+                          ),
                         ),
                       ],
                     ),
@@ -75,50 +76,37 @@ class HomeScreen extends StatelessWidget {
           ),
           body: SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(DrdSpacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   // الترحيب
                   Text(
                     'مرحباً',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[500],
-                          fontSize: 13,
-                        ),
+                    style: context.text.bodyMedium?.copyWith(
+                      color: context.drd.muted,
+                    ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: DrdSpacing.xxs),
                   Text(
                     auth.userName ?? 'المستخدم',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF0097A7),
-                          fontSize: 24,
-                        ),
+                    style: context.text.headlineSmall,
                   ),
-                  const SizedBox(height: 36),
+                  const SizedBox(height: DrdSpacing.lg),
 
                   // بطاقة المعلومات
                   _buildInfoCard(context, auth),
-                  const SizedBox(height: 36),
 
-                  // الخدمات
-                  Text(
-                    isDoctor ? 'لوحة الطبيب' : 'الخدمات المتاحة',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.grey[800],
-                        ),
+                  SectionHeader(
+                    title: isDoctor ? 'لوحة الطبيب' : 'الخدمات المتاحة',
                   ),
-                  const SizedBox(height: 16),
 
                   if (isDoctor)
                     _buildDoctorServices(context)
                   else
                     _buildPatientServices(context),
 
-                  const SizedBox(height: 40),
+                  const SizedBox(height: DrdSpacing.xl),
                 ],
               ),
             ),
@@ -129,13 +117,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildInfoCard(BuildContext context, FirebaseAuthService auth) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        border: Border.all(color: Colors.grey[200]!, width: 1),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      padding: const EdgeInsets.all(18),
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -145,9 +127,7 @@ class HomeScreen extends StatelessWidget {
             label: 'رقم الجوال',
             value: auth.userData?['phone'] ?? '-',
           ),
-          const SizedBox(height: 14),
-          Divider(color: Colors.grey[300]),
-          const SizedBox(height: 14),
+          const Divider(),
           _infoRow(
             context,
             icon: Icons.person,
@@ -174,24 +154,22 @@ class HomeScreen extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[500],
-                      fontSize: 12,
-                    ),
+                style: context.text.bodySmall?.copyWith(
+                  color: context.drd.muted,
+                ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: DrdSpacing.xxs),
               Text(
                 value,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey[800],
-                    ),
+                style: context.text.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        Icon(icon, color: const Color(0xFF0097A7), size: 20),
+        const SizedBox(width: DrdSpacing.sm),
+        Icon(icon, color: context.colors.primary, size: 20),
       ],
     );
   }
@@ -303,47 +281,28 @@ class HomeScreen extends StatelessWidget {
     required String subtitle,
     required String action,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey[200]!, width: 1),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _handleServiceTap(context, action),
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 40, color: const Color(0xFF0097A7)),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: Colors.grey[800],
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[500],
-                        fontSize: 11,
-                      ),
-                ),
-              ],
+    return AppCard(
+      onTap: () => _handleServiceTap(context, action),
+      semanticLabel: '$title — $subtitle',
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 40, color: context.colors.primary),
+          const SizedBox(height: DrdSpacing.sm),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: context.text.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ),
+          const SizedBox(height: DrdSpacing.xxs),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: context.text.bodySmall?.copyWith(color: context.drd.muted),
+          ),
+        ],
       ),
     );
   }

@@ -59,6 +59,13 @@ abstract final class DrdPalette {
   static const lightWarningContainer = Color(0xFFFBEEDC);
   static const lightOnWarningContainer = Color(0xFF442900);
 
+  /// ذهبي التقييم.
+  ///
+  /// الذهبي المتعارف عليه للنجوم (#FFC107) يقيس 1.63:1 على سطح أبيض — أي
+  /// نجمة تكاد لا تُرى، وهي المعلومة التي يختار المريض طبيبه بناءً عليها.
+  /// هذا الذهبي أغمق ويقيس 3.2:1، ويظل ذهبياً.
+  static const lightRating = Color(0xFFB88700);
+
   static const lightError = Color(0xFFB3261E);
   static const lightOnError = Color(0xFFFFFFFF);
   static const lightErrorContainer = Color(0xFFF9E4E2);
@@ -105,6 +112,8 @@ abstract final class DrdPalette {
   static const darkWarningContainer = Color(0xFF332616);
   static const darkOnWarningContainer = Color(0xFFF0C894);
 
+  static const darkRating = Color(0xFFE8B463);
+
   static const darkError = Color(0xFFE39A93);
   static const darkOnError = Color(0xFF3A100C);
   static const darkErrorContainer = Color(0xFF331E1B);
@@ -146,6 +155,7 @@ class DrdColors extends ThemeExtension<DrdColors> {
     required this.info,
     required this.infoContainer,
     required this.onInfoContainer,
+    required this.rating,
     required this.muted,
     required this.border,
     required this.divider,
@@ -169,6 +179,9 @@ class DrdColors extends ThemeExtension<DrdColors> {
   final Color infoContainer;
   final Color onInfoContainer;
 
+  /// ذهبي نجوم التقييم.
+  final Color rating;
+
   /// النص الثانوي.
   final Color muted;
 
@@ -188,6 +201,7 @@ class DrdColors extends ThemeExtension<DrdColors> {
     info: DrdPalette.lightSecondary,
     infoContainer: DrdPalette.lightSecondaryContainer,
     onInfoContainer: DrdPalette.lightOnSecondaryContainer,
+    rating: DrdPalette.lightRating,
     muted: DrdPalette.lightMuted,
     border: DrdPalette.lightBorder,
     divider: DrdPalette.lightDivider,
@@ -205,6 +219,7 @@ class DrdColors extends ThemeExtension<DrdColors> {
     info: DrdPalette.darkSecondary,
     infoContainer: DrdPalette.darkSecondaryContainer,
     onInfoContainer: DrdPalette.darkOnSecondaryContainer,
+    rating: DrdPalette.darkRating,
     muted: DrdPalette.darkMuted,
     border: DrdPalette.darkBorder,
     divider: DrdPalette.darkDivider,
@@ -223,6 +238,7 @@ class DrdColors extends ThemeExtension<DrdColors> {
     Color? info,
     Color? infoContainer,
     Color? onInfoContainer,
+    Color? rating,
     Color? muted,
     Color? border,
     Color? divider,
@@ -239,6 +255,7 @@ class DrdColors extends ThemeExtension<DrdColors> {
       info: info ?? this.info,
       infoContainer: infoContainer ?? this.infoContainer,
       onInfoContainer: onInfoContainer ?? this.onInfoContainer,
+      rating: rating ?? this.rating,
       muted: muted ?? this.muted,
       border: border ?? this.border,
       divider: divider ?? this.divider,
@@ -264,6 +281,7 @@ class DrdColors extends ThemeExtension<DrdColors> {
       info: Color.lerp(info, other.info, t)!,
       infoContainer: Color.lerp(infoContainer, other.infoContainer, t)!,
       onInfoContainer: Color.lerp(onInfoContainer, other.onInfoContainer, t)!,
+      rating: Color.lerp(rating, other.rating, t)!,
       muted: Color.lerp(muted, other.muted, t)!,
       border: Color.lerp(border, other.border, t)!,
       divider: Color.lerp(divider, other.divider, t)!,

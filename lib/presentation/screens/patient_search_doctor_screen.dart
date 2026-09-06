@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'patient_booking_screen.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 
 class PatientSearchDoctorScreen extends StatefulWidget {
   const PatientSearchDoctorScreen({super.key});
@@ -84,10 +86,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
       if (mounted) {
         setState(() => _isLoadingDoctors = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('حدث خطأ في تحميل الأطباء'),
-            backgroundColor: Colors.red,
-          ),
+          AppSnackBar.error('حدث خطأ في تحميل الأطباء'),
         );
       }
     }
@@ -102,12 +101,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('البحث عن طبيب'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
-      ),
+      appBar: AppBar(title: const Text('البحث عن طبيب')),
       body: Column(
         children: [
           if (_isLoadingDoctors)
@@ -160,11 +154,6 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                 },
               )
             : null,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        filled: true,
-        fillColor: Colors.grey[50],
       ),
       onChanged: (value) {
         setState(() {});
@@ -194,12 +183,6 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                   onSelected: (selected) {
                     setState(() => _selectedSpecialty = index);
                   },
-                  backgroundColor: Colors.grey[100],
-                  selectedColor: Colors.blue.shade700,
-                  labelStyle: TextStyle(
-                    color: isSelected ? Colors.white : Colors.black87,
-                    fontWeight: FontWeight.w600,
-                  ),
                 ),
               );
             }),
@@ -296,7 +279,6 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             onChanged: (value) {
               setState(() => _availableNow = value ?? false);
             },
-            activeColor: Colors.blue.shade700,
           ),
         ),
       ],
@@ -305,22 +287,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
 
   Widget _buildResults() {
     if (_isLoadingDoctors) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(40),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              Text(
-                'جاري تحميل الأطباء...',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-      );
+      return const LoadingView(message: 'جارٍ تحميل الأطباء…');
     }
 
     List<Map<String, dynamic>> filteredDoctors = _allDoctors;
@@ -361,23 +328,10 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
     }
 
     if (filteredDoctors.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            children: [
-              Text(
-                '🔍',
-                style: TextStyle(fontSize: 48, color: Colors.grey[300]),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'لا توجد نتائج تطابق البحث',
-                style: TextStyle(color: Colors.grey[500], fontSize: 16),
-              ),
-            ],
-          ),
-        ),
+      return const EmptyView(
+        icon: Icons.search_off,
+        title: 'لا توجد نتائج تطابق البحث',
+        message: 'جرّب توسيع نطاق السعر أو إزالة بعض المرشّحات.',
       );
     }
 
@@ -389,7 +343,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         const SizedBox(height: 12),
-        ...filteredDoctors.map((doctor) => _buildDoctorCard(doctor)).toList(),
+        ...filteredDoctors.map(_buildDoctorCard),
       ],
     );
   }
@@ -409,12 +363,9 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
       workingDaysText = workingDaysDynamic.join('، ');
     }
 
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: DrdSpacing.sm),
+      child: AppCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -434,63 +385,65 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                       ),
                       Text(
                         doctor['specialization'],
-                        style: TextStyle(
-                          color: Colors.blue.shade700,
+                        style: context.text.bodyMedium?.copyWith(
+                          color: context.colors.primary,
                           fontWeight: FontWeight.w600,
-                          fontSize: 14,
                         ),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(DrdSpacing.sm),
                   decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
+                    color: context.colors.primaryContainer,
+                    borderRadius: DrdRadius.smAll,
                   ),
-                  child: const Text(
-                    '👨‍⚕️',
-                    style: TextStyle(fontSize: 28),
-                  ),
+                  child: const Text('👨‍⚕️', style: TextStyle(fontSize: 28)),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Divider(color: Colors.grey[300]),
-            const SizedBox(height: 12),
+            const Divider(),
             Row(
               children: [
+                // النجمة الفارغة تُرسم بلون خافت لا بنفس الذهبي: التمييز
+                // بالشكل وحده (مصمتة/مفرغة) يضيع على شاشة صغيرة.
                 ...List.generate(
                   5,
                   (i) => Icon(
                     i < doctor['rating'].toInt()
                         ? Icons.star
                         : Icons.star_border,
-                    color: Colors.amber,
+                    color: i < doctor['rating'].toInt()
+                        ? context.drd.rating
+                        : context.drd.disabled,
                     size: 18,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: DrdSpacing.xs),
                 Text(
                   '${doctor['rating']} (${doctor['reviews']} تقييم)',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  style: context.text.bodySmall?.copyWith(
+                    color: context.drd.muted,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               doctor['bio'],
-              style: TextStyle(color: Colors.grey[700], fontSize: 12),
+              style: context.text.bodySmall?.copyWith(
+                color: context.drd.muted,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(DrdSpacing.xs),
               decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(6),
+                color: context.colors.surfaceContainerHigh,
+                borderRadius: DrdRadius.smAll,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -529,25 +482,29 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _infoChip('💰 ${doctor['price'].toInt()} جنيه', Colors.green),
-                _infoChip('👥 ${doctor['patients']} مريض', Colors.blue),
-                _infoChip(
-                  doctor['available'] ? '✅ متاح الآن' : '⏳ غير متاح',
-                  doctor['available'] ? Colors.green : Colors.orange,
+                StatusChip(
+                  label: '${doctor['price'].toInt()} جنيه',
+                  tone: DrdTone.neutral,
+                  icon: Icons.payments_outlined,
+                ),
+                StatusChip(
+                  label: '${doctor['patients']} مريض',
+                  tone: DrdTone.info,
+                  icon: Icons.people_outline,
+                ),
+                StatusChip(
+                  label: doctor['available'] ? 'متاح الآن' : 'غير متاح',
+                  tone: doctor['available'] ? DrdTone.success : DrdTone.neutral,
+                  icon: doctor['available']
+                      ? Icons.check_circle_outline
+                      : Icons.schedule,
                 ),
               ],
             ),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade700,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
+              child: FilledButton(
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -558,13 +515,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                     ),
                   );
                 },
-                child: const Text(
-                  'احجز موعداً',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: const Text('احجز موعداً'),
               ),
             ),
           ],
@@ -587,10 +538,8 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
             children: [
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
+                style: context.text.labelSmall?.copyWith(
+                  color: context.drd.muted,
                 ),
               ),
               Text(
@@ -604,25 +553,6 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _infoChip(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        border: Border.all(color: color.withOpacity(0.3)),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
     );
   }
 }
