@@ -118,6 +118,12 @@ abstract final class DrdPalette {
   static const darkDisabled = Color(0xFF5C6873);
   static const darkInverseSurface = Color(0xFFE6ECF1);
   static const darkOnInverseSurface = Color(0xFF1C242B);
+
+  // --- محايدة للوضعين ---
+
+  /// الظل والحجاب أسودان في الوضعين — الشفافية هي ما يتغيّر، لا اللون.
+  static const shadow = Color(0xFF000000);
+  static const scrim = Color(0xFF000000);
 }
 
 // ===========================================================================

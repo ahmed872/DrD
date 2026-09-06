@@ -26,75 +26,77 @@ class AppTheme {
 
   static const ColorScheme _lightScheme = ColorScheme(
     brightness: Brightness.light,
-    primary: Color(0xFF12707C),
-    onPrimary: Color(0xFFFFFFFF),
-    primaryContainer: Color(0xFFD7EAEC),
-    onPrimaryContainer: Color(0xFF06333A),
-    secondary: Color(0xFF3F6484),
-    onSecondary: Color(0xFFFFFFFF),
-    secondaryContainer: Color(0xFFDEE7EF),
-    onSecondaryContainer: Color(0xFF1B2E3F),
-    tertiary: Color(0xFF2E7D5B),
-    onTertiary: Color(0xFFFFFFFF),
-    tertiaryContainer: Color(0xFFDDEFE5),
-    onTertiaryContainer: Color(0xFF103826),
-    error: Color(0xFFB3261E),
-    onError: Color(0xFFFFFFFF),
-    errorContainer: Color(0xFFF9E4E2),
-    onErrorContainer: Color(0xFF48110D),
-    surface: Color(0xFFFFFFFF),
-    onSurface: Color(0xFF141D26),
-    surfaceContainerLowest: Color(0xFFFFFFFF),
-    surfaceContainerLow: Color(0xFFF8FBFC),
-    surfaceContainer: Color(0xFFF3F7F9),
-    surfaceContainerHigh: Color(0xFFEDF2F5),
-    surfaceContainerHighest: Color(0xFFE9EFF2),
-    onSurfaceVariant: Color(0xFF54636F),
-    outline: Color(0xFFB9C4CC),
-    outlineVariant: Color(0xFFE2E8ED),
-    inverseSurface: Color(0xFF212C35),
-    onInverseSurface: Color(0xFFF0F4F6),
-    inversePrimary: Color(0xFF6FBAC4),
-    shadow: Color(0xFF000000),
-    scrim: Color(0xFF000000),
+    primary: DrdPalette.lightPrimary,
+    onPrimary: DrdPalette.lightOnPrimary,
+    primaryContainer: DrdPalette.lightPrimaryContainer,
+    onPrimaryContainer: DrdPalette.lightOnPrimaryContainer,
+    secondary: DrdPalette.lightSecondary,
+    onSecondary: DrdPalette.lightOnSecondary,
+    secondaryContainer: DrdPalette.lightSecondaryContainer,
+    onSecondaryContainer: DrdPalette.lightOnSecondaryContainer,
+    // الثالثي هو لون النجاح: Material لا يعرّف دوراً للنجاح، فنُسند إليه هذا
+    // الدور بدل تركه يُشتق عشوائياً.
+    tertiary: DrdPalette.lightSuccess,
+    onTertiary: DrdPalette.lightOnSuccess,
+    tertiaryContainer: DrdPalette.lightSuccessContainer,
+    onTertiaryContainer: DrdPalette.lightOnSuccessContainer,
+    error: DrdPalette.lightError,
+    onError: DrdPalette.lightOnError,
+    errorContainer: DrdPalette.lightErrorContainer,
+    onErrorContainer: DrdPalette.lightOnErrorContainer,
+    surface: DrdPalette.lightSurface,
+    onSurface: DrdPalette.lightOnSurface,
+    surfaceContainerLowest: DrdPalette.lightSurface,
+    surfaceContainerLow: DrdPalette.lightSurfaceLow,
+    surfaceContainer: DrdPalette.lightBackground,
+    surfaceContainerHigh: DrdPalette.lightSurfaceHigh,
+    surfaceContainerHighest: DrdPalette.lightSurfaceVariant,
+    onSurfaceVariant: DrdPalette.lightMuted,
+    outline: DrdPalette.lightOutline,
+    outlineVariant: DrdPalette.lightBorder,
+    inverseSurface: DrdPalette.lightInverseSurface,
+    onInverseSurface: DrdPalette.lightOnInverseSurface,
+    inversePrimary: DrdPalette.darkPrimary,
+    shadow: DrdPalette.shadow,
+    scrim: DrdPalette.scrim,
   );
 
   static const ColorScheme _darkScheme = ColorScheme(
     brightness: Brightness.dark,
     // الأساسي في الوضع الليلي **أفتح** من نظيره الفاتح. النسق السابق استعمل
     // فيروزياً أغمق، فكان شريط التطبيق يذوب في الخلفية بدل أن يفصلها.
-    primary: Color(0xFF6FBAC4),
-    onPrimary: Color(0xFF04282E),
-    primaryContainer: Color(0xFF1E3A40),
-    onPrimaryContainer: Color(0xFFA8DCE4),
-    secondary: Color(0xFF9FBBD4),
-    onSecondary: Color(0xFF12222F),
-    secondaryContainer: Color(0xFF243545),
-    onSecondaryContainer: Color(0xFFC5D9EA),
-    tertiary: Color(0xFF7FC0A2),
-    onTertiary: Color(0xFF0B2A1D),
-    tertiaryContainer: Color(0xFF1A3128),
-    onTertiaryContainer: Color(0xFFA9DCC3),
-    error: Color(0xFFE39A93),
-    onError: Color(0xFF3A100C),
-    errorContainer: Color(0xFF331E1B),
-    onErrorContainer: Color(0xFFF2C2BC),
-    surface: Color(0xFF1C242B),
-    onSurface: Color(0xFFE6ECF1),
+    primary: DrdPalette.darkPrimary,
+    onPrimary: DrdPalette.darkOnPrimary,
+    primaryContainer: DrdPalette.darkPrimaryContainer,
+    onPrimaryContainer: DrdPalette.darkOnPrimaryContainer,
+    secondary: DrdPalette.darkSecondary,
+    onSecondary: DrdPalette.darkOnSecondary,
+    secondaryContainer: DrdPalette.darkSecondaryContainer,
+    onSecondaryContainer: DrdPalette.darkOnSecondaryContainer,
+    tertiary: DrdPalette.darkSuccess,
+    onTertiary: DrdPalette.darkOnSuccess,
+    tertiaryContainer: DrdPalette.darkSuccessContainer,
+    onTertiaryContainer: DrdPalette.darkOnSuccessContainer,
+    error: DrdPalette.darkError,
+    onError: DrdPalette.darkOnError,
+    errorContainer: DrdPalette.darkErrorContainer,
+    onErrorContainer: DrdPalette.darkOnErrorContainer,
+    surface: DrdPalette.darkSurface,
+    onSurface: DrdPalette.darkOnSurface,
     // الأسطح ترتفع بالإضاءة لا بالظل — الظل لا يُرى على خلفية داكنة.
-    surfaceContainerLowest: Color(0xFF10171E),
-    surfaceContainerLow: Color(0xFF181F26),
-    surfaceContainer: Color(0xFF1C242B),
-    surfaceContainerHigh: Color(0xFF232C34),
-    surfaceContainerHighest: Color(0xFF2A343D),
-    onSurfaceVariant: Color(0xFFB4C0CA),
-    outline: Color(0xFF54626D),
-    outlineVariant: Color(0xFF33404A),
-    inverseSurface: Color(0xFFE6ECF1),
-    onInverseSurface: Color(0xFF1C242B),
-    inversePrimary: Color(0xFF12707C),
-    shadow: Color(0xFF000000),
-    scrim: Color(0xFF000000),
+    surfaceContainerLowest: DrdPalette.darkSurfaceLowest,
+    surfaceContainerLow: DrdPalette.darkSurfaceLow,
+    surfaceContainer: DrdPalette.darkSurface,
+    surfaceContainerHigh: DrdPalette.darkSurfaceHigh,
+    surfaceContainerHighest: DrdPalette.darkSurfaceVariant,
+    onSurfaceVariant: DrdPalette.darkMuted,
+    outline: DrdPalette.darkOutline,
+    outlineVariant: DrdPalette.darkBorder,
+    inverseSurface: DrdPalette.darkInverseSurface,
+    onInverseSurface: DrdPalette.darkOnInverseSurface,
+    inversePrimary: DrdPalette.lightPrimary,
+    shadow: DrdPalette.shadow,
+    scrim: DrdPalette.scrim,
   );
 
   // -------------------------------------------------------------------------
@@ -113,7 +115,7 @@ class AppTheme {
 
       // الخلفية الهادئة خلف كل شيء؛ البطاقات بيضاء فوقها.
       scaffoldBackgroundColor:
-          isDark ? const Color(0xFF141B21) : const Color(0xFFF3F7F9),
+          isDark ? DrdPalette.darkBackground : DrdPalette.lightBackground,
 
       textTheme: _textTheme(base.textTheme, scheme, drd),
 
@@ -178,7 +180,8 @@ class AppTheme {
           // في الوضع الليلي يُستخدم لون الحاوية لا الأساسي المشبع: زر فيروزي
           // ساطع على خلفية داكنة يصرخ، وهذا تطبيق طبي لا لعبة.
           backgroundColor: isDark ? scheme.primaryContainer : scheme.primary,
-          foregroundColor: isDark ? scheme.onPrimaryContainer : scheme.onPrimary,
+          foregroundColor:
+              isDark ? scheme.onPrimaryContainer : scheme.onPrimary,
           disabledBackgroundColor: drd.disabled.withValues(alpha: 0.25),
           disabledForegroundColor: drd.disabled,
           minimumSize: const Size.fromHeight(DrdSizes.touchTarget),
@@ -215,7 +218,8 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: isDark ? scheme.primaryContainer : scheme.primary,
-          foregroundColor: isDark ? scheme.onPrimaryContainer : scheme.onPrimary,
+          foregroundColor:
+              isDark ? scheme.onPrimaryContainer : scheme.onPrimary,
           minimumSize: const Size.fromHeight(DrdSizes.touchTarget),
           elevation: 0,
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
@@ -240,9 +244,8 @@ class AppTheme {
       // ---------------------------------------------------------------------
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark
-            ? scheme.surfaceContainerHigh
-            : scheme.surfaceContainerHigh,
+        fillColor:
+            isDark ? scheme.surfaceContainerHigh : scheme.surfaceContainerHigh,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: DrdSpacing.md,
           vertical: DrdSpacing.md,
@@ -286,8 +289,7 @@ class AppTheme {
         secondaryLabelStyle:
             TextStyle(fontSize: 13, color: scheme.onPrimaryContainer),
         side: BorderSide(color: drd.border, width: DrdSizes.hairline),
-        shape:
-            const RoundedRectangleBorder(borderRadius: DrdRadius.smAll),
+        shape: const RoundedRectangleBorder(borderRadius: DrdRadius.smAll),
         padding: const EdgeInsets.symmetric(
           horizontal: DrdSpacing.sm,
           vertical: DrdSpacing.xxs,
@@ -329,7 +331,8 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: scheme.inverseSurface,
-        contentTextStyle: TextStyle(color: scheme.onInverseSurface, fontSize: 14),
+        contentTextStyle:
+            TextStyle(color: scheme.onInverseSurface, fontSize: 14),
         actionTextColor: scheme.inversePrimary,
         elevation: 0,
         shape: const RoundedRectangleBorder(borderRadius: DrdRadius.smAll),
