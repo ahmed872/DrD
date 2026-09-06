@@ -354,18 +354,26 @@ service cloud.firestore {
 
     // مجموعة `encounters`: السجل الطبي الحقيقي — زيارة واحدة = مستند واحد.
     //
-    // القواعد تسبق الكود عمداً. الحقول السريرية تعيش اليوم على مستند الموعد،
-    // وهو ما جعل الفصل بين "بيانات حجز" و"بيانات سريرية" فصلاً على مستوى
-    // الحقل داخل مستند واحد. المجموعة المستقلة تجعل الفصل على مستوى المجموعة:
-    // الطبيب يكتب، والمريض يقرأ ولا يكتب أبداً — لا عند الإنشاء ولا عند
-    // التعديل.
+    // الفصل على مستوى المجموعة لا الحقل: الطبيب يكتب، والمريض يقرأ ولا يكتب
+    // أبداً — لا عند الإنشاء ولا عند التعديل. الملكية مزدوجة بالمعنى
+    // المنتَجي: **المريض يملك المعلومة** (يقرأها ويقرّر مشاركتها لاحقاً)،
+    // و**الطبيب يملك التأليف** (هو وحده من يكتب).
     //
-    // الملكية مزدوجة بالمعنى المنتَجي: **المريض يملك المعلومة** (يقرأها
-    // ويقرّر مشاركتها لاحقاً)، و**الطبيب يملك التأليف** (هو وحده من يكتب).
+    // ## معرّف المستند = معرّف الموعد
     //
-    // لا تُقرأ من طرف ثالث من هنا إطلاقاً: وصول طبيب آخر يمرّ عبر مشاركة
-    // صريحة من المريض (المرحلة الرابعة)، لا عبر توسيع هذه القاعدة.
+    // هذا ليس اختصاراً بل هو ما يفرض «سجل واحد لكل زيارة» **بنيوياً**.
+    // Firestore لا يسمح بمستندين بنفس المعرّف، فمحاولتان متزامنتان لإنشاء
+    // سجل لنفس الموعد تنتهيان إلى مستند واحد مهما تسابقتا — بلا فحص في
+    // العميل، وبلا استعلام، وبلا فهرس. والبحث عن سجل زيارة يصبح `get()`
+    // بمعرّف معروف لا استعلاماً يحتاج قاعدة تُثبته.
+    //
+    // ## طبيب آخر
+    //
+    // لا يقرأ ولا يكتب. وصول طبيب ثانٍ إلى سجل مريض يمرّ عبر مشاركة صريحة
+    // من المريض (المرحلة الرابعة)، لا عبر توسيع هذه القاعدة. توسيعها هنا
+    // «لتسهيل التعاون» يعني أن كل طبيب في المنصّة يقرأ كل سجل عالجه غيره.
     match /encounters/{encounterId} {
+
       function isPatientOfRecord() {
         return isUser(resource.data.patientId);
       }
@@ -376,32 +384,122 @@ service cloud.firestore {
 
       // الموعد الذي نشأت عنه الزيارة — هو ما يُثبت أن للطبيب علاقة مشروعة
       // بهذا المريض. بدونه يستطيع أي طبيب إنشاء سجل لأي مريض.
+      //
+      // المعرّف مأخوذ من معرّف المستند لا من جسم الطلب: لو قرأناه من
+      // `request.resource.data` لأمكن للطبيب أن يشير إلى موعد مشروع بينما
+      // يكتب المستند تحت معرّف آخر، فينفصل السجل عن الزيارة التي تُجيزه.
       function sourceAppointment() {
-        return get(/databases/$(database)/documents/appointments/$(request.resource.data.appointmentId)).data;
+        return get(/databases/$(database)/documents/appointments/$(encounterId)).data;
       }
 
+      // الحالات التي تُعدّ زيارة تمّت فعلاً. القائمة تحاكي `_legacyAliases`
+      // في lib/core/constants/appointment_status.dart بكل صيغها التاريخية،
+      // وإلا تعذّر توثيق زيارة موعدها مخزَّن بصيغة قديمة.
+      function isCompletedStatus(status) {
+        return status in ['Completed', 'completed', 'Done', 'done'];
+      }
+
+      // قائمة سماح — نفس مبدأ المرحلة صفر. كل حقل جديد ممنوع حتى يُضاف هنا
+      // صراحةً، فلا يستطيع أحد تهريب حقل صلاحية أو مشاركة داخل سجل طبي.
+      function encounterFields() {
+        return [
+          'appointmentId', 'patientId', 'doctorId',
+          'doctorName', 'doctorSpecialization',
+          'encounterDate',
+          'diagnosis', 'clinicalNotes', 'treatmentPlan',
+          'followUpNotes', 'followUpDate',
+          'createdAt', 'updatedAt'
+        ];
+      }
+
+      // الحقول التي لا تتغيّر بعد الإنشاء مهما كان الكاتب.
+      //
+      // `createdAt` من بينها عمداً: تاريخ التوثيق جزء من معنى السجل الطبي،
+      // وتعديله يجعل سجلاً كُتب متأخراً يبدو معاصراً للزيارة.
+      function keepsIdentity() {
+        return unchanged('appointmentId')
+            && unchanged('patientId')
+            && unchanged('doctorId')
+            && unchanged('encounterDate')
+            // `createdAt` يُقارَن بأمان: `unchanged()` تقرأ الحقل مباشرةً
+            // فترمي خطأ تقييم إن غاب، ومستند بلا طابع إنشاء (سجل مهاجَر
+            // مثلاً) كان سيصبح غير قابل للتعديل إلى الأبد — بلا سبب مفهوم.
+            && request.resource.data.get('createdAt', '')
+               == resource.data.get('createdAt', '');
+      }
+
+      // فحص الشكل على الخادم — لا اكتفاءً بتحقّق الواجهة.
+      //
+      // الحدود العليا ليست تجميلاً: بلا حدّ يستطيع حساب واحد أن يكتب
+      // مستندات بحجم ميغابايت ويستنفد الحصة. والتشخيص مطلوب لأن سجلاً بلا
+      // تشخيص لا يقول شيئاً — والحقول الأخرى اختيارية لأن ليس كل زيارة
+      // تنتهي بوصفة أو متابعة.
+      function validShape() {
+        return request.resource.data.appointmentId == encounterId
+            && request.resource.data.encounterDate is string
+            && request.resource.data.encounterDate.size() >= 8
+            && request.resource.data.encounterDate.size() <= 10
+            && request.resource.data.diagnosis is string
+            && request.resource.data.diagnosis.size() >= 2
+            && request.resource.data.diagnosis.size() <= 300
+            && request.resource.data.get('clinicalNotes', '') is string
+            && request.resource.data.get('clinicalNotes', '').size() <= 4000
+            && request.resource.data.get('treatmentPlan', '') is string
+            && request.resource.data.get('treatmentPlan', '').size() <= 4000
+            && request.resource.data.get('followUpNotes', '') is string
+            && request.resource.data.get('followUpNotes', '').size() <= 1000
+            && request.resource.data.get('followUpDate', '') is string
+            && request.resource.data.get('followUpDate', '').size() <= 10;
+      }
+
+      // القراءة: طرفا السجل وحدهما.
+      //
+      // الشرطان مبنيان على `resource.data`، فاستعلام القائمة يجب أن يقيّد
+      // نفسه بما تستطيع القاعدة إثباته:
+      //   where('patientId', '==', uid)   ← المريض
+      //   where('doctorId',  '==', uid)   ← الطبيب المؤلِّف
+      // أي استعلام أوسع يُرفض كاملاً — وهو المقصود. (درس المرحلة صفر:
+      // القاعدة لا تُرشِّح النتائج، بل تقبل الاستعلام أو ترفضه.)
       allow read: if isPatientOfRecord() || isAuthoringDoctor();
 
-      allow create: if isSignedIn()
+      // الإنشاء: الطبيب المعالِج، لموعد له، تمّ فعلاً.
+      //
+      // كل شرط هنا يسدّ طريقاً مختلفاً:
+      //   - `isDoctor()`           طبيب معتمَد الآن (لا من سُحبت صلاحيته)
+      //   - `doctorId == uid`      لا ينتحل طبيب توقيع طبيب آخر
+      //   - `sourceAppointment()`  الموعد موجود ويخصّ هذا الطبيب وهذا المريض
+      //   - `isCompletedStatus`    زيارة تمّت، لا حجز لم يحدث بعد
+      //   - `hasOnly`              لا حقول مهرَّبة
+      allow create: if isDoctor()
                     && request.resource.data.doctorId == request.auth.uid
-                    && request.resource.data.appointmentId is string
-                    && request.resource.data.encounterDate is string
+                    && request.resource.data.keys().hasOnly(encounterFields())
+                    && validShape()
                     && sourceAppointment().doctorId == request.auth.uid
                     && sourceAppointment().patientId
-                       == request.resource.data.patientId;
+                       == request.resource.data.patientId
+                    && isCompletedStatus(
+                         sourceAppointment().get('status', ''));
 
-      // التعديل للمؤلِّف وحده، وطرفا السجل وموعده ثابتون.
+      // التعديل: المؤلِّف وحده، وهوية السجل ثابتة.
+      //
+      // لا يُشترط أن يظل الموعد مكتملاً هنا: السجل صار حقيقة قائمة، وربطه
+      // بحالة متغيّرة يعني أن تصحيح خطأ إملائي قد يُرفض لأن الموعد أُلغي
+      // بعد الزيارة. القيد الحقيقي أن الكاتب هو المؤلِّف نفسه.
       allow update: if isAuthoringDoctor()
-                    && unchanged('doctorId')
-                    && unchanged('patientId')
-                    && unchanged('appointmentId');
+                    && request.resource.data.keys().hasOnly(encounterFields())
+                    && keepsIdentity()
+                    && validShape();
 
-      // لا حذف: السجل الطبي لا يُمحى. التصحيح يكون بتعديل مصحوب بنسخة سابقة
-      // في `revisions/` (المرحلة الثالثة).
+      // لا حذف: السجل الطبي لا يُمحى. التصحيح تعديلٌ تحفظ الدالة نسخته
+      // السابقة في `revisions/`.
       allow delete: if false;
 
       match /revisions/{revisionId} {
-        // نسخ التصحيح تُكتب من الخادم وحده (Cloud Function عند التعديل).
+        // نسخ التصحيح يكتبها الخادم وحده (`onEncounterWritten`).
+        //
+        // القراءة لطرفي السجل: المريض له أن يرى أن سجله عُدِّل وما كان عليه
+        // قبل التعديل — وهو ما يجعل المرحلة الرابعة قادرة على تحديد ما
+        // شُورك ومتى، حتى لو عُدِّل السجل بعد المشاركة.
         allow read: if isSignedIn() && (
                       isUser(get(/databases/$(database)/documents/encounters/$(encounterId)).data.patientId)
                       || isUser(get(/databases/$(database)/documents/encounters/$(encounterId)).data.doctorId)

@@ -847,37 +847,44 @@ describe('encounters — السجل السريري', () => {
         doctorId: DOCTOR, patientId: PATIENT,
         appointmentDate: '2020-01-01', startTime: '09:00', status: 'Completed',
       });
-      await setDoc(doc(db, 'encounters', 'enc_1'), {
+      // موعد ثانٍ مكتمل، بلا سجل — عليه تُختبر عمليات الإنشاء.
+      await setDoc(doc(db, 'appointments', 'visit_2'), {
+        doctorId: DOCTOR, patientId: PATIENT,
+        appointmentDate: '2020-02-01', startTime: '10:00', status: 'Completed',
+      });
+      // معرّف السجل هو معرّف الموعد — هو ما يفرض سجلاً واحداً لكل زيارة.
+      await setDoc(doc(db, 'encounters', 'visit_1'), {
         doctorId: DOCTOR, patientId: PATIENT, appointmentId: 'visit_1',
         encounterDate: '2020-01-01', diagnosis: 'التهاب',
-        prescription: 'مضاد حيوي', clinicalNotes: 'يشكو من ألم',
+        treatmentPlan: 'مضاد حيوي', clinicalNotes: 'يشكو من ألم',
+        createdAt: new Date(), updatedAt: new Date(),
       });
     });
   });
 
   test('المريض يقرأ سجله، والطبيب المؤلِّف كذلك', async () => {
-    await assertSucceeds(getDoc(doc(asPatient(), 'encounters', 'enc_1')));
-    await assertSucceeds(getDoc(doc(asDoctor(), 'encounters', 'enc_1')));
+    await assertSucceeds(getDoc(doc(asPatient(), 'encounters', 'visit_1')));
+    await assertSucceeds(getDoc(doc(asDoctor(), 'encounters', 'visit_1')));
   });
 
   test('طبيب آخر لا يقرأ السجل', async () => {
     // الوصول لطرف ثالث يمرّ عبر مشاركة صريحة من المريض (المرحلة الرابعة)،
     // لا عبر توسيع هذه القاعدة.
-    await assertFails(getDoc(doc(asOtherDoctor(), 'encounters', 'enc_1')));
+    await assertFails(getDoc(doc(asOtherDoctor(), 'encounters', 'visit_1')));
   });
 
   test('مريض آخر لا يقرأ السجل', async () => {
-    await assertFails(getDoc(doc(asOther(), 'encounters', 'enc_1')));
+    await assertFails(getDoc(doc(asOther(), 'encounters', 'visit_1')));
   });
 
   test('المريض لا يعدّل التشخيص ولا الوصفة ولا الملاحظات', async () => {
-    await assertFails(updateDoc(doc(asPatient(), 'encounters', 'enc_1'), {
+    await assertFails(updateDoc(doc(asPatient(), 'encounters', 'visit_1'), {
       diagnosis: 'تشخيص من عند المريض',
     }));
-    await assertFails(updateDoc(doc(asPatient(), 'encounters', 'enc_1'), {
+    await assertFails(updateDoc(doc(asPatient(), 'encounters', 'visit_1'), {
       prescription: 'دواء',
     }));
-    await assertFails(updateDoc(doc(asPatient(), 'encounters', 'enc_1'), {
+    await assertFails(updateDoc(doc(asPatient(), 'encounters', 'visit_1'), {
       clinicalNotes: 'ملاحظة مزوّرة',
     }));
   });
@@ -890,45 +897,45 @@ describe('encounters — السجل السريري', () => {
   });
 
   test('المريض لا يحذف سجلاً', async () => {
-    await assertFails(deleteDoc(doc(asPatient(), 'encounters', 'enc_1')));
+    await assertFails(deleteDoc(doc(asPatient(), 'encounters', 'visit_1')));
   });
 
   test('الطبيب يُنشئ سجلاً لموعد عنده', async () => {
-    await assertSucceeds(setDoc(doc(asDoctor(), 'encounters', 'enc_2'), {
-      doctorId: DOCTOR, patientId: PATIENT, appointmentId: 'visit_1',
-      encounterDate: '2020-01-01', diagnosis: 'تشخيص',
+    await assertSucceeds(setDoc(doc(asDoctor(), 'encounters', 'visit_2'), {
+      doctorId: DOCTOR, patientId: PATIENT, appointmentId: 'visit_2',
+      encounterDate: '2020-02-01', diagnosis: 'تشخيص',
     }));
   });
 
   test('الطبيب لا يُنشئ سجلاً لمريض لا موعد له عنده', async () => {
     // هذا ما يمنع طبيباً من تأليف سجل لأي مريض يعرف معرّفه.
-    await assertFails(setDoc(doc(asOtherDoctor(), 'encounters', 'enc_3'), {
-      doctorId: DOCTOR2, patientId: PATIENT, appointmentId: 'visit_1',
-      encounterDate: '2020-01-01', diagnosis: 'تدخّل',
+    await assertFails(setDoc(doc(asOtherDoctor(), 'encounters', 'visit_2'), {
+      doctorId: DOCTOR2, patientId: PATIENT, appointmentId: 'visit_2',
+      encounterDate: '2020-02-01', diagnosis: 'تدخّل',
     }));
   });
 
   test('الطبيب لا يؤلّف باسم طبيب آخر', async () => {
-    await assertFails(setDoc(doc(asOtherDoctor(), 'encounters', 'enc_4'), {
-      doctorId: DOCTOR, patientId: PATIENT, appointmentId: 'visit_1',
-      encounterDate: '2020-01-01',
+    await assertFails(setDoc(doc(asOtherDoctor(), 'encounters', 'visit_2'), {
+      doctorId: DOCTOR, patientId: PATIENT, appointmentId: 'visit_2',
+      encounterDate: '2020-02-01', diagnosis: 'تدخّل',
     }));
   });
 
   test('المؤلِّف يعدّل سجله، وغيره لا', async () => {
-    await assertSucceeds(updateDoc(doc(asDoctor(), 'encounters', 'enc_1'), {
+    await assertSucceeds(updateDoc(doc(asDoctor(), 'encounters', 'visit_1'), {
       diagnosis: 'تشخيص محدَّث',
     }));
-    await assertFails(updateDoc(doc(asOtherDoctor(), 'encounters', 'enc_1'), {
+    await assertFails(updateDoc(doc(asOtherDoctor(), 'encounters', 'visit_1'), {
       diagnosis: 'تدخّل',
     }));
   });
 
   test('لا يُنقل السجل إلى مريض أو طبيب آخر', async () => {
-    await assertFails(updateDoc(doc(asDoctor(), 'encounters', 'enc_1'), {
+    await assertFails(updateDoc(doc(asDoctor(), 'encounters', 'visit_1'), {
       patientId: OTHER,
     }));
-    await assertFails(updateDoc(doc(asDoctor(), 'encounters', 'enc_1'), {
+    await assertFails(updateDoc(doc(asDoctor(), 'encounters', 'visit_1'), {
       doctorId: DOCTOR2,
     }));
   });
@@ -947,7 +954,7 @@ describe('encounters — السجل السريري', () => {
 
   test('نسخ التصحيح لا تُكتب من العميل', async () => {
     await assertFails(setDoc(
-      doc(asDoctor(), 'encounters', 'enc_1', 'revisions', 'r1'),
+      doc(asDoctor(), 'encounters', 'visit_1', 'revisions', 'r1'),
       { diagnosis: 'قديم' },
     ));
   });

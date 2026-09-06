@@ -8,6 +8,10 @@ import '../../core/constants/appointment_status.dart';
 import '../../core/utils/app_logger.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/models/encounter.dart';
+import '../../data/services/encounter_service.dart';
+import 'doctor_encounter_screen.dart';
+import 'encounter_detail_screen.dart';
 
 class DoctorScheduleScreen extends StatefulWidget {
   const DoctorScheduleScreen({super.key});
@@ -17,6 +21,8 @@ class DoctorScheduleScreen extends StatefulWidget {
 }
 
 class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
+  final EncounterService _encounters = const EncounterService();
+
   final BookingService _bookingService = BookingService();
 
   late DateTime _selectedDate;
@@ -527,71 +533,82 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     );
   }
 
+  /// إجراءات الزيارة المكتملة.
+  ///
+  /// يتدفّق مع مستند السجل، فيعرف إن كانت الزيارة موثَّقة أصلاً ويعرض
+  /// «عرض السجل» بدل «إضافة سجل الزيارة». هذا ما يمنع إنشاء سجل ثانٍ
+  /// بالخطأ — والضمان الحقيقي أن معرّف السجل هو معرّف الموعد، فلا مكان
+  /// لسجلين أصلاً.
   Widget _buildCompletedActions(Map<String, dynamic> appointment) {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => _showAddNoteDialog(
-              appointment['id'],
-              appointment['doctorNote'] ?? appointment['notes'] ?? '',
-            ),
-            icon: const Icon(Icons.edit_note),
-            label: const Text('إضافة ملاحظة طبيب / Add Note'),
-          ),
-        ),
-      ],
-    );
-  }
+    final appointmentId = appointment['id'] as String;
 
-  Future<void> _showAddNoteDialog(
-    String appointmentId,
-    String currentNote,
-  ) async {
-    final TextEditingController noteController = TextEditingController(
-      text: currentNote,
-    );
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text(
-            'ملاحظة طبية / Medical Note',
-            textAlign: TextAlign.right,
-          ),
-          content: TextField(
-            controller: noteController,
-            maxLines: 4,
-            textAlign: TextAlign.right,
-            decoration: const InputDecoration(
-              hintText: 'اكتب ملاحظاتك الطبية هنا...',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                try {
-                  await FirebaseFirestore.instance
-                      .collection('appointments')
-                      .doc(appointmentId)
-                      .update({'notes': noteController.text.trim()});
-                  await _fetchAppointments();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    AppSnackBar.success('تم حفظ الملاحظة بنجاح'),
-                  );
-                } catch (e) {}
-              },
-              child: const Text('حفظ / Save'),
+    return StreamBuilder<Encounter?>(
+      stream: _encounters.watchForAppointment(appointmentId),
+      builder: (context, snapshot) {
+        final existing = snapshot.data;
+        final loading = snapshot.connectionState == ConnectionState.waiting;
+
+        return Row(
+          children: [
+            Expanded(
+              child: existing == null
+                  ? FilledButton.icon(
+                      onPressed: loading
+                          ? null
+                          : () => _openEncounterForm(appointment),
+                      icon: const Icon(Icons.note_add_outlined),
+                      label: const Text('إضافة سجل الزيارة'),
+                    )
+                  : OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => EncounterDetailScreen(
+                            encounter: existing,
+                            onEdit: () => _openEncounterForm(
+                              appointment,
+                              existing: existing,
+                            ),
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.description_outlined),
+                      label: const Text('عرض السجل'),
+                    ),
             ),
           ],
         );
       },
+    );
+  }
+
+  /// يفتح نموذج توثيق الزيارة.
+  ///
+  /// اسم الطبيب وتخصصه يُنسخان في السجل ليبقى شاهداً على مَن كتبه وقت
+  /// كتابته — وهو ما تحتاجه المشاركة في المرحلة الرابعة.
+  Future<void> _openEncounterForm(
+    Map<String, dynamic> appointment, {
+    Encounter? existing,
+  }) async {
+    final auth = context.read<FirebaseAuthService>();
+    final doctorId = auth.userId;
+    if (doctorId == null) return;
+
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DoctorEncounterScreen(
+          appointmentId: appointment['id'] as String,
+          patientId: (appointment['patientId'] ?? '') as String,
+          patientName: (appointment['patientName'] ?? '') as String,
+          doctorId: doctorId,
+          doctorName: auth.userName ?? '',
+          doctorSpecialization:
+              (auth.userData?['specialization'] ?? '').toString(),
+          encounterDate: (appointment['appointmentDate'] ?? '') as String,
+          existing: existing,
+        ),
+      ),
     );
   }
 

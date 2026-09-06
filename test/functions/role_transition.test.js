@@ -20,6 +20,18 @@ const db = admin.firestore();
 const APPLICANT = 'fn_applicant_1';
 const ADMIN_ID = 'fn_admin_1';
 
+/** ينتظر حتى يحقّق استعلام شرطاً، أو تنتهي المهلة. */
+async function waitForQuery(query, predicate, { timeoutMs = 20000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    last = await query.get();
+    if (predicate(last)) return last;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return last;
+}
+
 /** ينتظر حتى يحقّق مستند شرطاً، أو تنتهي المهلة. */
 async function waitFor(ref, predicate, { timeoutMs = 20000 } = {}) {
   const deadline = Date.now() + timeoutMs;
@@ -68,11 +80,12 @@ describe('ترقية الطبيب بعد القبول', () => {
       .set(validApplication('pending'));
 
     // ننتظر أثر التقديم في سجل التدقيق، فنعرف أن الدالة عملت فعلاً — ثم
-    // نتأكد أنها لم ترقِّ أحداً.
-    await waitFor(
-      db.collection('users').doc(APPLICANT),
-      () => true,
-      { timeoutMs: 3000 }
+    // نتأكد أنها لم ترقِّ أحداً. الانتظار على الأثر لا على مهلة، وإلا كان
+    // الاختبار يمرّ لأن الدالة لم تعمل بعد لا لأنها امتنعت.
+    await waitForQuery(
+      db.collection('audit_logs')
+        .where('action', '==', 'doctor_application_submitted'),
+      (snap) => !snap.empty
     );
     const user = (await db.collection('users').doc(APPLICANT).get()).data();
     expect(user.role).toBe('patient');
@@ -119,15 +132,12 @@ describe('ترقية الطبيب بعد القبول', () => {
       rejectionReason: 'النبذة المهنية غير كافية لتقييم الطلب.',
     });
 
-    await waitFor(
-      db.collection('audit_logs'),
-      () => true,
-      { timeoutMs: 3000 }
+    // الانتظار على الشرط نفسه لا على مهلة عمياء.
+    const logs = await waitForQuery(
+      db.collection('audit_logs')
+        .where('action', '==', 'doctor_application_rejected'),
+      (snap) => !snap.empty
     );
-    const logs = await db
-      .collection('audit_logs')
-      .where('action', '==', 'doctor_application_rejected')
-      .get();
     expect(logs.empty).toBe(false);
 
     const user = (await db.collection('users').doc(APPLICANT).get()).data();
@@ -157,7 +167,7 @@ describe('ترقية الطبيب بعد القبول', () => {
     expect(approved.empty).toBe(false);
 
     const entry = approved.docs[0].data();
-    expect(entry.applicationId).toBe(APPLICANT);
+    expect(entry.subjectId).toBe(APPLICANT);
     expect(entry.actorId).toBe(ADMIN_ID);
     expect(entry.at).toBeTruthy();
   }, 40000);

@@ -173,11 +173,16 @@ exports.syncDoctorRating = functions.firestore
 /** حالة الطلب التي تمنح صلاحية الطبيب. */
 const APPROVED = "approved";
 
-/** يكتب سطراً في سجل التدقيق. لا يقرأه أي عميل — القاعدة تمنع ذلك. */
-function auditEntry(batch, db, { action, applicationId, actorId, details }) {
+/**
+ * يكتب سطراً في سجل التدقيق. لا يقرأه أي عميل — القاعدة تمنع ذلك.
+ *
+ * `subjectId` هو ما يخصّه الإجراء: معرّف الطلب في قرارات الأطباء، ومعرّف
+ * السجل في السجلات السريرية. `action` هو ما يميّز النوع.
+ */
+function auditEntry(batch, db, { action, subjectId, actorId, details }) {
   batch.set(db.collection("audit_logs").doc(), {
     action,
-    applicationId,
+    subjectId,
     actorId: actorId || null,
     details: details || null,
     at: FieldValue.serverTimestamp(),
@@ -220,7 +225,7 @@ exports.onDoctorApplicationDecision = functions.firestore
       );
       auditEntry(batch, db, {
         action: "doctor_application_approved",
-        applicationId: uid,
+        subjectId: uid,
         actorId: after.reviewedBy,
         details: { specialty: after.specialty || null },
       });
@@ -238,7 +243,7 @@ exports.onDoctorApplicationDecision = functions.firestore
       );
       auditEntry(batch, db, {
         action: "doctor_access_revoked",
-        applicationId: uid,
+        subjectId: uid,
         actorId: after.reviewedBy,
         details: { newStatus: afterStatus },
       });
@@ -246,7 +251,7 @@ exports.onDoctorApplicationDecision = functions.firestore
       // الرفض لا يغيّر الدور — المستخدم كان مريضاً ويبقى مريضاً.
       auditEntry(batch, db, {
         action: "doctor_application_rejected",
-        applicationId: uid,
+        subjectId: uid,
         actorId: after.reviewedBy,
         details: { reason: after.rejectionReason || null },
       });
@@ -255,7 +260,7 @@ exports.onDoctorApplicationDecision = functions.firestore
         action: before
           ? "doctor_application_resubmitted"
           : "doctor_application_submitted",
-        applicationId: uid,
+        subjectId: uid,
         actorId: uid,
         details: { specialty: after.specialty || null },
       });
@@ -265,5 +270,101 @@ exports.onDoctorApplicationDecision = functions.firestore
     console.log(
       `doctor_application ${uid}: ${beforeStatus || "none"} -> ${afterStatus}`
     );
+    return null;
+  });
+
+// ============================================================================
+// نسخ تصحيح السجل السريري وتدقيقه — المرحلة الثالثة.
+//
+// ## لماذا نحفظ النسخة السابقة
+//
+// السجل الطبي قابل للتصحيح من مؤلِّفه — وهذا صحيح منتَجياً: طبيب أخطأ في
+// كتابة تشخيص يجب أن يصحّحه. لكن التصحيح بلا أثر يعني أن ما قرأه المريض
+// أمس قد لا يكون ما يقرأه اليوم، بلا ما يدلّ على ذلك.
+//
+// وهذا شرط للمرحلة الرابعة تحديداً: حين يشارك المريض سجلاً مع طبيب ثانٍ،
+// يجب أن يبقى ممكناً تحديد **ما شُورك ومتى** حتى لو عُدِّل السجل بعدها.
+// نسخة ما قبل التعديل هي ما يجعل ذلك ممكناً دون إعادة تصميم النموذج.
+//
+// النسخ تُكتب من هنا وحده: القاعدة `allow write: if false` على
+// `revisions/`، والدوال تتجاوز القواعد.
+// ============================================================================
+
+/** الحقول السريرية التي يُحفَظ تغيّرها. الهوية ثابتة أصلاً بحكم القاعدة. */
+const CLINICAL_FIELDS = [
+  "diagnosis",
+  "clinicalNotes",
+  "treatmentPlan",
+  "followUpNotes",
+  "followUpDate",
+];
+
+/** هل تغيّر شيء سريري فعلاً؟ */
+function clinicalContentChanged(before, after) {
+  return CLINICAL_FIELDS.some(
+    (f) => (before[f] || "") !== (after[f] || "")
+  );
+}
+
+exports.onEncounterWritten = functions.firestore
+  .document("encounters/{encounterId}")
+  .onWrite(async (change, context) => {
+    const encounterId = context.params.encounterId;
+    const before = change.before.exists ? change.before.data() : null;
+    const after = change.after.exists ? change.after.data() : null;
+
+    // الحذف ممنوع بالقاعدة؛ هذا حارس ثانٍ.
+    if (!after) return null;
+
+    const db = admin.firestore();
+    const batch = db.batch();
+
+    if (!before) {
+      auditEntry(batch, db, {
+        action: "encounter.created",
+        subjectId: encounterId,
+        actorId: after.doctorId,
+        details: { patientId: after.patientId, appointmentId: after.appointmentId },
+      });
+    } else {
+      // تعديل لا يمسّ المحتوى السريري (طابع زمني مثلاً) لا يستحق نسخة.
+      if (!clinicalContentChanged(before, after)) return null;
+
+      // النسخة تحمل ما كان عليه السجل **قبل** هذا التعديل.
+      const revisionRef = db
+        .collection("encounters")
+        .doc(encounterId)
+        .collection("revisions")
+        .doc();
+      batch.set(revisionRef, {
+        ...CLINICAL_FIELDS.reduce((acc, f) => {
+          acc[f] = before[f] === undefined ? null : before[f];
+          return acc;
+        }, {}),
+        // الهوية تُنسخ معها حتى تبقى النسخة مفهومة بذاتها لو قُرئت وحدها.
+        encounterId,
+        patientId: before.patientId,
+        doctorId: before.doctorId,
+        appointmentId: before.appointmentId,
+        encounterDate: before.encounterDate,
+        supersededAt: FieldValue.serverTimestamp(),
+      });
+
+      auditEntry(batch, db, {
+        action: "encounter.updated",
+        subjectId: encounterId,
+        actorId: after.doctorId,
+        details: {
+          patientId: after.patientId,
+          revisionId: revisionRef.id,
+          changed: CLINICAL_FIELDS.filter(
+            (f) => (before[f] || "") !== (after[f] || "")
+          ),
+        },
+      });
+    }
+
+    await batch.commit();
+    console.log(`encounter ${encounterId}: ${before ? "updated" : "created"}`);
     return null;
   });
