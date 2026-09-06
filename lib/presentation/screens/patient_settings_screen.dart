@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/services/account_deletion_service.dart';
 
 class PatientSettingsScreen extends StatefulWidget {
   const PatientSettingsScreen({super.key});
@@ -349,20 +350,108 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
   Widget _buildLogoutSection(FirebaseAuthService auth) {
     return Container(
       padding: const EdgeInsets.all(DrdSpacing.md),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () => _logout(auth),
-          icon: const Icon(Icons.logout),
-          label: const Text('تسجيل الخروج'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: context.colors.error,
-            side: BorderSide(color: context.colors.error),
-            shape: const RoundedRectangleBorder(
-              borderRadius: DrdRadius.smAll,
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _logout(auth),
+              icon: const Icon(Icons.logout),
+              label: const Text('تسجيل الخروج'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: context.colors.error,
+                side: BorderSide(color: context.colors.error),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: DrdRadius.smAll,
+                ),
+              ),
             ),
           ),
+          const SizedBox(height: DrdSpacing.sm),
+          // حذف الحساب — مطلب متجرَي التطبيقات، ومسار لا رجعة فيه.
+          // مفصول بصرياً عن الخروج ومكتوب بنبرة أهدأ: زران أحمران متجاوران
+          // يجعلان الضغط الخاطئ سهلاً، والخطأ هنا غير قابل للتراجع.
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: () => _confirmDeleteAccount(auth),
+              icon: const Icon(Icons.person_remove_outlined, size: 18),
+              label: const Text('حذف الحساب نهائياً'),
+              style: TextButton.styleFrom(
+                foregroundColor: context.drd.muted,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// تأكيد حذف الحساب.
+  ///
+  /// يشرح **ما يُحذف وما يبقى** قبل السؤال، لا بعده: السجل السريري يبقى لأن
+  /// الزيارة وثيقة تخصّ الطبيب والعيادة أيضاً، ومريض يتوقّع محو كل أثر له
+  /// يستحق أن يعرف ذلك قبل الضغط لا بعده.
+  void _confirmDeleteAccount(FirebaseAuthService auth) {
+    final userId = auth.userId;
+    if (userId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف الحساب نهائياً'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('سيُحذف:'),
+            Text('• بياناتك الشخصية واسمك ورقمك وبريدك'),
+            Text('• إمكانية الدخول بهذا الحساب'),
+            SizedBox(height: DrdSpacing.sm),
+            Text('سيُلغى:'),
+            Text('• مواعيدك القادمة'),
+            Text('• كل مشاركة طبية أتحتها لطبيب'),
+            SizedBox(height: DrdSpacing.sm),
+            Text('سيبقى:'),
+            Text('• سجلات زياراتك عند الأطباء الذين كشفوا عليك، '
+                'فهي جزء من سجل العيادة ولا تُمحى من طرف واحد.'),
+            SizedBox(height: DrdSpacing.sm),
+            Text('لا يمكن التراجع عن هذا الإجراء.'),
+          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () async {
+              // الملّاح يُلتقط **قبل** أي `await`: بعده يكون هذا العنصر قد
+              // أُزيل من الشجرة (تسجيل الخروج يعيد بناء الجذر)، فقراءة
+              // `context` عندها تقرأ سياقاً ميتاً.
+              final navigator = Navigator.of(context);
+              Navigator.pop(dialogContext);
+              final ok = await AccountDeletionService().requestDeletion(userId);
+              if (!mounted) return;
+              if (ok) {
+                // الخروج فوري: الخادم يحذف حساب المصادقة بعد لحظات، وترك
+                // الجلسة مفتوحة يعني شاشات تفشل استعلاماتها واحدة تلو أخرى.
+                _showMessage('تم استلام طلب الحذف. سيُغلق حسابك الآن.');
+                await auth.logout();
+                navigator.pushNamedAndRemoveUntil('/', (route) => false);
+              } else {
+                _showMessage(
+                  'تعذّر إرسال طلب الحذف. تأكد من اتصالك وحاول مرة أخرى.',
+                  isError: true,
+                );
+              }
+            },
+            child: Text(
+              'حذف نهائياً',
+              style: TextStyle(color: context.colors.error),
+            ),
+          ),
+        ],
       ),
     );
   }

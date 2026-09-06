@@ -126,16 +126,37 @@ class StatusChip extends StatelessWidget {
           width: DrdSizes.hairline,
         ),
       ),
+      // ## لماذا `Flexible` ولماذا أيقونة تكبر مع النص
+      //
+      // كانت الرقاقة `Row` بنص غير مرن وأيقونة بمقاس ثابت `14`. عند تكبير خط
+      // النظام يكبر النص ولا تكبر الأيقونة، ولا يجد النص مكاناً ينكسر إليه —
+      // فيفيض. قيس ذلك: «بانتظار التأكيد» يفيض بـ8.5 بكسل عند عرض 320 وتكبير
+      // ×1.5، وبـ106 عند ×2.0. و×1.5 دون إعداد «كبير جداً» في أندرويد، أي أنه
+      // يصيب مستخدمين عاديين لا مستخدمي الوصولية القصوى وحدهم.
+      //
+      // `Flexible` يعطي النص حرّية الانكماش داخل ما يتاح له، فيلتف على سطرين
+      // بدل أن يتجاوز الحافة. و`textScaler` على الأيقونة يبقي نسبتها للنص
+      // ثابتة مهما كبر — بدونه تصغر الأيقونة بصرياً حتى تختفي أهميتها.
+      //
+      // `MainAxisSize.min` باقٍ: الرقاقة تلتصق بمحتواها ولا تمدّ نفسها على
+      // عرض أبيها. الانكماش يحدث فقط حين لا يتسع المكان.
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon ?? style.icon, size: 14, color: style.accent),
+          Icon(
+            icon ?? style.icon,
+            size: MediaQuery.textScalerOf(context).scale(DrdSizes.chipIcon),
+            color: style.accent,
+          ),
           const SizedBox(width: DrdSpacing.xxs),
-          Text(
-            label,
-            style: context.text.labelMedium?.copyWith(
-              color: style.onContainer,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              label,
+              style: context.text.labelMedium?.copyWith(
+                color: style.onContainer,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

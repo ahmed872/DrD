@@ -87,11 +87,21 @@ service cloud.firestore {
       // القاعدة نهائياً: `rating` و`reviews` صارا من اختصاص الخادم وحده،
       // تحسبهما دالة `syncDoctorRating` من مجموعة `reviews`.
 
-      // القراءة: صاحب الحساب يقرأ مستنده. الأطباء بحاجة لأن يكونوا مرئيين
-      // للمرضى حتى يمكن حجز المواعيد، ولذلك يُسمح لأي مستخدم مسجَّل بقراءة
-      // مستندات الأطباء فقط — لا مستندات المرضى.
-      allow read: if isUser(userId)
-                  || (isSignedIn() && resource.data.role == 'doctor');
+      // القراءة: صاحب الحساب وحده.
+      //
+      // كانت القاعدة تضيف `|| (isSignedIn() && resource.data.role == 'doctor')`
+      // ليظهر الأطباء في دليل المرضى. لكن قواعد Firestore **لا تُرشِّح الحقول**:
+      // السماح بقراءة مستند الطبيب يمنحه كاملاً — `phone` و`email` (وهو بريد
+      // تسجيل الدخول) و`birthDate` و`gender`. أي أن أي حساب مريض كان يسحب
+      // البيانات الشخصية لكل طبيب على المنصّة.
+      //
+      // وهو نفس الجذر الذي عولج في `slots` بنزع `patientIds`: مستند يخلط
+      // عاماً بخاص يكشف الخاص لكل من يحتاج العام. العلاج نفسه — فصل المستند:
+      // `doctor_profiles/{uid}` يحمل حقول الدليل وحدها، يكتبها الخادم.
+      //
+      // المشرف غير مستثنى هنا عمداً: مراجعة الطلبات تقرأ
+      // `doctor_applications`، وهي تحمل بيانات المتقدّم اللازمة للقرار.
+      allow read: if isUser(userId);
 
       // الإنشاء: عند التسجيل فقط، وبمعرّف يطابق حساب المصادقة، و**بدور مريض
       // حصراً**.
@@ -128,6 +138,26 @@ service cloud.firestore {
       // الحذف ممنوع من العميل — يمر عبر Cloud Function حتى تُنظَّف
       // البيانات المرتبطة (المواعيد، الفهرس، التقييمات) معاً.
       allow delete: if false;
+    }
+
+    // ===================== الملف العام للطبيب =====================
+
+    // إسقاط عام لحقول الدليل وحدها، مشتق من `users` بواسطة
+    // `syncDoctorPublicProfile`. **لا يكتبه أي عميل** — ولا حتى الطبيب صاحبه:
+    // لو كتبه لأمكنه إعلان تخصّص أو سعر لا يطابق مستنده، أو إبقاء ملف عام
+    // بعد خفض دوره.
+    //
+    // ما بداخله: الاسم، العيادة، التخصّص، النبذة، السعر، الموقع، أيام وساعات
+    // العمل، مدة الجلسة، نظام الحجز والسعة، ومتوسط التقييم.
+    // وما ليس بداخله: الهاتف، البريد، تاريخ الميلاد، النوع، حالة تفعيل
+    // البريد، والدور — يحرسها اختبار في test/firestore_rules/rules.test.js.
+    //
+    // ⚠ ترتيب النشر مهم: هذه المجموعة تُملأ بمحفّز على `users`، فالأطباء
+    // القائمون لا ملفات لهم حتى يُشغَّل scripts/backfill_doctor_profiles.js.
+    // نشر القواعد قبل التعبئة يُفرغ دليل الأطباء. راجع docs/RELEASE.md.
+    match /doctor_profiles/{doctorId} {
+      allow read: if isSignedIn();
+      allow write: if false;
     }
 
     // ===================== فهرس أرقام الجوال =====================
@@ -244,6 +274,45 @@ service cloud.firestore {
         return request.resource.data.diff(resource.data).affectedKeys();
       }
 
+      // ── ربط الموعد بخانته ────────────────────────────────────────────
+      //
+      // منع الحجز المزدوج كان محروساً على `slots` وحدها: عدّاد ذرّي داخل
+      // معاملة، وقاعدة تمنع تجاوز السعة. لكن قاعدة إنشاء الموعد لم تشترط أي
+      // علاقة بتلك الخانة ولم تقيّد معرّف المستند. فعميل معدَّل يكتب مستندات
+      // مواعيد بمعرّفات عشوائية بلا `slotId` إطلاقاً — فلا يمرّ بالعدّاد ولا
+      // يراه. وشاشات الطبيب الثلاث تقرأ من `appointments` لا من `slots`، فتعرض
+      // تلك المواعيد كأنها حقيقية: يوم عيادة كامل يُغرَق فوق سعته.
+      //
+      // الحل بنيوي لا رقابي: المعرّف **مشتق من الحقول نفسها** بنفس الصيغة التي
+      // يولّدها `SlotId` في العميل — `{doctorId}_{date}_{HH-mm}__{patientId}`.
+      // تزوير الطبيب أو التاريخ أو الوقت يغيّر المعرّف المتوقَّع فيسقط الشرط،
+      // ومحاولة كتابة موعد ثانٍ لنفس المريض في نفس الخانة تصطدم بنفس المستند.
+      //
+      // ولماذا لا `get()` على مستند الخانة؟ لأن القراءة داخل المعاملة التي
+      // تُنشئ الخانة ترى حالة ما قبلها، فكانت ستفشل **أول حجز في كل خانة** —
+      // نفس الفخ الموثّق في booking_service.dart. الاشتقاق لا يقرأ شيئاً.
+      function slotIdOf(data) {
+        return data.doctorId + '_'
+             + data.appointmentDate + '_'
+             + data.startTime.replace(':', '-');
+      }
+
+      // الصيغتان الصارمتان ليستا تجميلاً: بدونهما يستطيع الطلب تهريب `_`
+      // داخل التاريخ أو الوقت فيزيح تفكيك المعرّف ويفكّ الربط.
+      function hasCanonicalSlotFields(data) {
+        return data.appointmentDate is string
+            && data.startTime is string
+            && data.appointmentDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && data.startTime.matches('^[0-9]{2}:[0-9]{2}$');
+      }
+
+      function idBindsToSlot() {
+        return hasCanonicalSlotFields(request.resource.data)
+            && request.resource.data.slotId == slotIdOf(request.resource.data)
+            && appointmentId == slotIdOf(request.resource.data)
+                                + '__' + request.resource.data.patientId;
+      }
+
       // هوية الموعد: لا يغيّرها أي طرف، مهما كان دوره.
       function keepsIdentity() {
         return unchanged('doctorId')
@@ -298,6 +367,9 @@ service cloud.firestore {
         return isPatientOfRecord()
             && isCancelledStatus(resource.data.get('status', ''))
             && request.resource.data.status == 'Booked'
+            // الهوية مقفلة بـ `keepsIdentity`، فيبقى منع تزوير `slotId` نفسه:
+            // بدونه يُعاد حجز الموعد وهو يشير إلى عدّاد خانة أخرى.
+            && request.resource.data.get('slotId', '') == slotIdOf(resource.data)
             && changedKeys().hasOnly([
                  'status', 'createdAt', 'cancelledAt', 'updatedAt', 'slotId',
                  'reason', 'price', 'patientName', 'patientPhone',
@@ -334,8 +406,7 @@ service cloud.firestore {
       allow create: if isUser(request.resource.data.patientId)
                     && request.resource.data.status == 'Booked'
                     && request.resource.data.doctorId is string
-                    && request.resource.data.appointmentDate is string
-                    && request.resource.data.startTime is string
+                    && idBindsToSlot()
                     && !request.resource.data.keys().hasAny([
                          'notes', 'diagnosis', 'prescription', 'treatment',
                          'completedAt'
@@ -517,22 +588,107 @@ service cloud.firestore {
     //
     // الحقول هنا `fromUserId` و`toUserId` و`ratingType` مطابقةً لـ
     // `lib/data/models/rating_model.dart`.
+    // تقييم متبادل بين طرفَي زيارة: المريض يقيّم الخدمة، والطبيب يسجّل
+    // ملاحظة عن حالة المريض. لا يظهر في أي شاشة اليوم (الشاشتان المكتوبتان
+    // غير مربوطتين بأي تنقّل)، لكن القاعدة **حيّة في الإنتاج** — والقاعدة هي
+    // ما يحدّد ما يمكن كتابته، لا وجود زر في الواجهة.
+    //
+    // وكانت هذه القاعدة تحمل بالضبط الثغرات الثلاث التي وثّقها قسم `reviews`
+    // أدناه ووصف إغلاقها معاً بأنه لا يتجزّأ:
+    //
+    //   1. لا شرط على وجود زيارة إطلاقاً — أي مستخدم يقيّم أي شخص.
+    //   2. لا شرط يمنع `fromUserId == toUserId` — تقييم النفس.
+    //   3. لا فحص نطاق **إطلاقاً** — لا عند الإنشاء ولا عند التعديل.
+    //
+    // وزادت عليها رابعة: `.doc()` بمعرّف عشوائي، فلا تفرّد — نفس الطرفين
+    // يكتبان عدداً غير محدود من التقييمات لنفس الزيارة.
+    //
+    // أُغلقت الأربع هنا بنفس أدوات `reviews`: التحقق من الموعد نفسه،
+    // والتفرّد بمعرّف المستند.
     match /ratings/{ratingId} {
+
+      // الزيارة التي يخصّها التقييم. `get()` واحد يُعاد استخدامه.
+      function ratedAppointment() {
+        return get(/databases/$(database)/documents/appointments/$(request.resource.data.appointmentId)).data;
+      }
+
+      function isCompletedStatus(status) {
+        return status in ['Completed', 'completed', 'Done', 'done'];
+      }
+
+      // المعرّف = `{appointmentId}_{ratingType}`.
+      //
+      // يمنح التفرّد مجاناً وباتجاه واحد لكل طرف: تقييم واحد لكل زيارة من
+      // المريض، وواحد من الطبيب، وإعادة الإرسال تكتب على نفس المستند بدل أن
+      // تُكدّس مستندات. لا فحص إضافي ولا استعلام ولا فهرس.
+      function idIsDeterministic() {
+        return ratingId == request.resource.data.appointmentId
+                           + '_' + request.resource.data.ratingType;
+      }
+
+      function ratingFields() {
+        return [
+          'appointmentId', 'fromUserId', 'toUserId', 'ratingType',
+          'healthConditionRating', 'healthConditionComment',
+          'serviceRating', 'serviceComment',
+          'createdAt', 'updatedAt'
+        ];
+      }
+
+      // النطاق 1..5 مفروض على كل قيمة موجودة، ويُفحص عند الإنشاء **وعند
+      // التعديل**. الثغرة الأصلية كانت أن الفحص عند الإنشاء وحده يكفيه
+      // إنشاء بـ5 ثم تعديل إلى 999.
+      function scoreInRange(data, field) {
+        return !(field in data)
+            || (data[field] is int && data[field] >= 1 && data[field] <= 5);
+      }
+
+      function scoresValid(data) {
+        return scoreInRange(data, 'serviceRating')
+            && scoreInRange(data, 'healthConditionRating');
+      }
+
+      // كل اتجاه يشترط دوره الحقيقي في الزيارة، لا مجرّد ادّعاء `ratingType`.
+      function directionMatchesVisit(appt) {
+        return (
+          request.resource.data.ratingType == 'patient_to_doctor'
+          && request.resource.data.fromUserId == appt.patientId
+          && request.resource.data.toUserId == appt.doctorId
+        ) || (
+          request.resource.data.ratingType == 'doctor_to_patient'
+          && request.resource.data.fromUserId == appt.doctorId
+          && request.resource.data.toUserId == appt.patientId
+        );
+      }
+
+      // القراءة لطرفَي التقييم وحدهما — لا مجموعة عامة كـ`reviews`، لأن
+      // `healthConditionComment` ملاحظة سريرية عن مريض بعينه.
       allow read: if isSignedIn() && (
                     isUser(resource.data.fromUserId)
                     || isUser(resource.data.toUserId)
                   );
 
-      // الكاتب لا يستطيع انتحال شخصية غيره.
       allow create: if isSignedIn()
+                    && request.resource.data.keys().hasOnly(ratingFields())
                     && request.resource.data.fromUserId == request.auth.uid
-                    && request.resource.data.ratingType in
-                       ['doctor_to_patient', 'patient_to_doctor'];
+                    && request.resource.data.fromUserId
+                       != request.resource.data.toUserId
+                    && request.resource.data.appointmentId is string
+                    && idIsDeterministic()
+                    && scoresValid(request.resource.data)
+                    // زيارة حقيقية، تمّت فعلاً، وصاحب الطلب أحد طرفيها.
+                    && isCompletedStatus(ratedAppointment().get('status', ''))
+                    && directionMatchesVisit(ratedAppointment());
 
+      // التعديل: الدرجات والتعليقات فقط، وبنفس فحص النطاق.
       allow update: if isSignedIn()
                     && isUser(resource.data.fromUserId)
-                    && unchanged('fromUserId')
-                    && unchanged('toUserId');
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys().hasOnly([
+                           'healthConditionRating', 'healthConditionComment',
+                           'serviceRating', 'serviceComment', 'updatedAt'
+                         ])
+                    && scoresValid(request.resource.data);
 
       allow delete: if isSignedIn() && isUser(resource.data.fromUserId);
     }
@@ -815,6 +971,35 @@ service cloud.firestore {
 
       // لا حذف: سجل الموافقة لا يُمحى، وإلا ضاع أثر ما شُورك ومتى.
       // الإلغاء تغييرُ حالة، لا محو.
+      allow delete: if false;
+    }
+
+    // ===================== طلبات حذف الحساب =====================
+
+    // متجران يشترطان مساراً داخل التطبيق لحذف الحساب وبياناته، وكان تعليق
+    // قاعدة `users` يَعِد بـ«Cloud Function تنظّف البيانات المرتبطة» — دالة لم
+    // تكن موجودة. هذه المجموعة هي واجهة ذلك المسار.
+    //
+    // الشكل مقصود: **الطلب مستند، والتنفيذ محفّز**. نفس نمط
+    // `doctor_applications` — العميل يكتب نيّة، والخادم وحده يملك القدرة.
+    // بديلها (دالة قابلة للاستدعاء) كان سيضيف مسار HTTPS جديداً بمصادقة
+    // منفصلة، ولا يمكن اختباره بنفس عدّة المحاكي المستخدمة هنا.
+    //
+    // معرّف المستند هو معرّف صاحبه: لا يستطيع أحد طلب حذف حساب غيره، ولا
+    // تكديس طلبات — إعادة الطلب تكتب على نفس المستند.
+    match /deletion_requests/{userId} {
+      allow read: if isUser(userId);
+
+      // العميل يعلن النيّة فقط. `status` و`completedAt` وأي تفصيل تنفيذي
+      // يكتبها الخادم، وقائمة السماح تمنع تهريب أي حقل آخر مع الطلب.
+      allow create: if isUser(userId)
+                    && request.resource.data.keys()
+                         .hasOnly(['status', 'requestedAt'])
+                    && request.resource.data.status == 'requested';
+
+      // لا تعديل ولا حذف من العميل: سجل طلب الحذف نفسه دليل امتثال، وتركه
+      // قابلاً للمحو يعني أن لا أثر لما طُلب ومتى ولا لما نُفِّذ.
+      allow update: if false;
       allow delete: if false;
     }
 

@@ -14,67 +14,27 @@ admin.initializeApp();
 // أُزيلت الدالة (انظر أسفل الملف) فلم يبق له مستخدم، وأُزيل معه الاعتماد على
 // nodemailer ومتغيّرات EMAIL_USER / EMAIL_PASSWORD.
 
-// إرسال الإشعارات بناءً على مواعيد الحضور وغيرها
-exports.checkAppointments = functions.pubsub.schedule("every 5 minutes").onRun(async (context) => {
-  const now = Timestamp.now();
-  const nowMillis = now.toMillis();
-  const db = admin.firestore();
-  const appointmentsSnapshot = await db.collection("appointments").where("status", "==", "Scheduled").get();
-
-  const batch = db.batch();
-
-  for (const doc of appointmentsSnapshot.docs) {
-    const data = doc.data();
-    if (!data.date || !data.time) continue;
-    
-    // تجميع تاريخ ووقت الموعد
-    const parts = data.date.split("T")[0].split("-");
-    const hms = data.time.split(":");
-    let hour = parseInt(hms[0]);
-    const minute = parseInt(hms[1].split(" ")[0]);
-    if (data.time.includes("PM") && hour !== 12) hour += 12;
-    if (data.time.includes("AM") && hour === 12) hour = 0;
-    
-    const appointmentDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), hour, minute);
-    const appointmentMillis = appointmentDate.getTime();
-    
-    const diffMins = (appointmentMillis - nowMillis) / 60000;
-
-    // 1-hour prior reminder (تذكير قبلها بساعة)
-    if (diffMins <= 60 && diffMins > 55 && !data.reminderSent) {
-       // Save notification in firestore for the patient
-       const notifRef = db.collection("notifications").doc();
-       batch.set(notifRef, {
-         userId: data.patientId,
-         title: "تذكير بموعدك 🏥",
-         body: `موعدك مع ${data.doctorName} بعد أقل من ساعة (${data.time}).`,
-         read: false,
-         createdAt: FieldValue.serverTimestamp()
-       });
-       batch.update(doc.ref, { reminderSent: true });
-    }
-
-    // 10-minutes after appointment logic (تحذير إذا لم يحضر المريض)
-    // وهنا يجب على الطبيب أن يغيّر حالة الموعد لـ "Completed" أو "NoShow"
-    // فلو مر 10 دقائق بعد الموعد ولسا Status بتاعه "Scheduled" معناه الطبيب معملوش Completed
-    if (diffMins < -10 && !data.noShowWarningSent) {
-      // إرسال تنبيه للمريض، وتغيير الحالة لـ Needs Confirmation من الطبيب مثلاً
-       const notifRef = db.collection("notifications").doc();
-       batch.set(notifRef, {
-         userId: data.patientId,
-         title: "تنبيه غياب ⚠️",
-         body: `عذراً، يبدو أنك لم تحضر موعدك مع ${data.doctorName} الساعة ${data.time}. يرجى تأكيد حضورك مع الطبيب.`,
-         read: false,
-         createdAt: FieldValue.serverTimestamp()
-       });
-       batch.update(doc.ref, { noShowWarningSent: true, status: "PendingConfirmation" });
-    }
-  }
-
-  await batch.commit();
-  console.log("Appointment checks completed.");
-  return null;
-});
+// ─────────────────────────────────────────────────────────────────────────────
+// أُزيلت: `checkAppointments` (تذكيرات المواعيد وتنبيهات الغياب)
+//
+// كانت `functions.pubsub.schedule("every 5 minutes")`، وكانت معطوبة بأربع
+// طرق مستقلة — أي أنها لم تُنتج تذكيراً واحداً منذ كُتبت:
+//
+//   1. تُصفّي `status == "Scheduled"` — قيمة **لا يكتبها أي سطر** في التطبيق.
+//      القيمة المعتمدة `"Booked"` (lib/core/constants/appointment_status.dart).
+//   2. تقرأ `data.date` و`data.time` — والمخطّط الحالي `appointmentDate`
+//      و`startTime`. فحتى لو طابقت الحالة، كان كل مستند يُتخطّى عند
+//      `if (!data.date || !data.time) continue;`.
+//   3. تكتب في `notifications` — مجموعة **لا يقرأها أي كود**: الخدمة الوحيدة
+//      التي كانت تلمسها (`NotificationService`) غير مستدعاة من أي شاشة.
+//   4. كانت تكتب `status: "PendingConfirmation"` على مواعيد لم تصل إليها.
+//
+// وكانت فوق ذلك المُشغِّل الوحيد لـCloud Scheduler في المشروع — أي التكلفة
+// المتكرّرة الوحيدة (٨٬٦٤٠ تشغيلاً شهرياً بلا أثر).
+//
+// حُذفت بدل إصلاحها: التذكيرات ميزة منتج تحتاج قراراً (قناة الإرسال، التوقيت،
+// من يقرأها)، لا ترقيعاً لكود لم يعمل قط. راجع docs/FUNCTIONS.md.
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ============================================================================
 // حساب متوسط تقييم الطبيب — على الخادم حصراً.
@@ -500,4 +460,261 @@ exports.onMedicalShareWritten = functions.firestore
       `medical_share ${shareId}: active with ${snapshots.length} snapshot(s)`
     );
     return null;
+  });
+
+// ============================================================================
+// الملف العام للطبيب — إسقاط يكتبه الخادم وحده.
+//
+// كانت قاعدة `users` تسمح لأي مستخدم مسجَّل بقراءة مستند أي طبيب، لأن دليل
+// الأطباء يحتاج الاسم والتخصّص والسعر. لكن قواعد Firestore لا تُرشِّح الحقول:
+// السماح بقراءة المستند يمنحه كاملاً — الهاتف والبريد وتاريخ الميلاد والنوع.
+//
+// الحل هو الفصل على مستوى المستند لا الحقل، وهو نفس ما طُبِّق على `slots`
+// حين نُزع منها `patientIds`. هذه الدالة تحافظ على الإسقاط متزامناً.
+//
+// لماذا يكتبه الخادم ولا يكتبه الطبيب نفسه؟ لأن ملفاً عاماً يكتبه صاحبه
+// يستطيع أن يخالف مستنده الأصلي — تخصّص أو سعر معلن غير المسجَّل — وأن يبقى
+// منشوراً بعد خفض دوره. الاشتقاق من مصدر واحد يجعل ذلك مستحيلاً بنيوياً.
+// ============================================================================
+
+/// الحقول التي يراها المريض في الدليل وشاشة الحجز — ولا شيء غيرها.
+///
+/// كل ما ليس في هذه القائمة يبقى داخل `users` ولا يخرج منه: `phone`, `email`,
+/// `birthDate`, `gender`, `emailVerified`, `role`, `createdAt`.
+/// يحرس ذلك اختبار في test/firestore_rules/rules.test.js.
+const PUBLIC_DOCTOR_FIELDS = [
+  "name",
+  "nameEn",
+  "clinicNameAr",
+  "clinicNameEn",
+  "clinicLocation",
+  "specialization",
+  "specializationEn",
+  "bio",
+  "bioEn",
+  "price",
+  "sessionDuration",
+  "maxPatientsPerSlot",
+  "bookingSystemType",
+  "workingHours",
+  "workingDays",
+  "rating",
+  "reviews",
+];
+
+exports.syncDoctorPublicProfile = functions.firestore
+  .document("users/{userId}")
+  .onWrite(async (change, context) => {
+    const userId = context.params.userId;
+    const after = change.after.exists ? change.after.data() : null;
+    const db = admin.firestore();
+    const profileRef = db.collection("doctor_profiles").doc(userId);
+
+    // ثلاث حالات تُخرج المستخدم من الدليل: لم يعد طبيباً، أو حُذف مستنده،
+    // أو حُذف حسابه. الحذف هنا غير مشروط عمداً — حذف مستند غير موجود لا
+    // يفشل، ومحاولة قراءته أولاً تضيف قراءة بلا فائدة.
+    const isPublishable =
+      after && after.role === "doctor" && after.deleted !== true;
+
+    if (!isPublishable) {
+      await profileRef.delete();
+      console.log(`doctor_profiles/${userId}: removed`);
+      return null;
+    }
+
+    const profile = {
+      doctorId: userId,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    for (const field of PUBLIC_DOCTOR_FIELDS) {
+      if (after[field] !== undefined) profile[field] = after[field];
+    }
+
+    // `set` بلا `merge` عمداً: لو أفرغ الطبيب نبذته، يجب أن تختفي من الملف
+    // العام أيضاً. الدمج كان سيُبقي القيمة القديمة منشورة إلى الأبد.
+    await profileRef.set(profile);
+    console.log(`doctor_profiles/${userId}: synced`);
+    return null;
+  });
+
+// ============================================================================
+// حذف الحساب — الدالة التي كانت قاعدة `users` تَعِد بها ولم تكن موجودة.
+//
+// المتطلّب ليس «امسح كل شيء»: السجل السريري وثيقة طبية، ومحوه بضغطة من
+// المريض يمحو أيضاً ما يحتاجه الطبيب والعيادة. لذلك التقسيم هنا صريح:
+//
+//   يُمحى     — بيانات التعريف الشخصية، وفهرس الجوال، والملف العام، وحساب
+//               المصادقة نفسه (فلا يمكن تسجيل الدخول بعدها).
+//   يُلغى     — المواعيد القائمة (مع تحرير عدّاد الخانة)، وكل مشاركة طبية
+//               نشطة أو معلّقة، صادرة كانت أم واردة.
+//   يُجهَّل    — الاسم في المراجعات العلنية، فيبقى التقييم صادقاً بلا صاحب.
+//   يبقى     — `encounters` كما هي: سجل الزيارة يخصّ الطبيب والعيادة أيضاً،
+//               ولا يملك أحد طرفيه محوه من جانب واحد.
+//
+// وترتيب الخطوات ليس اعتباطياً: المصادقة تُحذف **أخيراً**. لو حُذفت أولاً
+// وفشلت خطوة لاحقة، لبقي المستخدم بلا وسيلة دخول وببيانات حيّة — أسوأ
+// النتيجتين. وحالة الطلب لا تصبح `completed` إلا بعد نجاح كل خطوة.
+// ============================================================================
+
+exports.onDeletionRequested = functions.firestore
+  .document("deletion_requests/{userId}")
+  .onCreate(async (snap, context) => {
+    const userId = context.params.userId;
+    const db = admin.firestore();
+    const requestRef = snap.ref;
+    const steps = [];
+
+    try {
+      const userSnap = await db.collection("users").doc(userId).get();
+      const user = userSnap.exists ? userSnap.data() : null;
+
+      // ── 1. المواعيد القائمة: إلغاء وتحرير الخانة ──────────────────────
+      // العدّاد يُنقَص هنا كما ينقصه الإلغاء العادي، وإلا بقيت خانات تبدو
+      // ممتلئة للأبد بحجوزات صاحبها لم يعد موجوداً.
+      const activeAppointments = await db
+        .collection("appointments")
+        .where("patientId", "==", userId)
+        .where("status", "==", "Booked")
+        .get();
+
+      for (const doc of activeAppointments.docs) {
+        const slotId = doc.data().slotId;
+        await db.runTransaction(async (tx) => {
+          if (slotId) {
+            const slotRef = db.collection("slots").doc(slotId);
+            const slotSnap = await tx.get(slotRef);
+            if (slotSnap.exists) {
+              const booked = Number(slotSnap.data().bookedCount) || 0;
+              tx.update(slotRef, {
+                bookedCount: Math.max(0, booked - 1),
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+            }
+          }
+          tx.update(doc.ref, {
+            status: "Cancelled",
+            cancelledAt: FieldValue.serverTimestamp(),
+          });
+        });
+      }
+      steps.push(`appointments_cancelled:${activeAppointments.size}`);
+
+      // ── 2. المشاركات الطبية: إلغاء الصادر والوارد ────────────────────
+      // الطرفان معاً: مريض يحذف حسابه يسحب ما شاركه، وطبيب يحذف حسابه لا
+      // يجوز أن يبقى في صندوقه سجل مريض حيّ.
+      let revoked = 0;
+      for (const field of ["patientId", "recipientDoctorId"]) {
+        const shares = await db
+          .collection("medical_shares")
+          .where(field, "==", userId)
+          .where("status", "in", ["pending", "active"])
+          .get();
+        for (const doc of shares.docs) {
+          await doc.ref.update({
+            status: "revoked",
+            revokedAt: FieldValue.serverTimestamp(),
+          });
+          revoked += 1;
+        }
+      }
+      steps.push(`shares_revoked:${revoked}`);
+
+      // ── 3. المراجعات العلنية: تجهيل بلا حذف ──────────────────────────
+      // حذف المراجعة يغيّر متوسط الطبيب بأثر رجعي بسبب مغادرة مريض، وهو
+      // تشويه للتقييم لا حماية للخصوصية. الاسم وحده هو البيان الشخصي.
+      const reviews = await db
+        .collection("reviews")
+        .where("patientId", "==", userId)
+        .get();
+      for (const doc of reviews.docs) {
+        await doc.ref.update({ patientName: "مريض محذوف" });
+      }
+      steps.push(`reviews_anonymised:${reviews.size}`);
+
+      // ── 4. فهرس الجوال: حذف ليعود الرقم قابلاً للتسجيل ───────────────
+      if (user && user.phone) {
+        await db.collection("phone_index").doc(String(user.phone)).delete();
+        steps.push("phone_index_deleted");
+      }
+
+      // ── 5. مستند المستخدم: تجهيل لا حذف ──────────────────────────────
+      // الحذف الكامل يترك `encounters` و`appointments` تشير إلى معرّف بلا
+      // مستند، فتنكسر كل شاشة تعرض اسماً. التجهيل يحفظ سلامة الإشارات
+      // ويمحو البيان الشخصي في آن.
+      //
+      // `deleted: true` هو ما يمنع `syncDoctorPublicProfile` من إعادة نشر
+      // ملف عام لطبيب حذف حسابه.
+      if (userSnap.exists) {
+        await userSnap.ref.set(
+          {
+            name: "حساب محذوف",
+            phone: FieldValue.delete(),
+            email: FieldValue.delete(),
+            birthDate: FieldValue.delete(),
+            gender: FieldValue.delete(),
+            emailVerified: FieldValue.delete(),
+            deleted: true,
+            deletedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        steps.push("user_anonymised");
+      }
+
+      // ── 6. الملف العام ───────────────────────────────────────────────
+      // المحفّز في الخطوة السابقة يحذفه، لكن الاعتماد على تسلسل محفّزات
+      // غير مضمون الترتيب. الحذف الصريح يجعل النتيجة مؤكدة.
+      await db.collection("doctor_profiles").doc(userId).delete();
+      steps.push("public_profile_deleted");
+
+      // ── 7. حساب المصادقة — أخيراً ────────────────────────────────────
+      // بعد هذه الخطوة لا يمكن تسجيل الدخول. تنفيذها آخراً يضمن أنه لو فشلت
+      // خطوة قبلها، بقي للمستخدم حساب يستطيع طلب الحذف به مرة أخرى.
+      try {
+        await admin.auth().deleteUser(userId);
+        steps.push("auth_deleted");
+      } catch (e) {
+        // `user-not-found` نتيجة صحيحة لا عطل: الحساب محذوف بالفعل.
+        if (e && e.code === "auth/user-not-found") {
+          steps.push("auth_already_absent");
+        } else {
+          throw e;
+        }
+      }
+
+      const batch = db.batch();
+      batch.update(requestRef, {
+        status: "completed",
+        completedAt: FieldValue.serverTimestamp(),
+        steps,
+      });
+      auditEntry(batch, db, {
+        action: "account_deleted",
+        subjectId: userId,
+        actorId: userId,
+        details: { steps },
+      });
+      await batch.commit();
+
+      console.log(`account ${userId} deleted: ${steps.join(", ")}`);
+      return null;
+    } catch (error) {
+      // الفشل يُسجَّل ولا يُدَّعى اكتماله. المستخدم يرى «لم يكتمل» لا «تم».
+      console.error(`account deletion failed for ${userId}`, error);
+      const batch = db.batch();
+      batch.update(requestRef, {
+        status: "failed",
+        failedAt: FieldValue.serverTimestamp(),
+        error: String((error && error.message) || error),
+        steps,
+      });
+      auditEntry(batch, db, {
+        action: "account_deletion_failed",
+        subjectId: userId,
+        actorId: userId,
+        details: { steps, error: String((error && error.message) || error) },
+      });
+      await batch.commit();
+      return null;
+    }
   });

@@ -62,12 +62,14 @@ class MedicalShareService {
 
   /// الأطباء المعتمدون، لاختيار المستقبِل.
   ///
-  /// الاستعلام `role == 'doctor'` هو نفسه ما تُثبته قاعدة `users`، فالمريض
-  /// يقرأ مستندات الأطباء ولا يقرأ مستندات المرضى.
+  /// المصدر `doctor_profiles`: إسقاط عام يكتبه الخادم ولا يحمل أي بيان شخصي.
+  /// وجود المستند هو شهادة الاعتماد — الخادم لا ينشئه إلا لمن وافق عليه
+  /// مشرف، ويحذفه فور خفض الدور أو حذف الحساب. وهو نفس الشرط الذي تفرضه
+  /// قاعدة `medical_shares` على المستقبِل، فلا يظهر في القائمة من ترفضه
+  /// القاعدة لاحقاً.
   Future<List<DirectoryDoctor>> fetchApprovedDoctors(
       {String? excludeId}) async {
-    final snap =
-        await _db.collection('users').where('role', isEqualTo: 'doctor').get();
+    final snap = await _db.collection('doctor_profiles').get();
     final doctors = snap.docs
         .where((d) => d.id != excludeId)
         .map((d) => DirectoryDoctor(

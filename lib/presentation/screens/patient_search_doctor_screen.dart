@@ -42,10 +42,14 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
   Future<void> _fetchRealDoctors() async {
     setState(() => _isLoadingDoctors = true);
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isEqualTo: 'doctor')
-          .get();
+      // `doctor_profiles` لا `users`: الإسقاط العام يحمل حقول الدليل وحدها،
+      // بينما مستند المستخدم يحمل معه الهاتف والبريد وتاريخ الميلاد — وقواعد
+      // Firestore لا تُرشِّح الحقول، فقراءته كانت تسلّمها كاملة لكل مريض.
+      //
+      // ولا حاجة لشرط `role`: وجود المستند هو الشرط. الخادم لا ينشئه إلا
+      // لطبيب معتمَد، ويحذفه فور خفض الدور أو حذف الحساب.
+      final snapshot =
+          await FirebaseFirestore.instance.collection('doctor_profiles').get();
 
       final doctors = snapshot.docs.map((doc) {
         final data = doc.data();

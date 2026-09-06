@@ -1,0 +1,17 @@
+{
+  "//": "قالب إعدادات Firebase لنسخة الويب. انسخه إلى web_config.json واملأه.",
+  "//1": "المصدر: Firebase Console ← Project settings ← Your apps ← Web app ← SDK setup.",
+  "//2": "مشروع heldoc-68abf لا يحتوي على تطبيق ويب مسجَّل بعد — سجّله أولاً.",
+  "//3": "هذه القيم ليست أسراراً: تصل إلى كل متصفح بالضرورة. ما يحمي البيانات",
+  "//4": "هو firestore.rules وحده. الملف مستثنى في .gitignore لأن ربط نسخة",
+  "//5": "البناء بمشروع Firebase قرار نشر، لا ثابت مصدري.",
+
+  "FIREBASE_WEB_API_KEY": "",
+  "FIREBASE_WEB_APP_ID": "",
+
+  "//6": "الباقي له قيم افتراضية في lib/firebase_options.dart، ولا يلزم إلا للتجاوز.",
+  "FIREBASE_WEB_PROJECT_ID": "heldoc-68abf",
+  "FIREBASE_WEB_AUTH_DOMAIN": "heldoc-68abf.firebaseapp.com",
+  "FIREBASE_WEB_SENDER_ID": "736610467870",
+  "FIREBASE_WEB_STORAGE_BUCKET": "heldoc-68abf.firebasestorage.app"
+}

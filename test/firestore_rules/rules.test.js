@@ -96,8 +96,15 @@ describe('users', () => {
     await assertSucceeds(getDoc(doc(asPatient(), 'users', PATIENT)));
   });
 
-  test('أي مستخدم مسجَّل يقرأ بيانات الأطباء (لازم للحجز)', async () => {
-    await assertSucceeds(getDoc(doc(asPatient(), 'users', DOCTOR)));
+  test('المريض لا يقرأ مستند الطبيب — ولا حتى لعرضه في الدليل', async () => {
+    // كانت القاعدة تسمح بذلك ليظهر الأطباء في البحث. لكن القراءة تسلّم
+    // المستند **كاملاً**: الهاتف والبريد وتاريخ الميلاد. الدليل يقرأ الآن
+    // `doctor_profiles` وهو إسقاط عام بلا بيان شخصي.
+    await assertFails(getDoc(doc(asPatient(), 'users', DOCTOR)));
+  });
+
+  test('الطبيب ما زال يقرأ مستنده هو', async () => {
+    await assertSucceeds(getDoc(doc(asDoctor(), 'users', DOCTOR)));
   });
 
   test('المريض لا يستطيع ترقية نفسه إلى طبيب', async () => {
@@ -173,6 +180,73 @@ describe('slots — منع الحجز المزدوج', () => {
       doctorId: DOCTOR, appointmentDate: '2030-03-03', startTime: '10:00',
       capacity: 1, bookedCount: 1, patientIds: [PATIENT],
     }));
+  });
+});
+
+describe('doctor_profiles — الإسقاط العام', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      // يكتبه `syncDoctorPublicProfile` على الخادم. هنا نحاكي نتيجته.
+      await setDoc(doc(ctx.firestore(), 'doctor_profiles', DOCTOR), {
+        doctorId: DOCTOR, name: 'د. أحمد', specialization: 'باطنة',
+        price: 200, rating: 4, reviews: 10,
+      });
+    });
+  });
+
+  test('المريض يقرأ الملف العام — هذا ما يغذّي الدليل', async () => {
+    await assertSucceeds(getDoc(doc(asPatient(), 'doctor_profiles', DOCTOR)));
+  });
+
+  test('زائر غير مسجَّل لا يقرأه', async () => {
+    // الدليل ليس عاماً للإنترنت: تصفّحه يحتاج حساباً كما كان دائماً.
+    await assertFails(getDoc(doc(asAnon(), 'doctor_profiles', DOCTOR)));
+  });
+
+  test('الطبيب نفسه لا يكتب ملفه العام', async () => {
+    // الاشتقاق من مصدر واحد هو ما يمنع إعلان تخصّص أو سعر يخالف المستند
+    // الأصلي، أو إبقاء ملف منشور بعد خفض الدور.
+    await assertFails(updateDoc(doc(asDoctor(), 'doctor_profiles', DOCTOR), {
+      price: 1,
+    }));
+    await assertFails(setDoc(doc(asDoctor(), 'doctor_profiles', DOCTOR), {
+      doctorId: DOCTOR, name: 'د. أحمد', specialization: 'جراحة',
+    }));
+  });
+
+  test('مريض لا ينشئ ملفاً عاماً لنفسه', async () => {
+    await assertFails(setDoc(doc(asPatient(), 'doctor_profiles', PATIENT), {
+      doctorId: PATIENT, name: 'مريض', specialization: 'باطنة',
+    }));
+  });
+
+  test('لا أحد يحذف ملفاً عاماً', async () => {
+    await assertFails(deleteDoc(doc(asDoctor(), 'doctor_profiles', DOCTOR)));
+    await assertFails(deleteDoc(doc(asPatient(), 'doctor_profiles', DOCTOR)));
+  });
+
+  test('الإسقاط لا يحمل أي بيان شخصي', () => {
+    // حارس بنيوي على قائمة الحقول نفسها في functions/index.js.
+    // فصل المستندين بلا فصل الحقول لا يحمي شيئاً: نسخ `phone` إلى الملف
+    // العام يعيد التسريب كاملاً بينما تبدو القاعدة مغلقة.
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../../functions/index.js'),
+      'utf8'
+    );
+    const block = source.slice(
+      source.indexOf('const PUBLIC_DOCTOR_FIELDS = ['),
+      source.indexOf('];', source.indexOf('const PUBLIC_DOCTOR_FIELDS = ['))
+    );
+    for (const forbidden of [
+      'phone', 'email', 'birthDate', 'gender', 'emailVerified',
+      'role', 'createdAt', 'deleted',
+    ]) {
+      expect(block).not.toMatch(new RegExp(`"${forbidden}"`));
+    }
+    // وحقول الدليل الفعلية موجودة، وإلا فرغ الدليل بصمت.
+    for (const needed of ['name', 'specialization', 'price', 'rating']) {
+      expect(block).toMatch(new RegExp(`"${needed}"`));
+    }
   });
 });
 
@@ -492,12 +566,17 @@ describe('انحدار: سلطة البيانات السريرية على الم
   });
 
   test('المريض يحجز موعداً عادياً', async () => {
-    await assertSucceeds(setDoc(doc(asPatient(), 'appointments', 'ok_booking'), {
-      doctorId: DOCTOR, patientId: PATIENT,
-      appointmentDate: '2030-06-06', startTime: '12:00',
-      status: 'Booked', reason: 'كشف', price: 200,
-      patientName: 'مريض', patientPhone: '201000000002',
-    }));
+    // المعرّف مشتق من الحقول نفسها، كما يولّده SlotId في العميل.
+    const slotId = `${DOCTOR}_2030-06-06_12-00`;
+    await assertSucceeds(setDoc(
+      doc(asPatient(), 'appointments', `${slotId}__${PATIENT}`),
+      {
+        doctorId: DOCTOR, patientId: PATIENT,
+        appointmentDate: '2030-06-06', startTime: '12:00', slotId,
+        status: 'Booked', reason: 'كشف', price: 200,
+        patientName: 'مريض', patientPhone: '201000000002',
+      },
+    ));
   });
 
   // ---- ما يجوز للطبيب ----
@@ -655,8 +734,16 @@ describe('مطابقة الاستعلامات بالقواعد', () => {
     )));
   });
 
-  test('المريض يسرد الأطباء — patient_search_doctor_screen:44', async () => {
-    await assertSucceeds(getDocs(query(
+  test('المريض يسرد الأطباء — patient_search_doctor_screen:52', async () => {
+    // بلا شرط `role`: وجود المستند في `doctor_profiles` هو الشرط، ويكتبه
+    // الخادم وحده. سرد `users` بنفس الشكل صار مرفوضاً — يثبته الاختبار التالي.
+    await assertSucceeds(getDocs(collection(asPatient(), 'doctor_profiles')));
+  });
+
+  test('سرد users بشرط الدور صار مرفوضاً كاملاً', async () => {
+    // القواعد لا تُرشّح: استعلام لا تستطيع القاعدة إثباته يُرفض بأكمله،
+    // لا يُقلَّم. هذا ما يجعل إغلاق `users` فعّالاً لا تجميلياً.
+    await assertFails(getDocs(query(
       collection(asPatient(), 'users'),
       where('role', '==', 'doctor'),
     )));

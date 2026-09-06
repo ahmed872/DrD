@@ -101,3 +101,31 @@ node scripts/migrate_appointment_notes_to_encounters.js --apply  # تنفيذ
 لم يكن في التطبيق مسار يكتب `diagnosis` أو `prescription` إطلاقاً)، فالأنظف
 حذف السكربت وحقل `notes` من قائمة سماح المواعيد بدل الاحتفاظ بمسارين
 للسجل الطبي. القرار يحتاج نظرة على بيانات الإنتاج.
+
+
+---
+
+## backfill_doctor_profiles.js — **إلزامي قبل نشر القواعد الجديدة**
+
+يملأ `doctor_profiles` للأطباء القائمين. المحفّز `syncDoctorPublicProfile`
+لا يعمل بأثر رجعي، فبدون هذا السكربت **يظهر دليل الأطباء فارغاً**.
+
+    node scripts/backfill_doctor_profiles.js            # معاينة
+    node scripts/backfill_doctor_profiles.js --apply    # تنفيذ
+
+ترتيب النشر إلزامي — راجع `docs/RELEASE.md`.
+
+---
+
+## audit_doctor_accounts.js — قراءة فقط
+
+يجرد `users` ويصنّف كل حساب: طبيب معتمَد · طبيب قديم · مريض · حالة غير متسقة.
+
+«طبيب قديم» = `role == 'doctor'` بلا طلب معتمَد — حساب من عهد شاشة التسجيل
+التي كانت تعرض زرّي «مريض / طبيب»، وما زال يظهر في الدليل ويكتب سجلات سريرية.
+
+    node scripts/audit_doctor_accounts.js --json legacy-doctors.json
+
+**لا يخفض أي حساب تلقائياً.** الخفض يحتاج معرّفات صريحة و`--apply` معاً:
+
+    node scripts/audit_doctor_accounts.js --demote uid1,uid2 --apply

@@ -27,10 +27,9 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   Future<void> _fetchRealDoctors() async {
     setState(() => _isLoadingDoctors = true);
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isEqualTo: 'doctor')
-          .get();
+      // الإسقاط العام — راجع التعليق في patient_search_doctor_screen.dart.
+      final snapshot =
+          await FirebaseFirestore.instance.collection('doctor_profiles').get();
       _allDoctors = snapshot.docs.map((doc) {
         final data = doc.data();
         return {

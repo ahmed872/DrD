@@ -51,6 +51,10 @@ functions/.env
 firebase-debug.log
 firestore-debug.log
 
+# إعدادات Firebase لنسخة الويب — ربط البناء بمشروع بعينه قرار نشر لا ثابت
+# مصدري. القالب المُلتزَم هو web_config.example.json.
+web_config.json
+
 # توقيع أندرويد — لا يُرفع أبداً
 android/key.properties
 *.jks
