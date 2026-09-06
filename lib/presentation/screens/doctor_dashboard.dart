@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/theme/app_theme.dart';
 
 class DoctorDashboard extends StatefulWidget {
   const DoctorDashboard({super.key});
@@ -18,8 +19,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('لوحة تحكم الطبيب'),
-        centerTitle: true,
-        backgroundColor: Colors.blue,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -48,27 +47,25 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                         const Text(
                           'إعدادات العيادة',
                           style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue),
+                              fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         const Divider(),
                         ListTile(
                           title: const Text('مدة الجلسة'),
                           subtitle: const Text('30 دقيقة'),
-                          trailing: const Icon(Icons.edit, color: Colors.blue),
+                          trailing: const Icon(Icons.edit),
                           onTap: () => _showEditDialog('مدة الجلسة'),
                         ),
                         ListTile(
                           title: const Text('وقت التأخير للمستعجلات'),
                           subtitle: const Text('5 دقائق'),
-                          trailing: const Icon(Icons.edit, color: Colors.blue),
+                          trailing: const Icon(Icons.edit),
                           onTap: () => _showEditDialog('وقت التأخير'),
                         ),
                         ListTile(
                           title: const Text('ساعات العمل'),
                           subtitle: const Text('09:00 - 17:00'),
-                          trailing: const Icon(Icons.edit, color: Colors.blue),
+                          trailing: const Icon(Icons.edit),
                           onTap: () => _showEditDialog('ساعات العمل'),
                         ),
                       ],
@@ -110,14 +107,14 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                       },
                       child: Row(
                         children: [
-                          const Icon(Icons.calendar_month,
-                              color: Colors.blue, size: 20),
+                          Icon(Icons.calendar_month,
+                              color: context.colors.primary, size: 20),
                           const SizedBox(width: 4),
                           Text(
                             _selectedDate.toString().split(' ')[0],
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.blue,
+                                color: context.colors.primary,
                                 fontWeight: FontWeight.w500),
                           ),
                         ],
@@ -185,11 +182,12 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Icon(Icons.calendar_today,
-                            size: 48, color: Colors.grey[400]),
+                            size: 48, color: context.drd.disabled),
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'لا توجد مواعيد في هذا التاريخ',
-                          style: TextStyle(color: Colors.grey, fontSize: 14),
+                          style: context.text.bodyMedium
+                              ?.copyWith(color: context.drd.muted),
                         ),
                       ],
                     ),
@@ -249,8 +247,10 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
               Provider.of<FirebaseAuthService>(context, listen: false).logout();
               Navigator.of(context).pushReplacementNamed('/login');
             },
-            child:
-                const Text('تسجيل خروج', style: TextStyle(color: Colors.red)),
+            child: Text(
+              'تسجيل خروج',
+              style: TextStyle(color: context.colors.error),
+            ),
           ),
         ],
       ),

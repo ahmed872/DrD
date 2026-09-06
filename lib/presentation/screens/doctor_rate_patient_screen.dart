@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/rating_provider.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 
 /// شاشة تقييم الطبيب للمريض - تقييم الحالة الصحية
 class DoctorRatePatientScreen extends StatefulWidget {
@@ -83,10 +85,7 @@ class _DoctorRatePatientScreenState extends State<DoctorRatePatientScreen> {
     if (mounted) {
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ تم حفظ التقييم بنجاح'),
-            backgroundColor: Colors.green,
-          ),
+          AppSnackBar.success('تم حفظ التقييم بنجاح'),
         );
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) Navigator.pop(context, true);
@@ -94,10 +93,7 @@ class _DoctorRatePatientScreenState extends State<DoctorRatePatientScreen> {
       } else {
         final provider = context.read<RatingProvider>();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(provider.errorMessage ?? 'حدث خطأ'),
-            backgroundColor: Colors.red,
-          ),
+          AppSnackBar.error(provider.errorMessage ?? 'حدث خطأ'),
         );
       }
     }
@@ -108,9 +104,6 @@ class _DoctorRatePatientScreenState extends State<DoctorRatePatientScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('تقييم المريض'),
-        centerTitle: true,
-        backgroundColor: Colors.blue,
-        elevation: 0,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -124,7 +117,6 @@ class _DoctorRatePatientScreenState extends State<DoctorRatePatientScreen> {
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Colors.blue,
               ),
             ),
             const SizedBox(height: 24),
@@ -152,7 +144,9 @@ class _DoctorRatePatientScreenState extends State<DoctorRatePatientScreen> {
                             ? Icons.star
                             : Icons.star_border,
                         size: 40,
-                        color: Colors.amber,
+                        color: _selectedRating > index
+                            ? context.drd.rating
+                            : context.drd.disabled,
                       ),
                     ),
                   );
@@ -163,9 +157,8 @@ class _DoctorRatePatientScreenState extends State<DoctorRatePatientScreen> {
             Center(
               child: Text(
                 _selectedRating > 0 ? 'التقييم: $_selectedRating / 5' : '',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey,
+                style: context.text.bodyMedium?.copyWith(
+                  color: context.drd.muted,
                 ),
               ),
             ),
@@ -192,13 +185,6 @@ class _DoctorRatePatientScreenState extends State<DoctorRatePatientScreen> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: Colors.blue,
-                    width: 2,
-                  ),
-                ),
               ),
             ),
             const SizedBox(height: 32),
@@ -206,33 +192,18 @@ class _DoctorRatePatientScreenState extends State<DoctorRatePatientScreen> {
             // زر الحفظ
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              child: FilledButton(
                 onPressed: _isSubmitting ? null : _submitRating,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
                 child: _isSubmitting
-                    ? const SizedBox(
+                    ? SizedBox(
                         height: 20,
                         width: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          color: context.colors.onPrimary,
                         ),
                       )
-                    : const Text(
-                        'حفظ التقييم',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
+                    : const Text('حفظ التقييم'),
               ),
             ),
           ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_theme.dart';
 
 /// شاشة البداية — عرض فقط، بلا أي منطق تنقّل.
 ///
@@ -57,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.grey[300]!,
+                      color: context.drd.border,
                       blurRadius: 20,
                       spreadRadius: 5,
                     ),
@@ -69,11 +70,11 @@ class _SplashScreenState extends State<SplashScreen>
               // اسم التطبيق
               Text(
                 'نظام حجز المواعيد',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF0097A7),
-                      fontSize: 26,
-                    ),
+                style: context.text.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: context.colors.primary,
+                  fontSize: 26,
+                ),
               ),
 
               const SizedBox(height: 12),
@@ -81,11 +82,11 @@ class _SplashScreenState extends State<SplashScreen>
               // الشعار
               Text(
                 'Medical Appointment System',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                      fontSize: 13,
-                      letterSpacing: 0.5,
-                    ),
+                style: context.text.bodyMedium?.copyWith(
+                  color: context.drd.muted,
+                  fontSize: 13,
+                  letterSpacing: 0.5,
+                ),
               ),
 
               const SizedBox(height: 60),
@@ -94,19 +95,15 @@ class _SplashScreenState extends State<SplashScreen>
               SizedBox(
                 width: 40,
                 height: 40,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation(Colors.grey[400]),
-                ),
+                child: const CircularProgressIndicator(strokeWidth: 3),
               ),
 
               const SizedBox(height: 20),
 
               Text(
                 'جاري التحميل...',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
+                style: context.text.bodySmall?.copyWith(
+                  color: context.drd.muted,
                 ),
               ),
             ],

@@ -1,28 +1,35 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
+
 /// widget لعرض تقييم بالنجوم
 class RatingStarsDisplay extends StatelessWidget {
   final int rating;
   final int maxRating;
   final double size;
-  final Color color;
+
+  /// لون النجوم المملوءة. يُترك فارغاً ليأخذ ذهبي التقييم من النسق.
+  final Color? color;
 
   const RatingStarsDisplay({
     super.key,
     required this.rating,
     this.maxRating = 5,
     this.size = 24,
-    this.color = Colors.amber,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final filled = color ?? context.drd.rating;
     return Row(
       children: List.generate(maxRating, (index) {
         return Icon(
           index < rating ? Icons.star : Icons.star_border,
           size: size,
-          color: color,
+          // النجمة الفارغة أخفت، فيمكن عدّ المملوءة بلمحة.
+          color: index < rating ? filled : context.drd.disabled,
         );
       }),
     );
@@ -33,44 +40,45 @@ class RatingStarsDisplay extends StatelessWidget {
 class RatingBadge extends StatelessWidget {
   final int rating;
   final String label;
-  final Color color;
+  final Color? color;
 
   const RatingBadge({
     super.key,
     required this.rating,
     this.label = '',
-    this.color = Colors.amber,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final tint = color ?? context.drd.rating;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: DrdSpacing.sm,
+        vertical: DrdSpacing.xxs,
+      ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.5)),
+        color: context.colors.surfaceContainerHigh,
+        borderRadius: DrdRadius.smAll,
+        border: Border.all(color: context.drd.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.star, size: 16, color: color),
+          Icon(Icons.star, size: 16, color: tint),
           const SizedBox(width: 4),
           Text(
             '$rating/5',
             style: TextStyle(
-              color: color,
+              color: context.colors.onSurface,
               fontWeight: FontWeight.bold,
             ),
           ),
           if (label.isNotEmpty) ...[
-            const SizedBox(width: 4),
+            const SizedBox(width: DrdSpacing.xxs),
             Text(
               label,
-              style: TextStyle(
-                color: color.withOpacity(0.7),
-                fontSize: 12,
-              ),
+              style: TextStyle(color: context.drd.muted, fontSize: 12),
             ),
           ],
         ],
@@ -126,7 +134,9 @@ class _InteractiveRatingSelectorState extends State<InteractiveRatingSelector> {
                 child: Icon(
                   _rating > index ? Icons.star : Icons.star_border,
                   size: 40,
-                  color: Colors.amber,
+                  color: _rating > index
+                      ? context.drd.rating
+                      : context.drd.disabled,
                 ),
               ),
             );
@@ -136,10 +146,7 @@ class _InteractiveRatingSelectorState extends State<InteractiveRatingSelector> {
           const SizedBox(height: 12),
           Text(
             labels[_rating - 1],
-            style: const TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-            ),
+            style: TextStyle(fontSize: 14, color: context.drd.muted),
           ),
         ],
       ],
@@ -151,17 +158,18 @@ class _InteractiveRatingSelectorState extends State<InteractiveRatingSelector> {
 class RatingSummary extends StatelessWidget {
   final double averageRating;
   final int totalRatings;
-  final Color color;
+  final Color? color;
 
   const RatingSummary({
     super.key,
     required this.averageRating,
     required this.totalRatings,
-    this.color = Colors.amber,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final tint = color ?? context.drd.rating;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -178,14 +186,14 @@ class RatingSummary extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   '${averageRating.toStringAsFixed(1)} / 5.0',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: context.text.headlineSmall?.copyWith(
+                    color: tint,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
-            Icon(Icons.star, size: 48, color: color),
+            Icon(Icons.star, size: 48, color: tint),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -196,10 +204,9 @@ class RatingSummary extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   totalRatings.toString(),
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: Colors.blue,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: context.text.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -214,13 +221,13 @@ class RatingSummary extends StatelessWidget {
 class RatingBar extends StatelessWidget {
   final int rating;
   final int maxRating;
-  final Color color;
+  final Color? color;
 
   const RatingBar({
     super.key,
     required this.rating,
     this.maxRating = 5,
-    this.color = Colors.amber,
+    this.color,
   });
 
   @override
@@ -229,8 +236,8 @@ class RatingBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       child: LinearProgressIndicator(
         value: rating / maxRating,
-        backgroundColor: Colors.grey[300],
-        valueColor: AlwaysStoppedAnimation<Color>(color),
+        backgroundColor: context.colors.surfaceContainerHigh,
+        valueColor: AlwaysStoppedAnimation<Color>(color ?? context.drd.rating),
         minHeight: 8,
       ),
     );
@@ -252,19 +259,9 @@ class PendingRatingNotification extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Colors.orange[50],
-      child: ListTile(
-        leading: const Icon(Icons.star_half, color: Colors.orange),
-        title: Text(message),
-        trailing: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange,
-          ),
-          onPressed: onAction,
-          child: Text(actionLabel),
-        ),
-      ),
+    return AppBanner.info(
+      message: message,
+      action: TextButton(onPressed: onAction, child: Text(actionLabel)),
     );
   }
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 
 class DoctorSettingsScreen extends StatefulWidget {
   const DoctorSettingsScreen({super.key});
@@ -189,9 +191,6 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('إعدادات العيادة'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
         actions: [
           IconButton(
             icon: const Icon(Icons.check_circle),
@@ -235,19 +234,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                 value: _selectedSpecialtyAr,
                 decoration: InputDecoration(
                   labelText: 'التخصص / Specialization',
-                  prefixIcon:
-                      const Icon(Icons.medical_services, color: Colors.blue),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.blue, width: 2),
-                  ),
+                  prefixIcon: Icon(Icons.medical_services),
                 ),
                 items: _specialties.map((spec) {
                   return DropdownMenuItem<String>(
@@ -368,11 +355,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200),
+                  color: context.colors.surfaceContainerHigh,
+                  borderRadius: DrdRadius.lgAll,
                 ),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(DrdSpacing.md),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -399,16 +385,16 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue),
+                          color: context.colors.surface,
+                          borderRadius: DrdRadius.smAll,
+                          border: Border.all(color: context.colors.primary),
                         ),
                         child: Text(
                           '${_startTime.format(context)} - ${_endTime.format(context)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+                            color: context.colors.primary,
                           ),
                         ),
                       ),
@@ -425,11 +411,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
+                  color: context.colors.surfaceContainerHigh,
+                  borderRadius: DrdRadius.lgAll,
                 ),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(DrdSpacing.md),
                 child: Column(
                   children: _workingDays.entries.map((entry) {
                     return Column(
@@ -451,7 +436,6 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                                   _workingDays[entry.key] = value;
                                 });
                               },
-                              activeColor: Colors.green,
                             ),
                           ],
                         ),
@@ -475,10 +459,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                     'حفظ الإعدادات / Save Settings',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  style: FilledButton.styleFrom(
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: DrdRadius.mdAll,
                     ),
                   ),
                 ),
@@ -512,10 +495,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.blue.shade100,
-        borderRadius: BorderRadius.circular(8),
+        color: context.colors.surfaceContainerHigh,
+        borderRadius: DrdRadius.smAll,
         border: Border(
-          right: BorderSide(color: Colors.blue.shade700, width: 4),
+          right: BorderSide(color: context.colors.primary, width: 4),
         ),
       ),
       child: Text(
@@ -523,7 +506,6 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Colors.blue.shade900,
         ),
       ),
     );
@@ -542,18 +524,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blue),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.blue, width: 2),
-        ),
+        prefixIcon: Icon(icon),
       ),
     );
   }
@@ -568,7 +539,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+          style: TextStyle(fontSize: 12, color: context.drd.muted),
         ),
         const SizedBox(height: 4),
         OutlinedButton(
@@ -589,10 +560,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           ),
           child: Text(
             time.format(context),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.blue,
+              color: context.colors.primary,
             ),
           ),
         ),
@@ -625,9 +596,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         price <= 0) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('يرجى التأكد من أن السعر ومدة الجلسة أكبر من صفر'),
-          backgroundColor: Colors.red,
+        AppSnackBar.warning(
+          'يرجى التأكد من أن السعر ومدة الجلسة أكبر من صفر',
         ),
       );
       return;
@@ -645,10 +615,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           if (mounted) {
             setState(() => _isLoading = false);
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(auth.errorMessage ?? 'تعذّر حفظ رقم الجوال'),
-                backgroundColor: Colors.red,
-              ),
+              AppSnackBar.error(auth.errorMessage ?? 'تعذّر حفظ رقم الجوال'),
             );
           }
           return;
@@ -676,29 +643,13 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text(
-                    '✅ تم الحفظ بنجاح / Saved Successfully',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
+            AppSnackBar.success('تم الحفظ بنجاح / Saved Successfully'),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error saving settings: $e'),
-              backgroundColor: Colors.red,
-            ),
+            AppSnackBar.error('Error saving settings: $e'),
           );
         }
       }
@@ -768,7 +719,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
             flex: 2,
             child: Text(
               enText,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(fontSize: 12, color: context.drd.muted),
               textAlign: TextAlign.left,
             ),
           ),

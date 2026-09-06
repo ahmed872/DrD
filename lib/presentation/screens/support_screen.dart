@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
@@ -12,13 +14,7 @@ class SupportScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text('الدعم الفني'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
-      ),
+      appBar: AppBar(title: const Text('الدعم الفني')),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -29,35 +25,32 @@ class SupportScreen extends StatelessWidget {
 
               // رسالة ترحيب
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(DrdSpacing.md),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0097A7).withOpacity(0.1),
-                  border: Border.all(
-                      color: const Color(0xFF0097A7).withOpacity(0.3)),
-                  borderRadius: BorderRadius.circular(12),
+                  color: context.colors.primaryContainer,
+                  borderRadius: DrdRadius.lgAll,
                 ),
                 child: Column(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.help_outline,
                       size: 40,
-                      color: Color(0xFF0097A7),
+                      color: context.colors.onPrimaryContainer,
                     ),
                     const SizedBox(height: 12),
                     Text(
                       'هل تحتاج إلى مساعدة؟',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF0097A7),
-                          ),
+                      style: context.text.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: context.colors.onPrimaryContainer,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'نحن هنا لمساعدتك في أي استفسار أو مشكلة تواجهك في التطبيق',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: const Color(0xFF0097A7).withOpacity(0.8),
-                        fontSize: 13,
+                      style: context.text.bodySmall?.copyWith(
+                        color: context.colors.onPrimaryContainer,
                       ),
                     ),
                   ],
@@ -69,10 +62,9 @@ class SupportScreen extends StatelessWidget {
               // الخدمات المتاحة
               Text(
                 'فيم يمكننا مساعدتك؟',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
-                    ),
+                style: context.text.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
 
               const SizedBox(height: 16),
@@ -81,27 +73,24 @@ class SupportScreen extends StatelessWidget {
               Column(
                 children: [
                   _buildSupportCard(
+                    context,
                     icon: Icons.person_add,
                     title: 'إضافة طبيب جديد',
                     description: 'اطلب إضافة طبيب جديد للنظام',
-                    color: Colors.green[50]!,
-                    borderColor: Colors.green[200]!,
                   ),
                   const SizedBox(height: 12),
                   _buildSupportCard(
+                    context,
                     icon: Icons.bug_report,
                     title: 'إبلاغ عن مشكلة',
                     description: 'أخبرنا عن أي مشكلة تواجهك',
-                    color: Colors.orange[50]!,
-                    borderColor: Colors.orange[200]!,
                   ),
                   const SizedBox(height: 12),
                   _buildSupportCard(
+                    context,
                     icon: Icons.feedback,
                     title: 'تقديم اقتراح',
                     description: 'شارك اقتراحك لتحسين التطبيق',
-                    color: Colors.purple[50]!,
-                    borderColor: Colors.purple[200]!,
                   ),
                 ],
               ),
@@ -111,130 +100,73 @@ class SupportScreen extends StatelessWidget {
               // معلومات التواصل
               Text(
                 'تواصل معنا',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
-                    ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // زر الواتس الرئيسي - الأكثر وضوحاً
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _launchWhatsApp(context),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.green.shade400,
-                          Colors.green.shade600,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.green.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.message,
-                          size: 40,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'اضغط للتواصل عبر WhatsApp',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '+20 109 303 3884',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                style: context.text.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
                 ),
               ),
 
               const SizedBox(height: 20),
 
-              // بطاقة إضافية قابلة للنقر
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _launchWhatsApp(context),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0097A7).withOpacity(0.1),
-                      border: Border.all(
-                        color: const Color(0xFF0097A7),
-                        width: 2,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.chat,
-                          size: 32,
-                          color: Color(0xFF0097A7),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'هل تحتاج مساعدة؟',
-                                style: TextStyle(
-                                  color: Color(0xFF0097A7),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'نحن متاحون الآن',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.arrow_forward_ios,
-                          size: 16,
-                          color: Color(0xFF0097A7),
-                        ),
-                      ],
-                    ),
+              // زر الواتساب الرئيسي.
+              //
+              // كان مستطيلاً بتدرّج أخضر وظلّ أخضر — والأخضر في هذا التطبيق
+              // يعني «نجح»، فبدا الزرّ رسالةَ نجاح لا إجراءً. وهو الإجراء
+              // الأساسي هنا، فيأخذ شكل الإجراء الأساسي.
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _launchWhatsApp(context),
+                  icon: const Icon(Icons.message),
+                  label: const Text('تواصل عبر واتساب'),
+                ),
+              ),
+
+              const SizedBox(height: DrdSpacing.xs),
+              Center(
+                child: Text(
+                  '+20 109 303 3884',
+                  style: context.text.bodyMedium?.copyWith(
+                    color: context.drd.muted,
                   ),
+                ),
+              ),
+
+              const SizedBox(height: DrdSpacing.md),
+
+              // مدخل ثانٍ لنفس الإجراء — بطاقة قابلة للنقر.
+              AppCard(
+                onTap: () => _launchWhatsApp(context),
+                semanticLabel: 'هل تحتاج مساعدة؟ تواصل عبر واتساب',
+                child: Row(
+                  children: [
+                    Icon(Icons.chat, size: 32, color: context.colors.primary),
+                    const SizedBox(width: DrdSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'هل تحتاج مساعدة؟',
+                            style: context.text.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: DrdSpacing.xxs),
+                          Text(
+                            'نحن متاحون الآن',
+                            style: context.text.bodySmall?.copyWith(
+                              color: context.drd.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      size: 16,
+                      color: context.drd.muted,
+                    ),
+                  ],
                 ),
               ),
 
@@ -242,30 +174,28 @@ class SupportScreen extends StatelessWidget {
 
               // معلومات إضافية
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(DrdSpacing.md),
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
+                  color: context.colors.surfaceContainerHigh,
+                  borderRadius: DrdRadius.lgAll,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'ملاحظات مهمة:',
-                      style: TextStyle(
+                      style: context.text.bodyMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                        fontSize: 13,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _buildBulletPoint(
+                    _buildBulletPoint(context,
                         'وقت الرد: من الأحد للخميس من 8 صباحاً إلى 5 مساءً'),
                     const SizedBox(height: 8),
-                    _buildBulletPoint(
+                    _buildBulletPoint(context,
                         'لإضافة طبيب: أرسل المعلومات الكاملة عبر الواتس'),
                     const SizedBox(height: 8),
-                    _buildBulletPoint(
+                    _buildBulletPoint(context,
                         'للاستفسارات العاجلة: تواصل معنا مباشرة عبر الواتس'),
                   ],
                 ),
@@ -279,46 +209,42 @@ class SupportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSupportCard({
+  /// بطاقة خيار دعم.
+  ///
+  /// كانت الثلاثة بأخضر وبرتقالي وبنفسجي — ثلاثة خيارات قائمة لا حالات، ولا
+  /// شيء يجعل «إبلاغ عن مشكلة» برتقالياً و«تقديم اقتراح» بنفسجياً. الأيقونة
+  /// تميّز الخيار.
+  Widget _buildSupportCard(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String description,
-    required Color color,
-    required Color borderColor,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(DrdSpacing.md),
       decoration: BoxDecoration(
-        color: color,
-        border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(12),
+        color: context.colors.surfaceContainerHigh,
+        borderRadius: DrdRadius.lgAll,
       ),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: borderColor,
-            size: 28,
-          ),
-          const SizedBox(width: 16),
+          Icon(icon, color: context.colors.primary, size: 28),
+          const SizedBox(width: DrdSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: context.text.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: Colors.grey,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
+                  style: context.text.bodySmall?.copyWith(
+                    color: context.drd.muted,
                   ),
                 ),
               ],
@@ -329,7 +255,7 @@ class SupportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBulletPoint(String text) {
+  Widget _buildBulletPoint(BuildContext context, String text) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -340,7 +266,7 @@ class SupportScreen extends StatelessWidget {
             height: 6,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.grey[600],
+              color: context.drd.muted,
             ),
           ),
         ),
@@ -348,9 +274,8 @@ class SupportScreen extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[700],
+            style: context.text.bodySmall?.copyWith(
+              color: context.drd.muted,
             ),
           ),
         ),
