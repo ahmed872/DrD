@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../core/theme/app_theme.dart';
 
 import '../../core/constants/appointment_status.dart';
 
@@ -65,7 +66,6 @@ class _PatientMedicalHistoryScreenState
           'notes': data['notes'] ?? 'No additional notes',
           'notesAr': data['notesAr'] ?? 'لا توجد ملاحظات إضافية',
           'icon': '🩺',
-          'color': Colors.blue,
         });
       }
 
@@ -92,9 +92,6 @@ class _PatientMedicalHistoryScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('السجل الطبي / Medical History'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -140,10 +137,7 @@ class _PatientMedicalHistoryScreenState
       onSelected: (selected) {
         setState(() => _selectedFilter = index);
       },
-      backgroundColor: Colors.grey[200],
-      selectedColor: const Color(0xFF0097A7),
       labelStyle: TextStyle(
-        color: isSelected ? Colors.white : Colors.black87,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
       ),
     );
@@ -167,7 +161,7 @@ class _PatientMedicalHistoryScreenState
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: (record['color'] as Color).withOpacity(0.1),
+                        color: context.colors.primaryContainer,
                         shape: BoxShape.circle,
                       ),
                       child: Text(
@@ -188,9 +182,8 @@ class _PatientMedicalHistoryScreenState
                         ),
                         Text(
                           record['date'],
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
+                          style: context.text.bodySmall?.copyWith(
+                            color: context.drd.muted,
                           ),
                         ),
                       ],
@@ -199,43 +192,42 @@ class _PatientMedicalHistoryScreenState
                 ),
                 Text(
                   record['doctor'],
-                  style: const TextStyle(
-                    color: Color(0xFF0097A7),
+                  style: context.text.bodyMedium?.copyWith(
+                    color: context.colors.primary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
             const Divider(height: 24),
-            _buildInfoRow('السبب', record['reasonAr'], Colors.blue),
-            const SizedBox(height: 8),
-            _buildInfoRow('التشخيص', record['diagnosisAr'], Colors.orange),
-            const SizedBox(height: 8),
-            _buildInfoRow('الوصفة', record['prescriptionAr'], Colors.green),
-            const SizedBox(height: 12),
+            _buildInfoRow('السبب', record['reasonAr']),
+            const SizedBox(height: DrdSpacing.xs),
+            _buildInfoRow('التشخيص', record['diagnosisAr']),
+            const SizedBox(height: DrdSpacing.xs),
+            _buildInfoRow('الوصفة', record['prescriptionAr']),
+            const SizedBox(height: DrdSpacing.sm),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey[200]!),
+                color: context.colors.surfaceContainerHigh,
+                borderRadius: DrdRadius.smAll,
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.note_alt_outlined,
-                      size: 20, color: Colors.grey),
+                  Icon(Icons.note_alt_outlined,
+                      size: 20, color: context.drd.muted),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'ملاحظات / Notes',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
-                            color: Colors.grey,
+                            color: context.drd.muted,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -255,21 +247,25 @@ class _PatientMedicalHistoryScreenState
     );
   }
 
-  Widget _buildInfoRow(String label, String value, Color iconColor) {
+  /// صفّ معلومة داخل سجل.
+  ///
+  /// كانت النقطة تُلوَّن بأزرق للسبب وبرتقالي للتشخيص وأخضر للوصفة — ثلاثة
+  /// ألوان لثلاثة عناوين ثابتة لا يتغيّر أيّها بحال المريض. لون لا يحمل
+  /// معنى ليس لوناً، فالنقطة صارت محايدة والعنوان يقول ما تقوله.
+  Widget _buildInfoRow(String label, String value) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.circle, size: 8, color: iconColor),
-        const SizedBox(width: 8),
+        Icon(Icons.circle, size: 8, color: context.drd.muted),
+        const SizedBox(width: DrdSpacing.xs),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
+                style: context.text.bodySmall?.copyWith(
+                  color: context.drd.muted,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -289,14 +285,12 @@ class _PatientMedicalHistoryScreenState
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.folder_open, size: 80, color: Colors.grey[300]),
-          const SizedBox(height: 16),
+          Icon(Icons.folder_open, size: 80, color: context.drd.disabled),
+          const SizedBox(height: DrdSpacing.md),
           Text(
             'لا يوجد سجل طبي متاح',
-            style: TextStyle(
-              fontSize: 18,
+            style: context.text.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
             ),
           ),
         ],
