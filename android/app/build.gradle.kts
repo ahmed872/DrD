@@ -111,6 +111,18 @@ android {
     // %LOCALAPPDATA%\Android\sdk\ndk.
     ndkVersion = "30.0.16138531"
 
+    // مثبَّتة كذلك على نسخة موجودة، للسبب نفسه.
+    //
+    // يطلب AGP 9.1.0 نسخة أدوات البناء 36.0.0 لأنها قيمته الافتراضية
+    // المربوطة بإصداره — لا لأنها الوحيدة الصالحة؛ فهو لا يختار أعلى نسخة
+    // مثبَّتة تلقائياً. و36.0.0 غير مثبَّتة هنا، فيفشل البناء عند تحديد
+    // تبعيات compileDebugJavaWithJavac.
+    //
+    // 36.1.0 مثبَّتة من SDK Manager بملف package.xml الذي يسجّلها في فهرس
+    // الـ SDK — وهو ما ينقص أي حزمة تُفكّ من zip يدوياً، فلا يراها AGP مهما
+    // كان محتوى مجلدها سليماً.
+    buildToolsVersion = "36.1.0"
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
