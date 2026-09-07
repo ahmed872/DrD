@@ -19,7 +19,16 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
   final TextEditingController _searchController = TextEditingController();
   int _selectedSpecialty = 0;
   double _selectedRating = 0;
-  RangeValues _priceRange = const RangeValues(100, 500);
+  /// حدود الشريط، مشتقّة من أسعار الأطباء المعروضين فعلاً.
+  ///
+  /// كانت مثبَّتة على 100–500، وكان المرشِّح يُسقط كل ما خرج عنها. فطبيب
+  /// بسعر 80 أو 600 لا يظهر لأي مريض، **ولا وسيلة لإظهاره**: الشريط نفسه
+  /// لا يصل إلى قيمته. والأسوأ أن `price` يقرأ بـ `fallback: 0` عند غياب
+  /// الحقل أو فساده، فأي طبيب بلا سعر كان يسقط من الدليل صامتاً.
+  RangeValues? _priceBounds;
+
+  /// اختيار المريض داخل [_priceBounds]. `null` يعني «لم تصل الأسعار بعد».
+  RangeValues? _priceRange;
   bool _availableNow = false;
 
   // المصدر الموحّد — راجع lib/core/constants/specialties.dart.
@@ -89,9 +98,25 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
         };
       }).toList();
 
+      // حدود السعر تُحسب من النتيجة لا تُفترض، ويُفتح المدى كاملاً افتراضياً
+      // كي لا يُخفي المرشِّح أحداً قبل أن يلمسه المريض.
+      final prices = doctors.map((d) => d['price'] as double).toList()..sort();
+      final bounds = prices.isEmpty
+          ? null
+          // RangeSlider يرفض min == max، وهو ما يحدث حين يتساوى سعر كل
+          // الأطباء أو حين يكون الطبيب واحداً.
+          : RangeValues(
+              prices.first.floorToDouble(),
+              prices.last.ceilToDouble() > prices.first.floorToDouble()
+                  ? prices.last.ceilToDouble()
+                  : prices.first.floorToDouble() + 1,
+            );
+
       if (mounted) {
         setState(() {
           _allDoctors = doctors;
+          _priceBounds = bounds;
+          _priceRange = bounds;
           _isLoadingDoctors = false;
         });
       }
@@ -255,35 +280,7 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Card(
-          elevation: 1,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'نطاق السعر (جنيه)',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-                const SizedBox(height: 8),
-                RangeSlider(
-                  values: _priceRange,
-                  onChanged: (values) {
-                    setState(() => _priceRange = values);
-                  },
-                  min: 100,
-                  max: 500,
-                  divisions: 8,
-                  labels: RangeLabels(
-                    '${_priceRange.start.toInt()}',
-                    '${_priceRange.end.toInt()}',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        _buildPriceFilter(),
         const SizedBox(height: 12),
         Card(
           elevation: 1,
@@ -296,6 +293,74 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// مرشِّح السعر.
+  ///
+  /// القيم مكتوبة تحت الشريط دائماً، لا في فقاعة تظهر أثناء السحب وحده:
+  /// المريض يحتاج أن يعرف الحدّين **قبل** أن يقرّر السحب، لا بعده.
+  Widget _buildPriceFilter() {
+    final bounds = _priceBounds;
+    final range = _priceRange;
+
+    // لا شريط قبل وصول الأسعار، ولا شريط حين يتساوى سعر الجميع: مرشِّح لا
+    // يُرشِّح شيئاً يشغل مساحة ويوحي بخيار غير موجود.
+    if (bounds == null || range == null) return const SizedBox.shrink();
+
+    String egp(double value) => '${value.round()} جنيه';
+
+    return Card(
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'نطاق السعر',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                Text(
+                  '${egp(range.start)} — ${egp(range.end)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: context.colors.primary,
+                  ),
+                ),
+              ],
+            ),
+            RangeSlider(
+              values: range,
+              min: bounds.start,
+              max: bounds.end,
+              // خطوة لكل 25 جنيهاً، وبحدّ أقصى معقول: `divisions` كبيرة على
+              // مدى واسع تُنتج شريطاً لا يستقر تحت الإصبع.
+              divisions: (((bounds.end - bounds.start) / 25).round())
+                  .clamp(1, 40),
+              labels: RangeLabels(egp(range.start), egp(range.end)),
+              onChanged: (values) => setState(() => _priceRange = values),
+            ),
+            // طرفا المدى: يشرحان إلى أين يصل الشريط أصلاً.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  egp(bounds.start),
+                  style: TextStyle(fontSize: 11, color: context.drd.muted),
+                ),
+                Text(
+                  egp(bounds.end),
+                  style: TextStyle(fontSize: 11, color: context.drd.muted),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -331,10 +396,13 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
           filteredDoctors.where((d) => d['rating'] >= _selectedRating).toList();
     }
 
-    filteredDoctors = filteredDoctors
-        .where((d) =>
-            d['price'] >= _priceRange.start && d['price'] <= _priceRange.end)
-        .toList();
+    final priceRange = _priceRange;
+    if (priceRange != null) {
+      filteredDoctors = filteredDoctors.where((d) {
+        final price = d['price'] as double;
+        return price >= priceRange.start && price <= priceRange.end;
+      }).toList();
+    }
 
     if (_availableNow) {
       filteredDoctors =

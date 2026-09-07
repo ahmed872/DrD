@@ -237,10 +237,11 @@ class HomeScreen extends StatelessWidget {
     ];
 
     return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
+        crossAxisSpacing: DrdSpacing.sm,
+        mainAxisSpacing: DrdSpacing.sm,
+        mainAxisExtent: _serviceCardExtent(context),
       ),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -293,10 +294,11 @@ class HomeScreen extends StatelessWidget {
     ];
 
     return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
+        crossAxisSpacing: DrdSpacing.sm,
+        mainAxisSpacing: DrdSpacing.sm,
+        mainAxisExtent: _serviceCardExtent(context),
       ),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -314,6 +316,36 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  /// ارتفاع بطاقة الخدمة، محسوباً لا مفترضاً.
+  ///
+  /// كان المُشبِك يترك النسبة الافتراضية 1:1، فيصير ارتفاع البطاقة مساوياً
+  /// لعرضها — رقم يقرّره عرض الشاشة ولا علاقة له بما في البطاقة. ومحتواها
+  /// شبه ثابت (أيقونة 40 وسطرا نص)، فيكفي جهاز أضيق قليلاً أو تكبير خط
+  /// بسيط ليتجاوز المحتوى الحدّ: وهو ما ظهر شريطاً أصفر
+  /// «BOTTOM OVERFLOWED BY 2.0 PIXELS» تحت بطاقة «ابحث عن طبيب».
+  ///
+  /// الحساب هنا يتبع تكبير خط النظام، فتكبر البطاقة مع النص بدل أن تقصّه —
+  /// وهذا يخص هذا التطبيق تحديداً: كثير من مستخدميه كبار في السن يرفعون
+  /// حجم الخط في إعدادات الهاتف.
+  static double _serviceCardExtent(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final titleSize = context.text.titleSmall?.fontSize ?? 14;
+    final bodySize = context.text.bodySmall?.fontSize ?? 12;
+
+    // النصّ العربي يحتاج سطراً أعلى من اللاتيني: النازلات والتشكيل.
+    const lineHeight = 1.6;
+
+    return DrdSpacing.card.vertical +
+        _serviceIconSize +
+        DrdSpacing.sm +
+        scaler.scale(titleSize) * lineHeight +
+        DrdSpacing.xxs +
+        // سطران للوصف: «اختر طبيبك واحجز موعدك» ينسدل على الشاشات الضيقة.
+        scaler.scale(bodySize) * lineHeight * 2;
+  }
+
+  static const double _serviceIconSize = 40;
+
   Widget _buildServiceCard(
     BuildContext context, {
     required IconData icon,
@@ -327,7 +359,7 @@ class HomeScreen extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 40, color: context.colors.primary),
+          Icon(icon, size: _serviceIconSize, color: context.colors.primary),
           const SizedBox(height: DrdSpacing.sm),
           Text(
             title,
@@ -340,6 +372,8 @@ class HomeScreen extends StatelessWidget {
           Text(
             subtitle,
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: context.text.bodySmall?.copyWith(color: context.drd.muted),
           ),
         ],
@@ -427,6 +461,9 @@ class _DoctorApplicationSectionState extends State<_DoctorApplicationSection> {
   /// يمنع تكرار طلب تحديث الملف عند كل إعادة بناء.
   bool _refreshRequested = false;
 
+  /// يُزاد ليُعاد الاشتراك في التدفّق عند «إعادة المحاولة».
+  int _streamAttempt = 0;
+
   /// يعيد قراءة مستند المستخدم بعد القبول.
   ///
   /// الترقية تجري على الخادم بعد تسجيل القرار، فحالة الطلب تصل إلى التطبيق
@@ -447,6 +484,7 @@ class _DoctorApplicationSectionState extends State<_DoctorApplicationSection> {
     if (uid == null) return const SizedBox.shrink();
 
     return StreamBuilder<DoctorApplication>(
+      key: ValueKey(_streamAttempt),
       stream: _service.watchMyApplication(uid),
       builder: (context, snapshot) {
         // لا شيء يُعرض قبل وصول الحالة: بطاقة «قدّم طلباً» تومض ثم تتحول
@@ -454,11 +492,27 @@ class _DoctorApplicationSectionState extends State<_DoctorApplicationSection> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox.shrink();
         }
-        // تعذّر قراءة الطلب لا يمنع المريض من استعمال التطبيق — القسم
-        // يختفي بصمت بدل أن يزرع رسالة خطأ في وسط الصفحة الرئيسية.
-        if (snapshot.hasError || !snapshot.hasData) {
-          return const SizedBox.shrink();
+        // فشل القراءة يُقال، ولا يُبتلع.
+        //
+        // كان القسم يختفي صامتاً عند أي خطأ. وهو المدخل **الوحيد** لأن يصبح
+        // المستخدم طبيباً، فاختفاؤه لا يعني «لا شيء هنا» بل «لا سبيل إلى
+        // التقديم، ولا تفسير». وأشيع أسباب الخطأ — قواعد غير منشورة، أو
+        // انقطاع الشبكة — كلها قابلة للإصلاح متى عُرفت.
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.only(top: DrdSpacing.lg),
+            child: AppBanner.error(
+              title: 'تعذّر التحقق من حالة طلب الانضمام',
+              message: 'إن كنت طبيباً وتريد التقديم، تحقّق من اتصالك '
+                  'ثم أعد المحاولة.',
+              action: TextButton(
+                onPressed: () => setState(() => _streamAttempt++),
+                child: const Text('إعادة المحاولة'),
+              ),
+            ),
+          );
         }
+        if (!snapshot.hasData) return const SizedBox.shrink();
 
         final application = snapshot.data!;
         final approvedButNotYetDoctor =
