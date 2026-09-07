@@ -1,0 +1,28 @@
+{
+  // إضافة Red Hat Java ترى android/ كمشروع Gradle فتستوردها وتبني فيها
+  // في الخلفية، فتحتجز android/.gradle/noVersion/buildLogic.lock وتُفشل
+  // كل `flutter run` بـ "Timeout waiting to lock build logic queue".
+  // مشروع Flutter لا يحتاج خادم Java اللغوي أصلاً، فنعطّل الاستيراد كاملاً.
+  "java.import.gradle.enabled": false,
+  "java.import.maven.enabled": false,
+  "java.autobuild.enabled": false,
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "java.import.exclusions": [
+    "**/android/**",
+    "**/ios/**",
+    "**/build/**",
+    "**/node_modules/**",
+    "**/.metadata/**"
+  ],
+
+  // إضافة Gradle for Java تفتح daemons موازية للسبب نفسه.
+  "gradle.nestedProjects": false,
+  "gradle.autoDetect": "off",
+
+  // مراقبة هذه المجلدات تُبطئ المحرر بلا فائدة — كلها مخرجات بناء.
+  "files.watcherExclude": {
+    "**/android/.gradle/**": true,
+    "**/build/**": true,
+    "**/.dart_tool/**": true
+  }
+}
