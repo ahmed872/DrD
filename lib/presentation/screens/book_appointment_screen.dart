@@ -9,60 +9,86 @@ import '../providers/firebase_auth_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 
-class PatientBookingScreen extends StatefulWidget {
-  final String? initialDoctorId;
+/// حجز موعد عند طبيب **مُختار مسبقاً**.
+///
+/// ## لماذا صارت تشترط الطبيب
+///
+/// كانت هذه الشاشة تحمل رحلة كاملة ثانية: بحث بالاسم، ورقائق تخصّصات، وقائمة
+/// أطباء — بجانب كونها وجهة زرّ «احجز موعداً» في شاشة البحث. فالمريض القادم من
+/// البحث بعد أن اختار طبيبه كان يصل إلى شاشة عنوانها «احجز موعد» وفيها **صندوق
+/// بحث ثانٍ وقائمة أطباء ثانية**، طبيبُه محدَّد فيها سلفاً.
+///
+/// ولم تكن الازدواجية شكلية: كانت الشاشتان تحملان مفردات تخصّصات مختلفة،
+/// وتسحبان `doctor_profiles` كاملة، وتُصانان منفصلتين.
+///
+/// الآن رحلة واحدة: البحث يكتشف، وهذه تحجز. و`doctorId` مطلوب لا اختياري،
+/// فلا يمكن الوصول إليها بلا طبيب — الشرط مفروض في النوع لا بالاتفاق.
+class BookAppointmentScreen extends StatefulWidget {
+  const BookAppointmentScreen({super.key, required this.doctorId});
 
-  const PatientBookingScreen({super.key, this.initialDoctorId});
+  /// الطبيب الذي اختاره المريض في شاشة البحث.
+  final String doctorId;
 
   @override
-  State<PatientBookingScreen> createState() => _PatientBookingScreenState();
+  State<BookAppointmentScreen> createState() => _BookAppointmentScreenState();
 }
 
-class _PatientBookingScreenState extends State<PatientBookingScreen> {
+class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   final BookingService _bookingService = BookingService();
 
-  List<Map<String, dynamic>> _allDoctors = [];
-  bool _isLoadingDoctors = true;
+  /// بيانات الطبيب المختار وحده — لا القائمة كلها.
+  Map<String, dynamic>? _doctor;
+  bool _isLoadingDoctor = true;
+  bool _doctorLoadFailed = false;
 
-  Future<void> _fetchRealDoctors() async {
-    setState(() => _isLoadingDoctors = true);
+  /// قراءة مستند واحد بمعرّف معروف.
+  ///
+  /// كانت الشاشة تسحب `doctor_profiles` كاملة ثم تُصفّيها في Dart لتعرض طبيباً
+  /// واحداً. القراءة الآن بحجم ثابت مهما نما الدليل.
+  Future<void> _fetchDoctor() async {
+    setState(() {
+      _isLoadingDoctor = true;
+      _doctorLoadFailed = false;
+    });
     try {
-      // الإسقاط العام — راجع التعليق في patient_search_doctor_screen.dart.
-      final snapshot =
-          await FirebaseFirestore.instance.collection('doctor_profiles').get();
-      _allDoctors = snapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'name': data['name'] ?? 'طبيب غير معروف',
-          'nameEn': data['nameEn'] ?? 'Unknown Doctor',
-          'specialization': data['specialization'] ?? 'عام',
-          'rating': (data['rating'] ?? 0.0).toDouble(),
-          'reviews': data['reviews'] ?? 0,
-          'price': data['price'] ?? 0,
-          'availability': true,
-          'sessionDuration': data['sessionDuration'] ?? 30,
-          'maxPatientsPerSlot': data['maxPatientsPerSlot'] ?? 4,
-          'bookingSystemType': data['bookingSystemType'] ?? 'Individual',
-          'workingHours': data['workingHours'] ?? '09:00 AM - 05:00 PM',
-          'bio': data['bio'] ?? '',
-          'bioEn': data['bioEn'] ?? '',
-          'clinicLocation': data['clinicLocation'] ?? '',
-          'workingDays': data['workingDays'] ?? {},
-        };
-      }).toList();
-    } catch (e) {
-      AppLogger.error('تعذّر جلب قائمة الأطباء', e);
+      final snap = await FirebaseFirestore.instance
+          .collection('doctor_profiles')
+          .doc(widget.doctorId)
+          .get();
+
+      if (!snap.exists) {
+        // ملف عام غير موجود = طبيب خُفض دوره أو حُذف حسابه بعد فتح البحث.
+        if (mounted) {
+          setState(() {
+            _isLoadingDoctor = false;
+            _doctorLoadFailed = true;
+          });
+        }
+        return;
+      }
+
+      final data = snap.data()!;
+      _doctor = {
+        'id': snap.id,
+        'name': data['name'] ?? 'طبيب',
+        'specialization': data['specialization'] ?? 'عام',
+        'price': data['price'] ?? 0,
+        'sessionDuration': data['sessionDuration'] ?? 30,
+        'maxPatientsPerSlot': data['maxPatientsPerSlot'] ?? 4,
+        'bookingSystemType': data['bookingSystemType'] ?? 'Individual',
+        'workingHours': data['workingHours'] ?? '09:00 - 17:00',
+        'workingDays': data['workingDays'] ?? {},
+        'clinicLocation': data['clinicLocation'] ?? '',
+      };
+    } catch (e, st) {
+      AppLogger.error('تعذّر تحميل بيانات الطبيب', e, st);
+      if (mounted) setState(() => _doctorLoadFailed = true);
     }
-    if (mounted) setState(() => _isLoadingDoctors = false);
-    if (_selectedDoctorId != null) {
-      _fetchBookedSlots();
-    }
+    if (!mounted) return;
+    setState(() => _isLoadingDoctor = false);
+    _fetchBookedSlots();
   }
 
-  late TextEditingController _searchController;
-  String _selectedSpecialization = 'جميع التخصصات / All';
-  String? _selectedDoctorId;
   DateTime? _selectedDate;
   String? _selectedTime;
   String? _consultationReason;
@@ -82,16 +108,12 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialDoctorId != null) {
-      _selectedDoctorId = widget.initialDoctorId;
-    }
-    _fetchRealDoctors();
-    _searchController = TextEditingController();
+    _fetchDoctor();
     _selectedDate = DateTime.now().add(const Duration(days: 1));
   }
 
   Future<void> _fetchBookedSlots() async {
-    if (_selectedDoctorId == null || _selectedDate == null) return;
+    if (_selectedDate == null) return;
     setState(() {
       _isLoadingSlots = true;
       _slotAvailability.clear();
@@ -106,11 +128,11 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       // الإشغال يُقرأ من `slots` — المجموعة التي يقرأها الحجز نفسه — بدل
       // `appointments` التي كانت قاعدة الأمان ترفض استعلامها للمريض.
       final availability = await _bookingService.availabilityFor(
-        doctorId: _selectedDoctorId!,
+        doctorId: widget.doctorId,
         date: _selectedDate!,
       );
       final patientAlreadyBooked = await _bookingService.hasAppointmentOnDate(
-        doctorId: _selectedDoctorId!,
+        doctorId: widget.doctorId,
         patientId: auth.userId ?? '',
         date: _selectedDate!,
       );
@@ -131,25 +153,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
 
   @override
   void dispose() {
-    _searchController.dispose();
     super.dispose();
-  }
-
-  List<Map<String, dynamic>> _getFilteredDoctors() {
-    return _allDoctors.where((doctor) {
-      final matchesSearch = doctor['name']
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase()) ||
-          doctor['specialization']
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase());
-
-      final matchesSpec = _selectedSpecialization == 'جميع التخصصات / All' ||
-          doctor['specialization']
-              .contains(_selectedSpecialization.split(' / ')[0]);
-
-      return matchesSearch && matchesSpec;
-    }).toList();
   }
 
   List<String> _getAvailableTimeSlots(Map<String, dynamic> doctor) {
@@ -248,285 +252,81 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('احجز موعد'),
-      ),
-      body: _isLoadingDoctors
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _buildSearchSection(),
-                    const SizedBox(height: 24),
-                    _buildDoctorListSection(),
-                    const SizedBox(height: 24),
-                    if (_selectedDoctorId != null) ...[
-                      _buildDateTimeSection(_allDoctors
-                          .firstWhere((d) => d['id'] == _selectedDoctorId)),
-                      const SizedBox(height: 24),
-                      _buildReasonSection(),
-                      const SizedBox(height: 24),
-                      _buildBookButton(),
-                      const SizedBox(height: 32),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+      appBar: AppBar(title: const Text('حجز موعد')),
+      body: _buildBody(),
     );
   }
 
-  Widget _buildSearchSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          'ابحث عن طبيب / Search Doctor',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _searchController,
-          onChanged: (value) => setState(() {}),
-          decoration: InputDecoration(
-            hintText: 'اسم الطبيب أو التخصص / Doctor name or specialty',
-            prefixIcon: const Icon(Icons.search),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          reverse: true,
-          child: Row(
-            children: [
-              _specChip('جميع التخصصات / All', 'جميع التخصصات / All'),
-              const SizedBox(width: 8),
-              _specChip('أسنان / Dentistry', 'أسنان / Dentistry'),
-              const SizedBox(width: 8),
-              _specChip('نساء / Obstetrics', 'نساء / Obstetrics'),
-              const SizedBox(width: 8),
-              _specChip('جلدية / Dermatology', 'جلدية / Dermatology'),
-              const SizedBox(width: 8),
-              _specChip('عام / General', 'عام / General Practice'),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  Widget _buildBody() {
+    if (_isLoadingDoctor) {
+      return const LoadingView(message: 'جارٍ تحميل مواعيد الطبيب...');
+    }
 
-  Widget _specChip(String label, String spec) {
-    return FilterChip(
-      label: Text(label),
-      selected: _selectedSpecialization == spec,
-      onSelected: (selected) {
-        setState(() {
-          _selectedSpecialization = spec;
-          _selectedDoctorId = null;
-        });
-      },
-      labelStyle: TextStyle(
-        fontWeight: _selectedSpecialization == spec
-            ? FontWeight.bold
-            : FontWeight.normal,
+    if (_doctorLoadFailed || _doctor == null) {
+      return ErrorView(
+        title: 'تعذّر فتح صفحة الحجز',
+        message: 'قد يكون الطبيب لم يعد متاحاً للحجز. '
+            'عُد إلى البحث واختر طبيباً آخر.',
+        onRetry: _fetchDoctor,
+      );
+    }
+
+    final doctor = _doctor!;
+    return SingleChildScrollView(
+      child: Padding(
+        padding: DrdSpacing.screen,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildDoctorHeader(doctor),
+            const SizedBox(height: DrdSpacing.lg),
+            _buildDateTimeSection(doctor),
+            const SizedBox(height: DrdSpacing.lg),
+            _buildReasonSection(),
+            const SizedBox(height: DrdSpacing.lg),
+            _buildBookButton(),
+            const SizedBox(height: DrdSpacing.xl),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildDoctorListSection() {
-    if (_isLoadingDoctors) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(40),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-    final filteredDoctors = _getFilteredDoctors();
-
-    if (filteredDoctors.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 40),
-          child: Column(
-            children: [
-              Icon(Icons.person_search, size: 64, color: context.drd.disabled),
-              const SizedBox(height: DrdSpacing.md),
-              Text(
-                'لم يتم العثور على أطباء',
-                style: context.text.titleSmall?.copyWith(
-                  color: context.drd.muted,
+  /// تذكير هادئ بمن يحجز المريض عنده.
+  ///
+  /// المريض وصل هنا بعد أن اختار طبيبه في البحث، فلا حاجة لإعادة عرض بطاقته
+  /// كاملة — سطران يؤكّدان أنه في المكان الصحيح ويكفيان.
+  Widget _buildDoctorHeader(Map<String, dynamic> doctor) {
+    return AppCard(
+      child: Row(
+        children: [
+          Icon(Icons.medical_services_outlined, color: context.colors.primary),
+          const SizedBox(width: DrdSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  doctor['name'],
+                  style: context.text.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
-              ),
-            ],
+                Text(
+                  doctor['specialization'],
+                  style: context.text.bodySmall
+                      ?.copyWith(color: context.drd.muted),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          'الأطباء المتاحون / Available Doctors',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: filteredDoctors.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final doctor = filteredDoctors[index];
-            final isSelected = _selectedDoctorId == doctor['id'];
-
-            return Card(
-              // الحدّ وحده يميّز البطاقة المحدّدة؛ النسق يرسم البقية.
-              shape: RoundedRectangleBorder(
-                borderRadius: DrdRadius.lgAll,
-                side: BorderSide(
-                  color:
-                      isSelected ? context.colors.primary : context.drd.border,
-                  width: isSelected ? 2 : DrdSizes.hairline,
-                ),
-              ),
-              child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _selectedDoctorId = doctor['id'];
-                    _selectedTime = null;
-                  });
-                  _fetchBookedSlots();
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.star,
-                                  color: context.drd.rating, size: 18),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${doctor['rating']} (${doctor['reviews']})',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  doctor['name'],
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleSmall
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                                Text(
-                                  doctor['nameEn'],
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(color: context.drd.muted),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        doctor['specialization'],
-                        style: context.text.bodyMedium?.copyWith(
-                          color: context.colors.primary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (doctor['clinicLocation'] != null &&
-                          doctor['clinicLocation'].toString().isNotEmpty) ...[
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.location_on,
-                                size: 14, color: context.drd.muted),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                doctor['clinicLocation'],
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: context.drd.muted,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      Text(
-                        doctor['bio'],
-                        style: context.text.bodySmall?.copyWith(
-                          color: context.drd.muted,
-                        ),
-                      ),
-                      const SizedBox(height: DrdSpacing.xs),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            isSelected ? 'محدد ✓' : 'اختر',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: isSelected
-                                          ? context.drd.success
-                                          : context.drd.muted,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                          ),
-                          Text(
-                            '${doctor['price']} جنيه',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
+          if ((doctor['price'] ?? 0) > 0)
+            Text(
+              '${(doctor['price'] as num).toInt()} جنيه',
+              style: context.text.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+        ],
+      ),
     );
   }
 
@@ -535,7 +335,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(
-          'اختر التاريخ والوقت / Select Date & Time',
+          'اختر التاريخ والوقت',
           style: Theme.of(context)
               .textTheme
               .titleMedium
@@ -583,7 +383,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           )
         else ...[
           Text(
-            'أوقات متاحة / Available Times',
+            'أوقات متاحة',
             style: context.text.bodySmall?.copyWith(color: context.drd.muted),
           ),
           const SizedBox(height: DrdSpacing.xs),
@@ -672,7 +472,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(
-          'سبب الزيارة / Reason for Visit',
+          'سبب الزيارة',
           style: Theme.of(context)
               .textTheme
               .titleMedium
@@ -683,7 +483,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
           maxLines: 4,
           onChanged: (value) => setState(() => _consultationReason = value),
           decoration: const InputDecoration(
-            hintText: 'اشرح سبب الزيارة / Describe your reason for visit',
+            hintText: 'اشرح سبب الزيارة',
           ),
         ),
       ],
@@ -691,8 +491,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   }
 
   Widget _buildBookButton() {
-    final isComplete = _selectedDoctorId != null &&
-        _selectedDate != null &&
+    final isComplete = _selectedDate != null &&
         _selectedTime != null &&
         (_consultationReason?.isNotEmpty ?? false);
 
@@ -701,7 +500,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
       child: FilledButton.icon(
         onPressed: isComplete ? _confirmBooking : null,
         icon: const Icon(Icons.check_circle),
-        label: const Text('تأكيد الحجز / Confirm Booking'),
+        label: const Text('تأكيد الحجز'),
       ),
     );
   }
@@ -777,32 +576,31 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
   void _confirmBooking() {
     if (_selectedTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        AppSnackBar.warning('الرجاء اختيار وقت الموعد / Please select a time'),
+        AppSnackBar.warning('الرجاء اختيار وقت الموعد'),
       );
       return;
     }
 
-    final doctor = _allDoctors.firstWhere((d) => d['id'] == _selectedDoctorId);
+    final doctor = _doctor!;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('تأكيد الحجز / Confirm Booking'),
+        title: const Text('تأكيد الحجز'),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _confirmRow('الطبيب / Doctor', doctor['name']),
-              _confirmRow('التخصص / Specialty',
-                  doctor['specialization'].split(' / ')[0]),
+              _confirmRow('الطبيب', doctor['name']),
+              _confirmRow('التخصص', doctor['specialization'].split(' / ')[0]),
               _confirmRow(
-                'التاريخ / Date',
+                'التاريخ',
                 DateFormat('EEEE, d MMMM yyyy', 'ar').format(_selectedDate!),
               ),
-              _confirmRow('الوقت / Time', _selectedTime ?? ''),
-              _confirmRow('السعر / Price', '${doctor['price']} جنيه'),
+              _confirmRow('الوقت', _selectedTime ?? ''),
+              _confirmRow('السعر', '${doctor['price']} جنيه'),
               const SizedBox(height: 12),
               const AppBanner.info(
                 message: 'سيصلك تأكيد عبر البريد الإلكتروني\n'
@@ -814,7 +612,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء / Cancel'),
+            child: const Text('إلغاء'),
           ),
           FilledButton(
             onPressed: () async {
@@ -874,7 +672,7 @@ class _PatientBookingScreenState extends State<PatientBookingScreen> {
                 await _fetchBookedSlots();
               }
             },
-            child: const Text('تأكيد / Confirm'),
+            child: const Text('تأكيد'),
           ),
         ],
       ),

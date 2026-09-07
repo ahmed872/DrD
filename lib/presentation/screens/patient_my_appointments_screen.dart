@@ -6,6 +6,7 @@ import '../../core/constants/appointment_status.dart';
 import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/utils/firebase_error_ar.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 
@@ -25,6 +26,12 @@ class _PatientMyAppointmentsScreenState
   List<Map<String, dynamic>> _allAppointments = [];
   bool _isLoading = false;
 
+  /// فشل تحميل المواعيد.
+  ///
+  /// بدونها كانت الشاشة تسقط إلى حالة «لا توجد مواعيد» عند أي عطل شبكة —
+  /// فيرى مريض عنده مواعيد أن سجلّه فارغ، ويستنتج أن حجزه ضاع.
+  bool _loadFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -34,6 +41,7 @@ class _PatientMyAppointmentsScreenState
   Future<void> _fetchMyAppointments() async {
     setState(() => _isLoading = true);
     final auth = Provider.of<FirebaseAuthService>(context, listen: false);
+    _loadFailed = false;
     if (auth.userId != null) {
       try {
         final snap = await FirebaseFirestore.instance
@@ -80,13 +88,10 @@ class _PatientMyAppointmentsScreenState
           if (dateCmp != 0) return dateCmp;
           return (b['time'] as String).compareTo(a['time'] as String);
         });
-      } catch (e) {
-        AppLogger.info('Error fetching appointments: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            AppSnackBar.error('حدث خطأ أثناء تحميل المواعيد: $e'),
-          );
-        }
+      } catch (e, st) {
+        // كانت الرسالة تعرض نصّ الاستثناء الخام للمريض.
+        AppLogger.error('تعذّر تحميل مواعيد المريض', e, st);
+        _loadFailed = true;
       }
     }
     if (mounted) setState(() => _isLoading = false);
@@ -133,7 +138,8 @@ class _PatientMyAppointmentsScreenState
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            AppSnackBar.error('حدث خطأ أثناء الإلغاء: $e'),
+            AppSnackBar.error(firebaseErrorAr(e,
+                fallback: 'تعذّر إلغاء الموعد. حاول مرة أخرى.')),
           );
         }
       }
@@ -374,7 +380,8 @@ class _PatientMyAppointmentsScreenState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          AppSnackBar.error('حدث خطأ أثناء إرسال التقييم: $e'),
+          AppSnackBar.error(firebaseErrorAr(e,
+              fallback: 'تعذّر إرسال تقييمك. حاول مرة أخرى.')),
         );
       }
     }
@@ -450,17 +457,24 @@ class _PatientMyAppointmentsScreenState
           // List
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : appointmentsToList.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: appointmentsToList.length,
-                        itemBuilder: (context, index) {
-                          return _buildAppointmentCard(
-                              appointmentsToList[index]);
-                        },
-                      ),
+                ? const LoadingView(message: 'جارٍ تحميل مواعيدك...')
+                : _loadFailed
+                    ? ErrorView(
+                        title: 'تعذّر تحميل مواعيدك',
+                        message: 'تحقّق من اتصالك بالإنترنت ثم أعد المحاولة. '
+                            'مواعيدك محفوظة ولم يضع منها شيء.',
+                        onRetry: _fetchMyAppointments,
+                      )
+                    : appointmentsToList.isEmpty
+                        ? _buildEmptyState()
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: appointmentsToList.length,
+                            itemBuilder: (context, index) {
+                              return _buildAppointmentCard(
+                                  appointmentsToList[index]);
+                            },
+                          ),
           ),
         ],
       ),
@@ -698,11 +712,13 @@ class _PatientMyAppointmentsScreenState
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
+                    // كان هنا إشعار «سيتم تفعيل التقييم قريباً» — بينما
+                    // التقييم يعمل فعلاً من زر يحمل **نفس النص ونفس الأيقونة**
+                    // في بطاقة الموعد. فمن فتح التفاصيل أولاً كان يستنتج أن
+                    // الميزة غير جاهزة ولا يعود يجرّبها.
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('سيتم تفعيل التقييم قريباً!')),
-                      );
+                      Navigator.pop(context);
+                      _showRatingDialog(appointment);
                     },
                     icon: const Icon(Icons.star_rate),
                     label: const Text('تقييم الطبيب'),

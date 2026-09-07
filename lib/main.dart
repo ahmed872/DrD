@@ -10,7 +10,6 @@ import 'core/theme/app_theme.dart';
 import 'core/utils/app_logger.dart';
 import 'firebase_options.dart';
 import 'presentation/providers/firebase_auth_service.dart';
-import 'presentation/providers/rating_provider.dart';
 import 'presentation/screens/splash_screen.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/home_screen.dart';
@@ -73,8 +72,11 @@ class MedicalApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
+        // `RatingProvider` كان مسجَّلاً هنا ولا يستدعيه أحد: الشاشتان
+        // الوحيدتان اللتان تستخدمانه لم يكن إليهما أي مسار تنقّل. والتقييم
+        // العامل يمرّ عبر `reviews` مباشرةً في شاشة «مواعيدي»، ويحسب
+        // متوسطه `syncDoctorRating` على الخادم.
         ChangeNotifierProvider(create: (_) => FirebaseAuthService()),
-        ChangeNotifierProvider(create: (_) => RatingProvider()),
       ],
       child: MaterialApp(
         title: 'DrD — حجز مواعيد الأطباء',

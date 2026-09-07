@@ -6,6 +6,7 @@ import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/constants/appointment_status.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/utils/firebase_error_ar.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/encounter.dart';
@@ -53,16 +54,33 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
         return;
       }
 
-      // جلب جميع المواعيد للطبيب فقط (بدون composite index)
-      Query query = FirebaseFirestore.instance
-          .collection('appointments')
-          .where('doctorId', isEqualTo: auth.userId);
+      // ## نافذة زمنية بدل التاريخ كله
+      //
+      // كانت الشاشة تسحب **كل** مواعيد الطبيب منذ نشأة العيادة ثم تُصفّيها في
+      // Dart، بينما أوسع ما تعرضه هو أسبوع واحد. طبيب بخمسة آلاف موعد كان
+      // يدفع خمسة آلاف قراءة لفتح جدول يومه — في كل مرة.
+      //
+      // القيد على الخادم **لا يُخفي شيئاً**: النافذة أوسع من كل خيارات
+      // التصفية الثلاثة (اليوم، الغد، هذا الأسبوع) مجتمعة. والفهرس المركّب
+      // (doctorId, appointmentDate) موجود في firestore.indexes.json.
+      final now = DateTime.now();
+      final startOfWeek = now.subtract(Duration(days: now.weekday % 7));
+      final endOfWeek = startOfWeek.add(const Duration(days: 6));
+      final tomorrow = now.add(const Duration(days: 1));
+      final windowEnd = endOfWeek.isAfter(tomorrow) ? endOfWeek : tomorrow;
 
-      final snapshot = await query.get();
+      final fmt = DateFormat('yyyy-MM-dd');
+      final snapshot = await FirebaseFirestore.instance
+          .collection('appointments')
+          .where('doctorId', isEqualTo: auth.userId)
+          .where('appointmentDate',
+              isGreaterThanOrEqualTo: fmt.format(startOfWeek))
+          .where('appointmentDate', isLessThanOrEqualTo: fmt.format(windowEnd))
+          .get();
 
       // فلترة الوقت والفرز في Dart بدلاً من Firestore
       final allAppointments = snapshot.docs.map((doc) {
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data();
         return {
           'id': doc.id,
           'patientName': data['patientName'] ?? 'Unknown',
@@ -116,8 +134,14 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
       if (mounted) setState(() => _isLoading = false);
       if (mounted) setState(() => _errorMessage = null);
     } catch (e) {
-      AppLogger.info('Error fetching appointments: $e');
-      final errorMsg = 'خطأ في الاتصال: ${e.toString().substring(0, 50)}...';
+      // كانت هنا: 'خطأ في الاتصال: ${e.toString().substring(0, 50)}...'
+      // وهي عطلان معاً — تعرض نصّ الاستثناء الخام للطبيب، و`substring(0, 50)`
+      // **يرمي RangeError** لو كانت الرسالة أقصر من خمسين حرفاً، أي أن
+      // معالِج الخطأ نفسه كان ينهار على أقصر الأخطاء.
+      AppLogger.error('تعذّر جلب مواعيد الطبيب', e);
+      final errorMsg = firebaseErrorAr(e,
+          fallback:
+              'تعذّر تحميل جدول المواعيد. تحقّق من اتصالك وحاول مرة أخرى.');
 
       if (mounted) {
         setState(() {
@@ -180,7 +204,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         message: _errorMessage!,
                         action: TextButton(
                           onPressed: _fetchAppointments,
-                          child: const Text('أعد المحاولة / Retry'),
+                          child: const Text('أعد المحاولة'),
                         ),
                         onDismiss: () => setState(() => _errorMessage = null),
                       ),
@@ -272,7 +296,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              'اختر التاريخ / Select Date',
+              'اختر التاريخ',
               style: context.text.titleSmall?.copyWith(
                 color: context.drd.muted,
               ),
@@ -461,20 +485,20 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
               const SizedBox(height: 12),
               _infoRow(
                 icon: Icons.person,
-                label: 'المريض / Patient',
+                label: 'المريض',
                 value: appointment['patientName'],
                 valueEn: appointment['patientNameEn'],
               ),
               const SizedBox(height: 12),
               _infoRow(
                 icon: Icons.phone,
-                label: 'الهاتف / Phone',
+                label: 'الهاتف',
                 value: appointment['phone'],
               ),
               const SizedBox(height: 12),
               _infoRow(
                 icon: Icons.medical_services,
-                label: 'السبب / Reason',
+                label: 'السبب',
                 value: appointment['reason'],
               ),
               const SizedBox(height: 12),
@@ -482,7 +506,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                   appointment['notes'].isNotEmpty)
                 _infoRow(
                   icon: Icons.note_alt,
-                  label: 'ملاحظات / Notes',
+                  label: 'ملاحظات',
                   value: appointment['notes'],
                 ),
               const SizedBox(height: 16),
@@ -640,7 +664,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
           child: ElevatedButton.icon(
             onPressed: () => _completeAppointment(appointment['id']),
             icon: const Icon(Icons.check),
-            label: const Text('إنهاء / Complete'),
+            label: const Text('إنهاء'),
           ),
         ),
         const SizedBox(width: 12),
@@ -649,7 +673,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
             onPressed:
                 canCancel ? () => _cancelAppointment(appointment['id']) : null,
             icon: const Icon(Icons.close),
-            label: const Text('إلغاء / Cancel'),
+            label: const Text('إلغاء'),
             style: OutlinedButton.styleFrom(
               foregroundColor:
                   canCancel ? context.colors.error : context.drd.disabled,
@@ -713,7 +737,8 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          AppSnackBar.error('خطأ: $e'),
+          AppSnackBar.error(firebaseErrorAr(e,
+              fallback: 'تعذّر تحديث حالة الموعد. حاول مرة أخرى.')),
         );
       }
     }
@@ -730,14 +755,15 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('تم إلغاء الموعد / Cancelled'),
+            content: const Text('تم إلغاء الموعد'),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          AppSnackBar.error('خطأ: $e'),
+          AppSnackBar.error(firebaseErrorAr(e,
+              fallback: 'تعذّر تحديث حالة الموعد. حاول مرة أخرى.')),
         );
       }
     }
@@ -764,7 +790,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                       onPressed: () => Navigator.pop(context),
                     ),
                     Text(
-                      'تفاصيل الموعد / Details',
+                      'تفاصيل الموعد',
                       style: context.text.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -819,7 +845,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            'السبب / Reason',
+                            'السبب',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: context.drd.muted,
@@ -857,7 +883,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            'ملاحظات الطبيب / Notes',
+                            'ملاحظات الطبيب',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: context.drd.muted,
@@ -916,7 +942,7 @@ class _DoctorScheduleScreenState extends State<DoctorScheduleScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('إغلاق / Close'),
+                    child: const Text('إغلاق'),
                   ),
                 ),
               ],

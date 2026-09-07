@@ -192,7 +192,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('المرضى / Patients'),
+          title: const Text('المرضى'),
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -204,7 +204,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('المرضى / Patients'),
+        title: const Text('المرضى'),
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -331,7 +331,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
       controller: _searchController,
       onChanged: (value) => setState(() {}),
       decoration: InputDecoration(
-        hintText: 'اسم المريض أو الهاتف / Patient name or phone',
+        hintText: 'اسم المريض أو الهاتف',
         prefixIcon: const Icon(Icons.search),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -342,9 +342,9 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
   Widget _buildSortOptions() {
     final sorts = [
-      ('الأخيرة / Recent', 0),
-      ('الاسم / Name', 1),
-      ('الزيارات / Visits', 2),
+      ('الأخيرة', 0),
+      ('الاسم', 1),
+      ('الزيارات', 2),
     ];
 
     return SingleChildScrollView(
@@ -525,7 +525,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
             _patientDetailRow(
               context,
               icon: Icons.phone,
-              label: 'الهاتف / Phone',
+              label: 'الهاتف',
               value: patient['phone'],
             ),
             const SizedBox(height: 10),
@@ -539,7 +539,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        'عدد الزيارات / Total Visits',
+                        'عدد الزيارات',
                         style: context.text.bodySmall?.copyWith(
                           color: context.drd.muted,
                         ),
@@ -559,7 +559,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        'آخر زيارة / Last Visit',
+                        'آخر زيارة',
                         style: context.text.bodySmall?.copyWith(
                           color: context.drd.muted,
                         ),
@@ -593,7 +593,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            'الموعد التالي / Next Appointment',
+                            'الموعد التالي',
                             style: context.text.bodySmall?.copyWith(
                               color: context.drd.onSuccessContainer,
                             ),
@@ -627,7 +627,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    'لا يوجد موعد قادم / No upcoming appointment',
+                    'لا يوجد موعد قادم',
                     style: context.text.bodySmall?.copyWith(
                       color: context.drd.muted,
                     ),
@@ -644,7 +644,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               child: ElevatedButton.icon(
                 onPressed: () => _viewPatientDetails(patient),
                 icon: const Icon(Icons.visibility),
-                label: const Text('عرض التفاصيل / View Details'),
+                label: const Text('عرض التفاصيل'),
               ),
             ),
           ],
@@ -693,7 +693,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
   void _viewPatientDetails(Map<String, dynamic> patient) {
     ScaffoldMessenger.of(context).showSnackBar(
-      AppSnackBar.info('${patient['name']} — عرض التفاصيل / Viewing details'),
+      AppSnackBar.info('${patient['name']} — عرض التفاصيل'),
     );
   }
 }

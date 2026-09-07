@@ -67,17 +67,19 @@ MedicalShare share({
 
 /// خدمة مزيّفة تسجّل ما طُلب منها.
 class _FakeService extends MedicalShareService {
+  // `createResult` و`revokeResult` ثابتان لا معاملان: لم يمرّرهما أي اختبار،
+  // فكان المحلّل يحذّر من معامل اختياري بلا مستخدم. الحقلان ما زالا مقروءين
+  // في الاستبدالات أدناه، فالنتيجة نفسها بلا تحذير — ولو احتاج اختبار
+  // لاحق تغييرهما، يعودان معاملين عندئذٍ لا قبله.
   _FakeService({
     this.doctors = const [],
-    this.createResult = const ShareResult.success('new_share'),
-    this.revokeResult = const ShareResult.success(),
     this.shareStream,
     this.doctorsThrow = false,
   });
 
   final List<DirectoryDoctor> doctors;
-  final ShareResult createResult;
-  final ShareResult revokeResult;
+  final ShareResult createResult = const ShareResult.success('new_share');
+  final ShareResult revokeResult = const ShareResult.success();
   final Stream<MedicalShare?>? shareStream;
   final bool doctorsThrow;
 

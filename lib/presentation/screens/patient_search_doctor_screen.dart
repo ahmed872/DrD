@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'patient_booking_screen.dart';
+import 'book_appointment_screen.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/constants/specialties.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 
@@ -20,15 +21,12 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
   RangeValues _priceRange = const RangeValues(100, 500);
   bool _availableNow = false;
 
-  final List<String> _specialties = [
-    'الكل',
-    'عام',
-    'قلب',
-    'أسنان',
-    'عيون',
-    'جلدية',
-    'أطفال',
-  ];
+  // المصدر الموحّد — راجع lib/core/constants/specialties.dart.
+  //
+  // كانت القائمة مكتوبة هنا يدوياً وتحوي `قلب` — تخصّص لا يستطيع أي طبيب
+  // اختياره، فالرقاقة تُرجع صفراً دائماً — بينما `نساء` و`باطنية` و`عظام`
+  // يختارها الأطباء ولا رقاقة لها، فلا يجدهم المريض إلا بالبحث النصّي.
+  final List<String> _specialties = Specialties.filterOptions;
 
   List<Map<String, dynamic>> _allDoctors = [];
   bool _isLoadingDoctors = true;
@@ -513,8 +511,8 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => PatientBookingScreen(
-                        initialDoctorId: doctor['id'],
+                      builder: (context) => BookAppointmentScreen(
+                        doctorId: doctor['id'] as String,
                       ),
                     ),
                   );

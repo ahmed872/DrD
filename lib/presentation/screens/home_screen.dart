@@ -14,7 +14,6 @@ import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
 import 'doctor_patients_screen.dart';
 import 'doctor_analytics_screen.dart';
-import 'patient_booking_screen.dart';
 import 'patient_my_appointments_screen.dart';
 import 'patient_medical_history_screen.dart';
 import 'patient_search_doctor_screen.dart';
@@ -261,23 +260,23 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildPatientServices(BuildContext context) {
     final services = [
+      // مدخل واحد للحجز.
+      //
+      // كان هنا مدخلان: «حجز موعد» يفتح شاشة تبحث وتحجز، و«البحث» يفتح شاشة
+      // بحث تنتهي بالشاشة نفسها. فكان المريض القادم من البحث يرى صندوق بحث
+      // ثانياً وقائمة أطباء ثانية بعد أن اختار طبيبه. الرحلة الآن واحدة:
+      // ابحث عن طبيب ← اختر ← احجز.
       {
-        'icon': Icons.date_range,
-        'title': 'حجز موعد',
-        'subtitle': 'موعد جديد',
-        'action': 'book',
+        'icon': Icons.search,
+        'title': 'ابحث عن طبيب',
+        'subtitle': 'اختر طبيبك واحجز موعدك',
+        'action': 'search',
       },
       {
         'icon': Icons.calendar_month,
         'title': 'مواعيدي',
         'subtitle': 'مواعيدك',
         'action': 'appointments',
-      },
-      {
-        'icon': Icons.search,
-        'title': 'البحث',
-        'subtitle': 'البحث عن طبيب',
-        'action': 'search',
       },
       {
         'icon': Icons.folder,
@@ -372,12 +371,6 @@ class HomeScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const DoctorAnalyticsScreen()),
-        );
-        break;
-      case 'book':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const PatientBookingScreen()),
         );
         break;
       case 'appointments':

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/utils/firebase_error_ar.dart';
+import '../../core/utils/app_logger.dart';
+import '../../core/constants/specialties.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 
@@ -29,21 +32,21 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
   String? _selectedSpecialtyAr;
   String? _selectedSpecialtyEn;
 
+  // المصدر الموحّد — راجع lib/core/constants/specialties.dart.
+  // كانت القائمة مكتوبة هنا وفي شاشة البحث بمفردات مختلفة، فكان الطبيب
+  // يختار تخصّصاً لا رقاقة تصفية له، والمريض يرى رقاقة لا طبيب لها.
   final List<Map<String, String>> _specialties = [
-    {'ar': 'عام', 'en': 'General Practice'},
-    {'ar': 'أسنان', 'en': 'Dentistry'},
-    {'ar': 'نساء', 'en': 'Obstetrics'},
-    {'ar': 'جلدية', 'en': 'Dermatology'},
-    {'ar': 'أطفال', 'en': 'Pediatrics'},
-    {'ar': 'عيون', 'en': 'Ophthalmology'},
-    {'ar': 'باطنية', 'en': 'Internal Medicine'},
-    {'ar': 'عظام', 'en': 'Orthopedics'},
+    for (final s in Specialties.all) {'ar': s.ar, 'en': s.en},
   ];
 
   // Working hours and days
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 17, minute: 0);
 
+  /// أيام العمل. **المفاتيح بيانات لا نصوص واجهة**: تُكتب كما هي في
+  /// `users.workingDays`، وتقرأها شاشة الحجز لتحديد الأيام المتاحة. تغيير
+  /// صيغتها يفصل كل جدول قائم عن شاشة الحجز، فيبقى الشكل التاريخي ويُعرض
+  /// الجزء العربي وحده — راجع `_dayLabel`.
   final Map<String, bool> _workingDays = {
     'السبت (Saturday)': true,
     'الأحد (Sunday)': true,
@@ -55,6 +58,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
   };
 
   bool _isLoading = false;
+
+  /// اسم اليوم للعرض: الجزء العربي من المفتاح المخزَّن.
+  static String _dayLabel(String storageKey) => storageKey.split(' (').first;
 
   @override
   void initState() {
@@ -162,15 +168,17 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   }
                 }
               });
-            } catch (e) {
-              debugPrint('Error loading working days: $e');
+            } catch (e, st) {
+              AppLogger.warning('تعذّرت قراءة أيام العمل: $e');
+              AppLogger.error('تفاصيل أيام العمل', e, st);
             }
           }
         }
-      } catch (e) {
-        debugPrint('Error loading doctor profile: $e');
+      } catch (e, st) {
+        AppLogger.error('تعذّر تحميل ملف الطبيب', e, st);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load profile: $e')),
+          AppSnackBar.error(firebaseErrorAr(e,
+              fallback: 'تعذّر تحميل بيانات عيادتك. حاول مرة أخرى.')),
         );
       }
     }
@@ -195,7 +203,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           IconButton(
             icon: const Icon(Icons.check_circle),
             onPressed: _saveSetting,
-            tooltip: 'Save / احفظ',
+            tooltip: 'حفظ',
           ),
         ],
       ),
@@ -206,7 +214,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               // === معلومات العيادة ===
-              _buildSectionTitle('📋 معلومات العيادة / Clinic Info'),
+              _buildSectionTitle('📋 معلومات العيادة'),
               const SizedBox(height: 16),
 
               _buildTextField(
@@ -224,7 +232,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 12),
 
               _buildTextField(
-                label: 'موقع العيادة / Clinic Location',
+                label: 'موقع العيادة',
                 controller: _clinicLocationController,
                 icon: Icons.location_on,
               ),
@@ -233,7 +241,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               DropdownButtonFormField<String>(
                 value: _selectedSpecialtyAr,
                 decoration: InputDecoration(
-                  labelText: 'التخصص / Specialization',
+                  labelText: 'التخصص',
                   prefixIcon: Icon(Icons.medical_services),
                 ),
                 items: _specialties.map((spec) {
@@ -255,7 +263,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 12),
 
               _buildTextField(
-                label: 'رقم الهاتف / Phone',
+                label: 'رقم الهاتف',
                 controller: _phoneController,
                 icon: Icons.phone,
                 keyboardType: TextInputType.phone,
@@ -263,7 +271,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 12),
 
               _buildTextField(
-                label: 'نبذة عنك (Arabic)',
+                label: 'نبذة عنك',
                 controller: _bioAr,
                 icon: Icons.info,
                 maxLines: 3,
@@ -280,7 +288,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 24),
 
               // === أسعار وأوقات المواعيد ===
-              _buildSectionTitle('⏱️ مدة الموعد والسعر / Duration & Price'),
+              _buildSectionTitle('⏱️ مدة الموعد والسعر'),
               const SizedBox(height: 16),
 
               Column(
@@ -289,8 +297,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const Text('نظام مجمع (Grouped)',
-                          style: TextStyle(fontSize: 12)),
+                      const Text('نظام مجمّع', style: TextStyle(fontSize: 12)),
                       Radio<String>(
                         value: 'Grouped',
                         groupValue: _bookingSystemType,
@@ -302,8 +309,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const Text('نظام فردي (Individual)',
-                          style: TextStyle(fontSize: 12)),
+                      const Text('نظام فردي', style: TextStyle(fontSize: 12)),
                       Radio<String>(
                         value: 'Individual',
                         groupValue: _bookingSystemType,
@@ -350,7 +356,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 24),
 
               // === ساعات العمل ===
-              _buildSectionTitle('🕐 ساعات العمل / Working Hours'),
+              _buildSectionTitle('🕐 ساعات العمل'),
               const SizedBox(height: 16),
 
               Container(
@@ -366,12 +372,12 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         _buildTimePickerButton(
-                          'وقت النهاية / End',
+                          'وقت النهاية',
                           _endTime,
                           (time) => setState(() => _endTime = time),
                         ),
                         _buildTimePickerButton(
-                          'وقت البداية / Start',
+                          'وقت البداية',
                           _startTime,
                           (time) => setState(() => _startTime = time),
                         ),
@@ -406,7 +412,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 24),
 
               // === أيام العمل ===
-              _buildSectionTitle('📅 أيام العمل / Working Days'),
+              _buildSectionTitle('📅 أيام العمل'),
               const SizedBox(height: 16),
 
               Container(
@@ -423,7 +429,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              entry.key,
+                              _dayLabel(entry.key),
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w500,
@@ -456,7 +462,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   onPressed: _saveSetting,
                   icon: const Icon(Icons.save),
                   label: const Text(
-                    'حفظ الإعدادات / Save Settings',
+                    'حفظ الإعدادات',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   style: FilledButton.styleFrom(
@@ -477,7 +483,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   onPressed: _showPreview,
                   icon: const Icon(Icons.visibility),
                   label: const Text(
-                    'معاينة / Preview',
+                    'معاينة',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -643,13 +649,14 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            AppSnackBar.success('تم الحفظ بنجاح / Saved Successfully'),
+            AppSnackBar.success('تم الحفظ بنجاح'),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            AppSnackBar.error('Error saving settings: $e'),
+            AppSnackBar.error(firebaseErrorAr(e,
+                fallback: 'تعذّر حفظ إعدادات العيادة. حاول مرة أخرى.')),
           );
         }
       }
@@ -666,7 +673,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       builder: (context) => AlertDialog(
         title: const Row(
           children: [
-            Text('👁️ معاينة / Preview'),
+            Text('👁️ معاينة'),
           ],
         ),
         content: SingleChildScrollView(
@@ -702,7 +709,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('إغلاق / Close'),
+            child: const Text('إغلاق'),
           ),
         ],
       ),

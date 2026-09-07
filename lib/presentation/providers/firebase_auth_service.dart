@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../../core/utils/firebase_error_ar.dart';
 
 /// خدمة Firebase للمصادقة وتخزين البيانات
 class FirebaseAuthService extends ChangeNotifier {
@@ -209,26 +210,53 @@ class FirebaseAuthService extends ChangeNotifier {
         'createdAt': FieldValue.serverTimestamp(),
       };
 
-      await _firestore.collection('users').doc(firebaseUser.uid).set(newUser);
-
-      // فهرس الجوال — هو ما يسمح بتسجيل الدخول بالرقم لاحقاً دون فتح
-      // مجموعة `users` للقراءة العامة.
-      await _firestore.collection('phone_index').doc(cleanedPhone).set({
+      // ## المستندان يُكتبان معاً أو لا يُكتب أيّهما
+      //
+      // كانا كتابتين متتاليتين، والثانية هي فهرس الجوال — وتسجيل الدخول
+      // يترجم الرقم إلى بريد عبره **حصراً**. فلو فشلت (شبكة، أو رقم حجزه
+      // غيرُه فتحوّل الطلب إلى `update` مرفوض) يبقى حساب المصادقة ومستند
+      // المستخدم قائمين بلا مدخل فهرس: صاحبه لا يستطيع الدخول أبداً،
+      // وإعادة التسجيل تُرفض بـ`email-already-in-use`. حساب محبوس بلا
+      // مخرج في التطبيق.
+      //
+      // `WriteBatch` يجعلهما عملية واحدة: القواعد تُقيَّم لكل مستند على حدة،
+      // لكن الدفعة لا تُثبَّت إلا إذا نجح الاثنان.
+      final batch = _firestore.batch();
+      batch.set(_firestore.collection('users').doc(firebaseUser.uid), newUser);
+      batch.set(_firestore.collection('phone_index').doc(cleanedPhone), {
         'uid': firebaseUser.uid,
         'email': cleanedEmail,
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      try {
+        await batch.commit();
+      } catch (e) {
+        // يبقى احتمال واحد: حساب المصادقة أُنشئ ثم فشلت الدفعة. تركه يعني
+        // بريداً محجوزاً لحساب بلا بيانات — فيُحذف هنا ليعود التسجيل ممكناً.
+        // الحذف متاح بلا إعادة مصادقة لأن الإنشاء وقع للتوّ.
+        AppLogger.error('فشل حفظ بيانات التسجيل، يُتراجع عن حساب المصادقة', e);
+        try {
+          await firebaseUser.delete();
+        } catch (deleteError) {
+          // لو تعذّر التراجع أيضاً، يُسجَّل ليُعالَج إدارياً — ولا يُدَّعى نجاح.
+          AppLogger.error('تعذّر التراجع عن حساب المصادقة', deleteError);
+        }
+        rethrow;
+      }
 
       _userId = firebaseUser.uid;
       _userData = newUser;
       _emailVerified = true;
 
       _isLoading = false;
-      _errorMessage = 'تم إنشاء الحساب! تحقق من بريدك الإلكتروني لتفعيله ✅';
+      _errorMessage = 'تم إنشاء حسابك بنجاح ✅';
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'خطأ في التسجيل: $e';
+      AppLogger.error('فشل إنشاء الحساب', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر إنشاء الحساب. تحقّق من اتصالك وحاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -303,24 +331,19 @@ class FirebaseAuthService extends ChangeNotifier {
         notifyListeners();
         return true;
       } on FirebaseAuthException catch (e) {
-        if (e.code == 'user-not-found' ||
-            e.code == 'wrong-password' ||
-            e.code == 'invalid-credential') {
-          _errorMessage = 'رقم الجوال أو كلمة المرور غير صحيحة';
-        } else if (e.code == 'user-disabled') {
-          _errorMessage = 'تم تعطيل هذا الحساب';
-        } else if (e.code == 'invalid-email') {
-          _errorMessage = 'صيغة البريد الإلكتروني غير صحيحة';
-        } else {
-          _errorMessage =
-              'خطأ الدخول: يرجى التأكد من صحة البيانات'; // رسالة أبسط بدون أكواد انجليزي
-        }
+        // السلسلة اليدوية انتقلت إلى `firebaseErrorAr` ليكون لكل رمز رسالة
+        // واحدة في التطبيق كله، بدل نسخة لكل شاشة تنحرف عن أخواتها.
+        AppLogger.warning('رفض تسجيل الدخول: ${e.code}');
+        _errorMessage = firebaseErrorAr(e,
+            fallback: 'تعذّر تسجيل الدخول. تأكّد من البيانات وحاول مرة أخرى.');
         _isLoading = false;
         notifyListeners();
         return false;
       }
     } catch (e) {
-      _errorMessage = 'خطأ في تسجيل الدخول: $e';
+      AppLogger.error('فشل تسجيل الدخول', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر تسجيل الدخول. تحقّق من اتصالك وحاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -365,7 +388,9 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return _emailVerified;
     } catch (e) {
-      _errorMessage = 'خطأ في التحقق: $e';
+      AppLogger.error('فشل التحقق من حالة البريد', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر التحقق من حالة بريدك. حاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -402,7 +427,9 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'خطأ في إعادة الإرسال: $e';
+      AppLogger.error('فشل إعادة إرسال رسالة التفعيل', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر إرسال رسالة التفعيل. حاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -448,7 +475,9 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return false;
     } catch (e) {
-      _errorMessage = 'خطأ في إرسال البريد: $e';
+      AppLogger.error('فشل إرسال رابط استعادة كلمة المرور', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر إرسال رابط الاستعادة. حاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -489,7 +518,9 @@ class FirebaseAuthService extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      _errorMessage = 'خطأ في تحديث كلمة المرور: $e';
+      AppLogger.error('فشل تحديث كلمة المرور', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر تحديث كلمة المرور. حاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
