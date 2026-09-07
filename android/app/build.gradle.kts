@@ -94,20 +94,22 @@ android {
     // ولا أثر له على المتجر: Google Play يعتمد applicationId أدناه.
     namespace = "com.example.medical_appointment_app"
     compileSdk = flutter.compileSdkVersion
-    // لا ndkVersion هنا عن قصد.
+    // مثبَّتة على نسخة موجودة على القرص فعلاً، لا على `flutter.ndkVersion`.
     //
-    // طلبها يجعل AGP يتحقّق من وجود الحزمة وقت الإعداد، فيستدعي sdkmanager
-    // ليُنزّلها. وsdkmanager مهجور الآن ويُحوَّل إلى Android CLI الجديدة، وهي
-    // تقرأ `ndk;28.2.13676358` كحزمتين منفصلتين ثم تنهار
-    // (NTSTATUS 0xC0000409) — فيفشل كل بناء قبل أن يبدأ.
+    // يضع Flutter Gradle Plugin تلقائياً أعلى نسخة تطلبها الإضافات
+    // (28.2.13676358). ومجلد تلك النسخة موجود لكنه ناقص، فيَعُدّها AGP غائبة
+    // ويستدعي sdkmanager لتنزيلها. وsdkmanager مهجور الآن ويُحوَّل إلى Android
+    // CLI الجديدة، وهي تقرأ `ndk;28.2.13676358` كحزمتين منفصلتين ثم تنهار
+    // (NTSTATUS 0xC0000409) — فيموت كل بناء قبل أن تبدأ أي مهمة.
     //
-    // والحزمة أصلاً بلا عمل: لا كود native على أندرويد في هذا المشروع — لا
-    // externalNativeBuild ولا CMakeLists ولا abiFilters — وإضافات Firebase
-    // وurl_launcher وshared_preferences كلها تشحن مكتبات مبنية مسبقاً. ملفات
-    // C++ الوحيدة في المستودع هي مُشغّل windows/ لسطح المكتب.
+    // 30.0.16138531 مثبَّتة كاملة، وأعلى من 28.2، فتُرضي كل إضافة وتُغني عن
+    // أي تنزيل. تثبيت الرقم هنا هو ما يقطع المسار المكسور — لا حذفه: حذفه
+    // يترك Flutter يضع 28.2 من جديد (وهذا ما جُرِّب وفشل).
     //
-    // إن أضيفت لاحقاً إضافة تبني native، سيطلب AGP نسخة NDK برسالة صريحة —
-    // حينها تُثبَّت الحزمة يدوياً من SDK Manager ويعود هذا السطر.
+    // عند ترقية الـ NDK: ثبِّت النسخة الجديدة من SDK Manager أولاً، ثم غيّر
+    // الرقم هنا. القيمة يجب أن تبقى مطابقة لمجلد موجود في
+    // %LOCALAPPDATA%\Android\sdk\ndk.
+    ndkVersion = "30.0.16138531"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
