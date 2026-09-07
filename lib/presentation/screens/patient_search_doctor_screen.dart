@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'book_appointment_screen.dart';
 import '../../core/utils/app_logger.dart';
 import '../../core/constants/specialties.dart';
+import '../../core/utils/safe_field.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 
@@ -52,24 +53,35 @@ class _PatientSearchDoctorScreenState extends State<PatientSearchDoctorScreen> {
       final doctors = snapshot.docs.map((doc) {
         final data = doc.data();
         return {
+          // القراءة دفاعية عمداً — راجع lib/core/utils/safe_field.dart.
+          // كان `(data['price'] ?? 200).toDouble()` يرمي على قيمة نصّية،
+          // والاستثناء يقع داخل `map()` على كل الأطباء فتفرغ القائمة **لكل**
+          // المرضى بسبب مستند واحد معطوب. القاعدة تمنع كتابة قيمة كهذه اليوم،
+          // لكنها لا تصلح ما كُتب قبلها.
           'id': doc.id,
-          'name': data['name'] ?? 'طبيب غير معروف',
-          'nameEn': data['nameEn'] ?? 'Unknown Doctor',
-          'clinicNameAr': data['clinicNameAr'] ?? data['name'] ?? 'عيادة',
-          'clinicNameEn': data['clinicNameEn'] ?? 'Clinic',
-          'specialization': data['specialization'] ?? 'عام',
-          'specializationEn': data['specializationEn'] ?? 'General',
-          'price': (data['price'] ?? 200).toDouble(),
-          'clinicLocation': data['clinicLocation'] ?? 'القاهرة',
-          'workingDays': data['workingDays'] ?? [],
-          'workingHours': data['workingHours'] ?? 'من 9:00 إلى 5:00',
-          'sessionDuration': data['sessionDuration'] ?? 30,
-          'bookingSystemType': data['bookingSystemType'] ?? 'Individual',
-          'maxPatientsPerSlot': data['maxPatientsPerSlot'] ?? 4,
-          'bio': data['bio'] ?? 'طبيب متخصص',
-          'bioEn': data['bioEn'] ?? 'Specialized Doctor',
-          'rating': (data['rating'] ?? 0.0).toDouble(),
-          'reviews': data['reviews'] ?? 0,
+          'name': safeString(data['name'],
+              fallback: 'طبيب غير معروف', maxLength: 100),
+          'clinicNameAr': safeString(data['clinicNameAr'],
+              fallback: safeString(data['name'], fallback: 'عيادة'),
+              maxLength: 120),
+          'specialization': safeString(data['specialization'],
+              fallback: 'عام', maxLength: 80),
+          'price': safeDouble(data['price'], fallback: 0),
+          'clinicLocation': safeString(data['clinicLocation'],
+              fallback: 'غير محدّد', maxLength: 200),
+          'workingDays': data['workingDays'] is Map ? data['workingDays'] : {},
+          'workingHours': safeString(data['workingHours'],
+              fallback: 'غير محدّدة', maxLength: 100),
+          'sessionDuration':
+              safeInt(data['sessionDuration'], fallback: 30, min: 5, max: 240),
+          'bookingSystemType':
+              data['bookingSystemType'] == 'Grouped' ? 'Grouped' : 'Individual',
+          'maxPatientsPerSlot':
+              safeInt(data['maxPatientsPerSlot'], fallback: 4, min: 1, max: 50),
+          'bio':
+              safeString(data['bio'], fallback: 'طبيب متخصص', maxLength: 1000),
+          'rating': safeDouble(data['rating'], fallback: 0).clamp(0, 5),
+          'reviews': safeInt(data['reviews'], fallback: 0, min: 0),
           'available': true,
           'nextSlot': 'متاح الآن',
           'patients': 0,

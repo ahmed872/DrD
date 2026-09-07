@@ -661,6 +661,41 @@ exports.onDeletionRequested = functions.firestore
         steps.push("user_anonymised");
       }
 
+      // ── 5‑ب. طلب الانضمام: تجهيل لا حذف ──────────────────────────────
+      //
+      // مستند `doctor_applications/{uid}` يحمل اسم المتقدّم ونبذته المهنية
+      // وتخصّصه — بيان شخصي يبقى مقروءاً للمشرف بعد حذف الحساب.
+      //
+      // ولا يُحذف كاملاً: هو سجل قرار إداري (مَن وافق ومتى ولماذا رُفض)،
+      // وحذفه يمحو أثر الترقية من التاريخ. فيُجهَّل البيان الشخصي ويبقى القرار.
+      const applicationRef = db.collection("doctor_applications").doc(userId);
+      const applicationSnap = await applicationRef.get();
+      if (applicationSnap.exists) {
+        await applicationRef.set(
+          {
+            applicantName: "حساب محذوف",
+            professionalBio: FieldValue.delete(),
+            applicantNotes: FieldValue.delete(),
+            anonymisedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        steps.push("application_anonymised");
+      }
+
+      // ── 5‑ج. صلاحية الإشراف ──────────────────────────────────────────
+      //
+      // معرّفات Firebase لا يُعاد استخدامها، فبقاء `admins/{uid}` بعد حذف
+      // الحساب لا يمنح أحداً شيئاً عملياً. لكن قائمة المشرفين هي **تعريف
+      // الصلاحية** في هذا النظام (`exists()` وحده)، وتركها تحمل مداخل
+      // لحسابات غير موجودة يجعل مراجعتها أصعب — وهي أول ما يُراجَع عند أي
+      // شكّ أمني.
+      const adminRef = db.collection("admins").doc(userId);
+      if ((await adminRef.get()).exists) {
+        await adminRef.delete();
+        steps.push("admin_revoked");
+      }
+
       // ── 6. الملف العام ───────────────────────────────────────────────
       // المحفّز في الخطوة السابقة يحذفه، لكن الاعتماد على تسلسل محفّزات
       // غير مضمون الترتيب. الحذف الصريح يجعل النتيجة مؤكدة.

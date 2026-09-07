@@ -75,6 +75,78 @@ service cloud.firestore {
       return request.resource.data[field] == resource.data[field];
     }
 
+    // ── صحّة قيم مستند المستخدم ────────────────────────────────────────
+    //
+    // قائمة السماح تقول **أي الحقول** يجوز كتابتها، ولا تقول شيئاً عن
+    // **ما يجوز أن تحمله**. والفرق ليس نظرياً: هذه الحقول بعينها تُنسخ إلى
+    // `doctor_profiles` (يقرأه كل مريض) وإلى لقطات المشاركات الطبية.
+    //
+    // ثلاثة أعطال مثبَتة كانت ممكنة من حساب طبيب واحد:
+    //
+    //   1. `price` نصّاً بدل رقم → دليل الأطباء يستدعي `.toDouble()` على نصّ
+    //      داخل `map()` على كل الأطباء، فيُرمى الاستثناء وتفرغ القائمة
+    //      **لكل المرضى** — لا لصاحب المستند وحده.
+    //   2. `sessionDuration == 0` → حلقة توليد الأوقات
+    //      `current = current.add(Duration(minutes: 0))` لا تتقدّم أبداً:
+    //      تجمّد شاشة الحجز ولا يلتقطها `try/catch` لأنها ليست استثناءً.
+    //   3. نصّ ضخم في `bio` أو `name` → يتضخّم به الملف العام الذي يُقرأ
+    //      كاملاً في كل فتح للدليل، وتُنسخ نسخة منه في كل لقطة مشاركة.
+    //
+    // شاشة إعدادات الطبيب تفحص الثلاثة بالفعل — لكنه فحص في العميل، وهو
+    // بالضبط ما يتخطّاه عميل معدَّل أو استدعاء SDK مباشر.
+    //
+    // الحدود سخيّة عمداً: الغرض منع القيم المستحيلة لا فرض سياسة منتج.
+    // والفحص شرطي (`!(field in data) || ...`) حتى تبقى الكتابات الجزئية
+    // بـ`merge` ممكنة كما هي اليوم.
+
+    function stringWithin(data, field, maxLen) {
+      return !(field in data)
+          || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    // `birthDate` و`gender` يُكتبان `null` عند التسجيل حين لا يدخلهما
+    // المستخدم، فالسماح بـ`null` ليس تساهلاً بل مطابقة للسلوك القائم.
+    function nullableStringWithin(data, field, maxLen) {
+      return !(field in data)
+          || data[field] == null
+          || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    // `is number` لا `is int`: بيانات قديمة قد تحمل `30.0` بدل `30`،
+    // ومنعُها يحبس صاحبها عن تعديل ملفه.
+    function numberInRange(data, field, minVal, maxVal) {
+      return !(field in data)
+          || (data[field] is number
+              && data[field] >= minVal
+              && data[field] <= maxVal);
+    }
+
+    function validUserFieldValues() {
+      return stringWithin(request.resource.data, 'name', 100)
+          && stringWithin(request.resource.data, 'phone', 20)
+          && stringWithin(request.resource.data, 'email', 320)
+          && nullableStringWithin(request.resource.data, 'birthDate', 30)
+          && nullableStringWithin(request.resource.data, 'gender', 20)
+          && stringWithin(request.resource.data, 'clinicNameAr', 120)
+          && stringWithin(request.resource.data, 'clinicNameEn', 120)
+          && stringWithin(request.resource.data, 'clinicLocation', 200)
+          && stringWithin(request.resource.data, 'specialization', 80)
+          && stringWithin(request.resource.data, 'specializationEn', 80)
+          && stringWithin(request.resource.data, 'bio', 1000)
+          && stringWithin(request.resource.data, 'bioEn', 1000)
+          && stringWithin(request.resource.data, 'workingHours', 100)
+          // صفر يجمّد شاشة الحجز، و240 دقيقة سقف معقول لجلسة واحدة.
+          && numberInRange(request.resource.data, 'sessionDuration', 5, 240)
+          && numberInRange(request.resource.data, 'maxPatientsPerSlot', 1, 50)
+          && numberInRange(request.resource.data, 'price', 0, 100000)
+          && (!('bookingSystemType' in request.resource.data)
+              || request.resource.data.bookingSystemType
+                 in ['Individual', 'Grouped'])
+          && (!('workingDays' in request.resource.data)
+              || request.resource.data.workingDays is map);
+    }
+
+
     // ===================== المستخدمون =====================
 
     match /users/{userId} {
@@ -127,13 +199,15 @@ service cloud.firestore {
       allow create: if isUser(userId)
                     && request.resource.data.role == 'patient'
                     && request.resource.data.keys().hasOnly(
-                         selfWritableFields().concat(['role', 'createdAt']));
+                         selfWritableFields().concat(['role', 'createdAt']))
+                    && validUserFieldValues();
 
       // التعديل: قائمة سماح صارمة. كل حقل غير مذكور في `selfWritableFields()`
       // ممنوع — بما في ذلك أي حقل تحقّق أو صلاحية يُضاف مستقبلاً.
       allow update: if isUser(userId)
                     && request.resource.data.diff(resource.data)
-                         .affectedKeys().hasOnly(selfWritableFields());
+                         .affectedKeys().hasOnly(selfWritableFields())
+                    && validUserFieldValues();
 
       // الحذف ممنوع من العميل — يمر عبر Cloud Function حتى تُنظَّف
       // البيانات المرتبطة (المواعيد، الفهرس، التقييمات) معاً.

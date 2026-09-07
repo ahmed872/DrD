@@ -84,6 +84,16 @@ async function seed() {
     status: 'active', encounterIds: [PAST_APPT],
   });
 
+  await db.collection('doctor_applications').doc(PATIENT).set({
+    applicantId: PATIENT,
+    applicantName: 'مريض للحذف',
+    specialty: 'طب الأسرة',
+    professionalBio: 'نبذة مهنية تحمل بياناً شخصياً عن صاحب الحساب.',
+    applicantNotes: 'ملاحظات المتقدّم',
+    status: 'rejected',
+  });
+  await db.collection('admins').doc(PATIENT).set({ grantedAt: new Date() });
+
   await db.collection('reviews').doc(PAST_APPT).set({
     doctorId: DOCTOR, patientId: PATIENT, patientName: 'مريض للحذف',
     appointmentId: PAST_APPT, rating: 5, comment: 'ممتاز',
@@ -106,6 +116,7 @@ async function cleanup() {
     ['reviews', PAST_APPT], ['slots', FUTURE_SLOT],
     ['phone_index', PHONE], ['users', PATIENT], ['users', DOCTOR],
     ['doctor_profiles', DOCTOR],
+    ['doctor_applications', PATIENT], ['admins', PATIENT],
   ]) {
     await db.collection(coll).doc(id).delete();
   }
@@ -201,6 +212,26 @@ describe('حذف الحساب', () => {
 
   test('حساب المصادقة حُذف فلا يمكن تسجيل الدخول', async () => {
     await expect(admin.auth().getUser(PATIENT)).rejects.toThrow();
+  });
+
+  test('طلب الانضمام جُهِّل ولم يُحذف — القرار يبقى والبيان الشخصي يزول',
+      async () => {
+    // حذفه كاملاً يمحو أثر قرار إداري؛ إبقاؤه كما هو يترك اسماً ونبذة
+    // مقروءَين للمشرف بعد حذف الحساب.
+    const app =
+        (await db.collection('doctor_applications').doc(PATIENT).get()).data();
+    expect(app).toBeTruthy();
+    expect(app.status).toBe('rejected');
+    expect(app.applicantName).toBe('حساب محذوف');
+    expect(app.professionalBio).toBeUndefined();
+    expect(app.applicantNotes).toBeUndefined();
+  });
+
+  test('صلاحية الإشراف أُزيلت', async () => {
+    // قائمة المشرفين هي تعريف الصلاحية نفسها في هذا النظام؛ تركها تحمل
+    // مداخل لحسابات غير موجودة يُصعّب مراجعتها.
+    const adminDoc = await db.collection('admins').doc(PATIENT).get();
+    expect(adminDoc.exists).toBe(false);
   });
 
   test('العملية مسجَّلة في سجل التدقيق', async () => {

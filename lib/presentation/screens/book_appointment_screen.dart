@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/utils/safe_field.dart';
 import '../../core/utils/slot_id.dart';
 import '../../data/services/booking_service.dart';
 import '../providers/firebase_auth_service.dart';
@@ -67,18 +68,26 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         return;
       }
 
+      // قراءة دفاعية — راجع lib/core/utils/safe_field.dart. الحدّ الأدنى
+      // لمدة الجلسة ليس تجميلاً: صفر يجعل حلقة توليد الأوقات لا تتقدّم أبداً
+      // فتتجمّد هذه الشاشة، ولا يلتقط ذلك `try/catch` لأنه ليس استثناءً.
       final data = snap.data()!;
       _doctor = {
         'id': snap.id,
-        'name': data['name'] ?? 'طبيب',
-        'specialization': data['specialization'] ?? 'عام',
-        'price': data['price'] ?? 0,
-        'sessionDuration': data['sessionDuration'] ?? 30,
-        'maxPatientsPerSlot': data['maxPatientsPerSlot'] ?? 4,
-        'bookingSystemType': data['bookingSystemType'] ?? 'Individual',
-        'workingHours': data['workingHours'] ?? '09:00 - 17:00',
-        'workingDays': data['workingDays'] ?? {},
-        'clinicLocation': data['clinicLocation'] ?? '',
+        'name': safeString(data['name'], fallback: 'طبيب', maxLength: 100),
+        'specialization':
+            safeString(data['specialization'], fallback: 'عام', maxLength: 80),
+        'price': safeDouble(data['price'], fallback: 0),
+        'sessionDuration':
+            safeInt(data['sessionDuration'], fallback: 30, min: 5, max: 240),
+        'maxPatientsPerSlot':
+            safeInt(data['maxPatientsPerSlot'], fallback: 4, min: 1, max: 50),
+        'bookingSystemType':
+            data['bookingSystemType'] == 'Grouped' ? 'Grouped' : 'Individual',
+        'workingHours': safeString(data['workingHours'],
+            fallback: '09:00 - 17:00', maxLength: 100),
+        'workingDays': data['workingDays'] is Map ? data['workingDays'] : {},
+        'clinicLocation': safeString(data['clinicLocation'], maxLength: 200),
       };
     } catch (e, st) {
       AppLogger.error('تعذّر تحميل بيانات الطبيب', e, st);
@@ -236,11 +245,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         end = end.add(const Duration(days: 1));
       }
 
+      // خطوة موجبة مضمونة. الحلقة تتقدّم بـ`duration` دقيقة، فقيمة صفر أو
+      // سالبة تجعلها لا تنتهي أبداً — تجمّد الشاشة وتستهلك الذاكرة حتى
+      // انهيار التطبيق. الحارس هنا آخر خط بعد القاعدة والقراءة الدفاعية.
+      final step = duration > 0 ? duration : 30;
       while (current.isBefore(end)) {
         String formattedHour = current.hour.toString().padLeft(2, '0');
         String formattedMinute = current.minute.toString().padLeft(2, '0');
         slots.add('$formattedHour:$formattedMinute');
-        current = current.add(Duration(minutes: duration));
+        current = current.add(Duration(minutes: step));
       }
 
       return slots.isEmpty ? defaultSlots : slots;
