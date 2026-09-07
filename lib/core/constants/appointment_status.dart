@@ -70,15 +70,24 @@ enum AppointmentStatus {
     AppointmentStatus.pendingConfirmation,
   };
 
-  /// كل الصيغ النصية التي تدل على خانة مشغولة — تُستخدم في استعلامات
-  /// `whereIn` حتى تلتقط المستندات القديمة أيضاً.
+  /// كل الصيغ النصية الموجودة في قاعدة البيانات التي تُقرأ كهذه الحالة.
   ///
-  /// ملاحظة: `whereIn` في Firestore محدود بـ 30 قيمة، والقائمة هنا أقل بكثير.
-  static List<String> get occupyingWireValues => _legacyAliases.entries
-      .where((e) => occupying.contains(e.value))
-      .map((e) => e.key)
+  /// تُستخدم في استعلامات `whereIn` حتى تلتقط المستندات القديمة أيضاً: استعلام
+  /// `where('status', isEqualTo: 'Completed')` يفوّت كل موعد كُتب بصيغة
+  /// `completed` أو `done`، وهو ما كان يحدث في شاشة السجل الطبي.
+  ///
+  /// ملاحظة: `whereIn` في Firestore محدود بـ 30 قيمة، والقوائم هنا أقل بكثير.
+  List<String> get allWireValues => <String>{
+        wireValue,
+        ..._legacyAliases.entries
+            .where((e) => e.value == this)
+            .map((e) => e.key),
+      }.toList(growable: false);
+
+  /// كل الصيغ النصية التي تدل على خانة مشغولة.
+  static List<String> get occupyingWireValues => occupying
+      .expand((status) => status.allWireValues)
       .toSet()
-      .union(occupying.map((s) => s.wireValue).toSet())
       .toList(growable: false);
 
   /// هل الموعد ما زال قائماً (لم يُلغَ ولم ينتهِ)؟

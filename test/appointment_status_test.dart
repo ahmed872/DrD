@@ -63,6 +63,43 @@ void main() {
     });
   });
 
+  group('allWireValues — الصيغ المكافئة لحالة واحدة', () {
+    test('حالة "مكتمل" تشمل صيغها القديمة', () {
+      // شاشة السجل الطبي كانت تفلتر `status == 'Completed'` نصّياً، فكل
+      // موعد كُتب بصيغة `completed` أو `done` لم يظهر في سجل المريض.
+      final values = AppointmentStatus.completed.allWireValues;
+      expect(values, contains('Completed'));
+      expect(values, contains('completed'));
+      expect(values, contains('done'));
+    });
+
+    test('كل قيمة في القائمة تُحلَّل إلى نفس الحالة', () {
+      for (final status in AppointmentStatus.values) {
+        for (final wire in status.allWireValues) {
+          expect(AppointmentStatus.parse(wire), status,
+              reason: '"$wire" يجب أن تُقرأ كـ ${status.name}');
+        }
+      }
+    });
+
+    test('قائمة كل حالة ضمن حدّ whereIn', () {
+      for (final status in AppointmentStatus.values) {
+        expect(status.allWireValues.length, lessThanOrEqualTo(30));
+        expect(status.allWireValues, contains(status.wireValue));
+      }
+    });
+
+    test('occupyingWireValues ما زالت تغطي كل صيغ الحالات المشغولة', () {
+      // إعادة كتابتها فوق `allWireValues` يجب ألا تُنقص شيئاً.
+      final values = AppointmentStatus.occupyingWireValues;
+      for (final status in AppointmentStatus.occupying) {
+        for (final wire in status.allWireValues) {
+          expect(values, contains(wire));
+        }
+      }
+    });
+  });
+
   group('الخصائص المشتقّة', () {
     test('الموعد القائم وحده قابل للإلغاء', () {
       expect(AppointmentStatus.booked.isCancellable, isTrue);

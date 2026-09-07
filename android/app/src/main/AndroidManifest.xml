@@ -1,4 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- الإذن الوحيد الذي يحتاجه التطبيق، وبدونه لا يعمل إطلاقاً.
+         كان معلناً في بياني التصحيح والقياس فقط، وهما لا يُدمجان في نسخة
+         الإصدار. النتيجة أن النسخة المنشورة تفشل في كل نداء إلى Firebase،
+         فتعلق على شاشة البداية حتى تنقضي مهلة main.dart ثم تعرض رسالة تلوم
+         شبكة المستخدم. العطل غير مرئي أثناء التطوير لأن `flutter run` يدمج
+         بيان التصحيح الذي يحمل الإذن.
+         يحرسه اختبار: test/android_manifest_test.dart -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="DrD"
         android:name="${applicationName}"

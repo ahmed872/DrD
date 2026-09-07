@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/utils/firebase_error_ar.dart';
+import '../../core/utils/app_logger.dart';
+import '../../core/constants/specialties.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 
 class DoctorSettingsScreen extends StatefulWidget {
   const DoctorSettingsScreen({super.key});
@@ -27,21 +32,21 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
   String? _selectedSpecialtyAr;
   String? _selectedSpecialtyEn;
 
+  // المصدر الموحّد — راجع lib/core/constants/specialties.dart.
+  // كانت القائمة مكتوبة هنا وفي شاشة البحث بمفردات مختلفة، فكان الطبيب
+  // يختار تخصّصاً لا رقاقة تصفية له، والمريض يرى رقاقة لا طبيب لها.
   final List<Map<String, String>> _specialties = [
-    {'ar': 'عام', 'en': 'General Practice'},
-    {'ar': 'أسنان', 'en': 'Dentistry'},
-    {'ar': 'نساء', 'en': 'Obstetrics'},
-    {'ar': 'جلدية', 'en': 'Dermatology'},
-    {'ar': 'أطفال', 'en': 'Pediatrics'},
-    {'ar': 'عيون', 'en': 'Ophthalmology'},
-    {'ar': 'باطنية', 'en': 'Internal Medicine'},
-    {'ar': 'عظام', 'en': 'Orthopedics'},
+    for (final s in Specialties.all) {'ar': s.ar, 'en': s.en},
   ];
 
   // Working hours and days
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 17, minute: 0);
 
+  /// أيام العمل. **المفاتيح بيانات لا نصوص واجهة**: تُكتب كما هي في
+  /// `users.workingDays`، وتقرأها شاشة الحجز لتحديد الأيام المتاحة. تغيير
+  /// صيغتها يفصل كل جدول قائم عن شاشة الحجز، فيبقى الشكل التاريخي ويُعرض
+  /// الجزء العربي وحده — راجع `_dayLabel`.
   final Map<String, bool> _workingDays = {
     'السبت (Saturday)': true,
     'الأحد (Sunday)': true,
@@ -53,6 +58,9 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
   };
 
   bool _isLoading = false;
+
+  /// اسم اليوم للعرض: الجزء العربي من المفتاح المخزَّن.
+  static String _dayLabel(String storageKey) => storageKey.split(' (').first;
 
   @override
   void initState() {
@@ -160,15 +168,17 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   }
                 }
               });
-            } catch (e) {
-              debugPrint('Error loading working days: $e');
+            } catch (e, st) {
+              AppLogger.warning('تعذّرت قراءة أيام العمل: $e');
+              AppLogger.error('تفاصيل أيام العمل', e, st);
             }
           }
         }
-      } catch (e) {
-        debugPrint('Error loading doctor profile: $e');
+      } catch (e, st) {
+        AppLogger.error('تعذّر تحميل ملف الطبيب', e, st);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load profile: $e')),
+          AppSnackBar.error(firebaseErrorAr(e,
+              fallback: 'تعذّر تحميل بيانات عيادتك. حاول مرة أخرى.')),
         );
       }
     }
@@ -189,14 +199,11 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('إعدادات العيادة'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
         actions: [
           IconButton(
             icon: const Icon(Icons.check_circle),
             onPressed: _saveSetting,
-            tooltip: 'Save / احفظ',
+            tooltip: 'حفظ',
           ),
         ],
       ),
@@ -207,7 +214,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               // === معلومات العيادة ===
-              _buildSectionTitle('📋 معلومات العيادة / Clinic Info'),
+              _buildSectionTitle('📋 معلومات العيادة'),
               const SizedBox(height: 16),
 
               _buildTextField(
@@ -225,7 +232,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 12),
 
               _buildTextField(
-                label: 'موقع العيادة / Clinic Location',
+                label: 'موقع العيادة',
                 controller: _clinicLocationController,
                 icon: Icons.location_on,
               ),
@@ -234,20 +241,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               DropdownButtonFormField<String>(
                 value: _selectedSpecialtyAr,
                 decoration: InputDecoration(
-                  labelText: 'التخصص / Specialization',
-                  prefixIcon:
-                      const Icon(Icons.medical_services, color: Colors.blue),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.blue, width: 2),
-                  ),
+                  labelText: 'التخصص',
+                  prefixIcon: Icon(Icons.medical_services),
                 ),
                 items: _specialties.map((spec) {
                   return DropdownMenuItem<String>(
@@ -268,7 +263,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 12),
 
               _buildTextField(
-                label: 'رقم الهاتف / Phone',
+                label: 'رقم الهاتف',
                 controller: _phoneController,
                 icon: Icons.phone,
                 keyboardType: TextInputType.phone,
@@ -276,7 +271,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 12),
 
               _buildTextField(
-                label: 'نبذة عنك (Arabic)',
+                label: 'نبذة عنك',
                 controller: _bioAr,
                 icon: Icons.info,
                 maxLines: 3,
@@ -293,7 +288,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 24),
 
               // === أسعار وأوقات المواعيد ===
-              _buildSectionTitle('⏱️ مدة الموعد والسعر / Duration & Price'),
+              _buildSectionTitle('⏱️ مدة الموعد والسعر'),
               const SizedBox(height: 16),
 
               Column(
@@ -302,8 +297,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const Text('نظام مجمع (Grouped)',
-                          style: TextStyle(fontSize: 12)),
+                      const Text('نظام مجمّع', style: TextStyle(fontSize: 12)),
                       Radio<String>(
                         value: 'Grouped',
                         groupValue: _bookingSystemType,
@@ -315,8 +309,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const Text('نظام فردي (Individual)',
-                          style: TextStyle(fontSize: 12)),
+                      const Text('نظام فردي', style: TextStyle(fontSize: 12)),
                       Radio<String>(
                         value: 'Individual',
                         groupValue: _bookingSystemType,
@@ -363,16 +356,15 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 24),
 
               // === ساعات العمل ===
-              _buildSectionTitle('🕐 ساعات العمل / Working Hours'),
+              _buildSectionTitle('🕐 ساعات العمل'),
               const SizedBox(height: 16),
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200),
+                  color: context.colors.surfaceContainerHigh,
+                  borderRadius: DrdRadius.lgAll,
                 ),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(DrdSpacing.md),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -380,12 +372,12 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         _buildTimePickerButton(
-                          'وقت النهاية / End',
+                          'وقت النهاية',
                           _endTime,
                           (time) => setState(() => _endTime = time),
                         ),
                         _buildTimePickerButton(
-                          'وقت البداية / Start',
+                          'وقت البداية',
                           _startTime,
                           (time) => setState(() => _startTime = time),
                         ),
@@ -399,16 +391,16 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue),
+                          color: context.colors.surface,
+                          borderRadius: DrdRadius.smAll,
+                          border: Border.all(color: context.colors.primary),
                         ),
                         child: Text(
                           '${_startTime.format(context)} - ${_endTime.format(context)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+                            color: context.colors.primary,
                           ),
                         ),
                       ),
@@ -420,16 +412,15 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
               const SizedBox(height: 24),
 
               // === أيام العمل ===
-              _buildSectionTitle('📅 أيام العمل / Working Days'),
+              _buildSectionTitle('📅 أيام العمل'),
               const SizedBox(height: 16),
 
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
+                  color: context.colors.surfaceContainerHigh,
+                  borderRadius: DrdRadius.lgAll,
                 ),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(DrdSpacing.md),
                 child: Column(
                   children: _workingDays.entries.map((entry) {
                     return Column(
@@ -438,7 +429,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              entry.key,
+                              _dayLabel(entry.key),
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w500,
@@ -451,7 +442,6 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                                   _workingDays[entry.key] = value;
                                 });
                               },
-                              activeColor: Colors.green,
                             ),
                           ],
                         ),
@@ -472,13 +462,12 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   onPressed: _saveSetting,
                   icon: const Icon(Icons.save),
                   label: const Text(
-                    'حفظ الإعدادات / Save Settings',
+                    'حفظ الإعدادات',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  style: FilledButton.styleFrom(
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: DrdRadius.mdAll,
                     ),
                   ),
                 ),
@@ -494,7 +483,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                   onPressed: _showPreview,
                   icon: const Icon(Icons.visibility),
                   label: const Text(
-                    'معاينة / Preview',
+                    'معاينة',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -512,10 +501,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.blue.shade100,
-        borderRadius: BorderRadius.circular(8),
+        color: context.colors.surfaceContainerHigh,
+        borderRadius: DrdRadius.smAll,
         border: Border(
-          right: BorderSide(color: Colors.blue.shade700, width: 4),
+          right: BorderSide(color: context.colors.primary, width: 4),
         ),
       ),
       child: Text(
@@ -523,7 +512,6 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Colors.blue.shade900,
         ),
       ),
     );
@@ -542,18 +530,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blue),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.blue, width: 2),
-        ),
+        prefixIcon: Icon(icon),
       ),
     );
   }
@@ -568,7 +545,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+          style: TextStyle(fontSize: 12, color: context.drd.muted),
         ),
         const SizedBox(height: 4),
         OutlinedButton(
@@ -589,10 +566,10 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           ),
           child: Text(
             time.format(context),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.blue,
+              color: context.colors.primary,
             ),
           ),
         ),
@@ -625,9 +602,8 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         price <= 0) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('يرجى التأكد من أن السعر ومدة الجلسة أكبر من صفر'),
-          backgroundColor: Colors.red,
+        AppSnackBar.warning(
+          'يرجى التأكد من أن السعر ومدة الجلسة أكبر من صفر',
         ),
       );
       return;
@@ -635,6 +611,22 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
     if (auth.userId != null) {
       try {
+        // الفهرس أولاً: لو كان الرقم الجديد مملوكاً لحساب آخر نتوقّف قبل
+        // كتابة أي شيء، بدل أن نحفظ رقماً لا يستطيع صاحبه الدخول به.
+        final newPhone = auth.normalizePhoneNumber(_phoneController.text);
+        final oldPhone = (auth.userPhone ?? '').toString();
+        final indexOk =
+            await auth.syncPhoneIndex(oldPhone: oldPhone, newPhone: newPhone);
+        if (!indexOk) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              AppSnackBar.error(auth.errorMessage ?? 'تعذّر حفظ رقم الجوال'),
+            );
+          }
+          return;
+        }
+
         await FirebaseFirestore.instance
             .collection('users')
             .doc(auth.userId)
@@ -644,7 +636,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
           'clinicLocation': _clinicLocationController.text,
           'specialization': _selectedSpecialtyAr ?? '',
           'specializationEn': _selectedSpecialtyEn ?? '',
-          'phone': auth.normalizePhoneNumber(_phoneController.text),
+          'phone': newPhone,
           'bio': _bioAr.text,
           'bioEn': _bioEn.text,
           'sessionDuration': duration,
@@ -657,29 +649,14 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text(
-                    '✅ تم الحفظ بنجاح / Saved Successfully',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
+            AppSnackBar.success('تم الحفظ بنجاح'),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error saving settings: $e'),
-              backgroundColor: Colors.red,
-            ),
+            AppSnackBar.error(firebaseErrorAr(e,
+                fallback: 'تعذّر حفظ إعدادات العيادة. حاول مرة أخرى.')),
           );
         }
       }
@@ -696,7 +673,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
       builder: (context) => AlertDialog(
         title: const Row(
           children: [
-            Text('👁️ معاينة / Preview'),
+            Text('👁️ معاينة'),
           ],
         ),
         content: SingleChildScrollView(
@@ -732,7 +709,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('إغلاق / Close'),
+            child: const Text('إغلاق'),
           ),
         ],
       ),
@@ -749,7 +726,7 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
             flex: 2,
             child: Text(
               enText,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(fontSize: 12, color: context.drd.muted),
               textAlign: TextAlign.left,
             ),
           ),

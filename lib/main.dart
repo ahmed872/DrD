@@ -10,7 +10,6 @@ import 'core/theme/app_theme.dart';
 import 'core/utils/app_logger.dart';
 import 'firebase_options.dart';
 import 'presentation/providers/firebase_auth_service.dart';
-import 'presentation/providers/rating_provider.dart';
 import 'presentation/screens/splash_screen.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/home_screen.dart';
@@ -73,8 +72,11 @@ class MedicalApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
+        // `RatingProvider` كان مسجَّلاً هنا ولا يستدعيه أحد: الشاشتان
+        // الوحيدتان اللتان تستخدمانه لم يكن إليهما أي مسار تنقّل. والتقييم
+        // العامل يمرّ عبر `reviews` مباشرةً في شاشة «مواعيدي»، ويحسب
+        // متوسطه `syncDoctorRating` على الخادم.
         ChangeNotifierProvider(create: (_) => FirebaseAuthService()),
-        ChangeNotifierProvider(create: (_) => RatingProvider()),
       ],
       child: MaterialApp(
         title: 'DrD — حجز مواعيد الأطباء',
@@ -143,31 +145,32 @@ class _StartupErrorApp extends StatelessWidget {
       home: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off,
-                      size: 64, color: AppColors.primary),
-                  const SizedBox(height: 20),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
+          // `Builder` ضروري لا تجميلي: سياق `build` هنا **فوق** `MaterialApp`،
+          // فقراءة النسق منه تعطي النسق الافتراضي لا نسق DrD.
+          body: Builder(
+            builder: (context) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(DrdSpacing.xl),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cloud_off,
+                        size: 64, color: context.colors.primary),
+                    const SizedBox(height: DrdSpacing.lg),
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: context.text.titleLarge,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 15, height: 1.7),
-                  ),
-                ],
+                    const SizedBox(height: DrdSpacing.sm),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: context.text.bodyMedium
+                          ?.copyWith(color: context.drd.muted),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -185,9 +188,11 @@ class _MissingWebConfigApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const _StartupErrorApp(
       title: 'إعدادات Firebase للويب غير مضبوطة',
-      message: 'شغّل الأمر التالي مرة واحدة ثم أعد البناء:\n\n'
-          'flutterfire configure --platforms=web\n\n'
-          'التفاصيل في docs/DEPLOYMENT.md',
+      message:
+          'هذه النسخة بُنيت بلا FIREBASE_WEB_API_KEY و FIREBASE_WEB_APP_ID.\n\n'
+          'ابنِ عبر tool/build_web.sh — يتحقّق من القيم ويرفض إنتاج\n'
+          'حزمة معطوبة بدل إنتاجها بصمت.\n\n'
+          'التفاصيل في docs/RELEASE.md',
     );
   }
 }

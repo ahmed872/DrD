@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
+import '../../data/services/account_deletion_service.dart';
 
 class PatientSettingsScreen extends StatefulWidget {
   const PatientSettingsScreen({super.key});
@@ -28,13 +31,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text('إعداداتي'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
-      ),
+      appBar: AppBar(title: const Text('إعداداتي')),
       body: Consumer<FirebaseAuthService>(
         builder: (context, auth, _) {
           return SingleChildScrollView(
@@ -55,10 +52,9 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                         onPressed: () => setState(() => _isEditing = true),
                         icon: const Icon(Icons.edit),
                         label: const Text('تعديل البيانات'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0097A7),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        style: FilledButton.styleFrom(
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: DrdRadius.mdAll,
                           ),
                         ),
                       ),
@@ -68,17 +64,13 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                       children: [
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () => _cancelEdit(),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.grey[300],
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                            onPressed: _cancelEdit,
+                            style: OutlinedButton.styleFrom(
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: DrdRadius.mdAll,
                               ),
                             ),
-                            child: const Text(
-                              'إلغاء',
-                              style: TextStyle(color: Colors.grey),
-                            ),
+                            child: const Text('إلغاء'),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -88,19 +80,18 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                                 _isSaving ? null : () => _saveChanges(auth),
                             icon: const Icon(Icons.save),
                             label: _isSaving
-                                ? const SizedBox(
+                                ? SizedBox(
                                     width: 20,
                                     height: 20,
                                     child: CircularProgressIndicator(
-                                      color: Colors.white,
+                                      color: context.colors.onPrimary,
                                       strokeWidth: 2,
                                     ),
                                   )
                                 : const Text('حفظ'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0097A7),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                            style: FilledButton.styleFrom(
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: DrdRadius.mdAll,
                               ),
                             ),
                           ),
@@ -123,11 +114,11 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
 
   Widget _buildProfileCard(FirebaseAuthService auth) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DrdSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey[200]!, width: 1),
-        borderRadius: BorderRadius.circular(12),
+        color: context.colors.surface,
+        border: Border.all(color: context.drd.border, width: DrdSizes.hairline),
+        borderRadius: DrdRadius.lgAll,
       ),
       child: Column(
         children: [
@@ -169,9 +160,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
+          style: context.text.bodySmall?.copyWith(
+            color: context.drd.muted,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -179,20 +169,16 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.grey[50],
-            border: Border.all(color: Colors.grey[200]!),
-            borderRadius: BorderRadius.circular(10),
+            color: context.colors.surfaceContainerHigh,
+            borderRadius: DrdRadius.smAll,
           ),
           child: Row(
             children: [
-              Icon(icon, color: Colors.grey[600], size: 20),
-              const SizedBox(width: 12),
+              Icon(icon, color: context.drd.muted, size: 20),
+              const SizedBox(width: DrdSpacing.sm),
               Text(
                 value,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[700],
-                ),
+                style: context.text.bodyMedium,
               ),
             ],
           ),
@@ -212,9 +198,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
+          style: context.text.bodySmall?.copyWith(
+            color: context.drd.muted,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -223,36 +208,11 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           controller: controller,
           enabled: enabled,
           decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: const Color(0xFF0097A7)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(
-                color: Color(0xFF0097A7),
-                width: 2,
-              ),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey[100]!),
-            ),
-            filled: true,
-            fillColor: enabled ? Colors.white : Colors.grey[50],
+            prefixIcon: Icon(icon),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 12,
             ),
-          ),
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey[800],
           ),
         ),
       ],
@@ -265,9 +225,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
       children: [
         Text(
           'تاريخ الميلاد',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
+          style: context.text.bodySmall?.copyWith(
+            color: context.drd.muted,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -289,9 +248,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: _isEditing ? Colors.white : Colors.grey[50],
-              border: Border.all(color: Colors.grey[200]!),
-              borderRadius: BorderRadius.circular(10),
+              color: context.colors.surfaceContainerHigh,
+              borderRadius: DrdRadius.smAll,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -300,7 +258,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                   children: [
                     Icon(
                       Icons.calendar_today,
-                      color: const Color(0xFF0097A7),
+                      color: context.drd.muted,
                       size: 20,
                     ),
                     const SizedBox(width: 12),
@@ -311,8 +269,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         color: _selectedBirthDate != null
-                            ? Colors.grey[800]
-                            : Colors.grey[500],
+                            ? context.colors.onSurface
+                            : context.drd.disabled,
                       ),
                     ),
                   ],
@@ -320,7 +278,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                 if (_isEditing)
                   Icon(
                     Icons.edit,
-                    color: Colors.grey[400],
+                    color: context.drd.muted,
                     size: 18,
                   ),
               ],
@@ -337,9 +295,8 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
       children: [
         Text(
           'الجنس',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
+          style: context.text.bodySmall?.copyWith(
+            color: context.drd.muted,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -366,18 +323,22 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF0097A7) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          color: isSelected
+              ? context.colors.primary
+              : context.colors.surfaceContainerHigh,
+          borderRadius: DrdRadius.smAll,
           border: Border.all(
-            color: isSelected ? const Color(0xFF0097A7) : Colors.grey[200]!,
-            width: 1,
+            color: isSelected ? context.colors.primary : context.drd.border,
+            width: DrdSizes.hairline,
           ),
         ),
         child: Text(
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.grey[700],
+            color: isSelected
+                ? context.colors.onPrimary
+                : context.colors.onSurface,
             fontWeight: FontWeight.w500,
             fontSize: 13,
           ),
@@ -388,25 +349,109 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
 
   Widget _buildLogoutSection(FirebaseAuthService auth) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        border: Border.all(color: Colors.red.shade200),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () => _logout(auth),
-          icon: const Icon(Icons.logout),
-          label: const Text('تسجيل الخروج'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.shade600,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+      padding: const EdgeInsets.all(DrdSpacing.md),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _logout(auth),
+              icon: const Icon(Icons.logout),
+              label: const Text('تسجيل الخروج'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: context.colors.error,
+                side: BorderSide(color: context.colors.error),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: DrdRadius.smAll,
+                ),
+              ),
             ),
           ),
+          const SizedBox(height: DrdSpacing.sm),
+          // حذف الحساب — مطلب متجرَي التطبيقات، ومسار لا رجعة فيه.
+          // مفصول بصرياً عن الخروج ومكتوب بنبرة أهدأ: زران أحمران متجاوران
+          // يجعلان الضغط الخاطئ سهلاً، والخطأ هنا غير قابل للتراجع.
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: () => _confirmDeleteAccount(auth),
+              icon: const Icon(Icons.person_remove_outlined, size: 18),
+              label: const Text('حذف الحساب نهائياً'),
+              style: TextButton.styleFrom(
+                foregroundColor: context.drd.muted,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// تأكيد حذف الحساب.
+  ///
+  /// يشرح **ما يُحذف وما يبقى** قبل السؤال، لا بعده: السجل السريري يبقى لأن
+  /// الزيارة وثيقة تخصّ الطبيب والعيادة أيضاً، ومريض يتوقّع محو كل أثر له
+  /// يستحق أن يعرف ذلك قبل الضغط لا بعده.
+  void _confirmDeleteAccount(FirebaseAuthService auth) {
+    final userId = auth.userId;
+    if (userId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف الحساب نهائياً'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('سيُحذف:'),
+            Text('• بياناتك الشخصية واسمك ورقمك وبريدك'),
+            Text('• إمكانية الدخول بهذا الحساب'),
+            SizedBox(height: DrdSpacing.sm),
+            Text('سيُلغى:'),
+            Text('• مواعيدك القادمة'),
+            Text('• كل مشاركة طبية أتحتها لطبيب'),
+            SizedBox(height: DrdSpacing.sm),
+            Text('سيبقى:'),
+            Text('• سجلات زياراتك عند الأطباء الذين كشفوا عليك، '
+                'فهي جزء من سجل العيادة ولا تُمحى من طرف واحد.'),
+            SizedBox(height: DrdSpacing.sm),
+            Text('لا يمكن التراجع عن هذا الإجراء.'),
+          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () async {
+              // الملّاح يُلتقط **قبل** أي `await`: بعده يكون هذا العنصر قد
+              // أُزيل من الشجرة (تسجيل الخروج يعيد بناء الجذر)، فقراءة
+              // `context` عندها تقرأ سياقاً ميتاً.
+              final navigator = Navigator.of(context);
+              Navigator.pop(dialogContext);
+              final ok = await AccountDeletionService().requestDeletion(userId);
+              if (!mounted) return;
+              if (ok) {
+                // الخروج فوري: الخادم يحذف حساب المصادقة بعد لحظات، وترك
+                // الجلسة مفتوحة يعني شاشات تفشل استعلاماتها واحدة تلو أخرى.
+                _showMessage('تم استلام طلب الحذف. سيُغلق حسابك الآن.');
+                await auth.logout();
+                navigator.pushNamedAndRemoveUntil('/', (route) => false);
+              } else {
+                _showMessage(
+                  'تعذّر إرسال طلب الحذف. تأكد من اتصالك وحاول مرة أخرى.',
+                  isError: true,
+                );
+              }
+            },
+            child: Text(
+              'حذف نهائياً',
+              style: TextStyle(color: context.colors.error),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -477,8 +522,10 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
                 );
               }
             },
-            child:
-                const Text('تسجيل الخروج', style: TextStyle(color: Colors.red)),
+            child: Text(
+              'تسجيل الخروج',
+              style: TextStyle(color: context.colors.error),
+            ),
           ),
         ],
       ),
@@ -487,11 +534,7 @@ class _PatientSettingsScreenState extends State<PatientSettingsScreen> {
 
   void _showMessage(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-        duration: const Duration(seconds: 2),
-      ),
+      isError ? AppSnackBar.error(message) : AppSnackBar.success(message),
     );
   }
 

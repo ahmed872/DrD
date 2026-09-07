@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../providers/firebase_auth_service.dart';
 import '../../core/utils/app_logger.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
 
 class DoctorPatientsScreen extends StatefulWidget {
   const DoctorPatientsScreen({super.key});
@@ -19,6 +21,12 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
   List<Map<String, dynamic>> _allPatients = [];
   bool _isLoading = true;
 
+  /// يفرّق بين "لا يوجد مرضى" و"تعذّر التحميل".
+  ///
+  /// الشاشة كانت تعرض الحالتين بنفس الشكل، فبدا خطأ الصلاحيات وكأنه عيادة
+  /// بلا مرضى.
+  bool _loadFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -32,6 +40,27 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
     super.dispose();
   }
 
+  /// بناء قائمة مرضى الطبيب من مستندات المواعيد وحدها.
+  ///
+  /// ## لماذا لا تُقرأ `users` هنا؟
+  ///
+  /// كانت هذه الدالة تقرأ `users/{patientId}` لكل مريض. قواعد Firestore تسمح
+  /// بقراءة مستند مستخدم لصاحبه فقط، أو لأي مستخدم مسجَّل إن كان **طبيباً**؛
+  /// مستند المريض ليس واحداً منهما، فالقراءة تُرفض بـ `permission-denied`.
+  ///
+  /// وبما أن القراءة كانت داخل الحلقة داخل `try` الخارجي، فإن أول مريض كان
+  /// يرمي استثناءً فتُهجر القائمة كلها ويُعرض للطبيب "لا يوجد مرضى" بلا أي
+  /// رسالة خطأ. الشاشة كانت فارغة دائماً في الإنتاج.
+  ///
+  /// الحل ليس توسيع صلاحية القراءة على `users` — ذلك يفتح بيانات كل المرضى
+  /// لكل طبيب. الاسم ورقم الهاتف منسوخان أصلاً في مستند الموعد وقت الحجز
+  /// (`patientName` و`patientPhone`)، والطبيب يقرأ مواعيده بصلاحية كاملة.
+  ///
+  /// النتيجة: لا استعلام مرفوض، ولا صلاحية جديدة، ونفس المعلومات.
+  ///
+  /// ما فُقد بهذا التغيير: البريد الإلكتروني (غير منسوخ في الموعد) و`nameEn`
+  /// و`age` — وآخرها لم يكن حقيقياً أصلاً: التطبيق لا يكتب `age` في أي مكان،
+  /// فكانت الشاشة تعرض "٣٠ سنة" لكل مريض على وجه الأرض.
   Future<void> _fetchPatients() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -44,81 +73,72 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
           .where('doctorId', isEqualTo: auth.userId)
           .get();
 
-      Map<String, List<QueryDocumentSnapshot>> patientAppointments = {};
-      for (var doc in appointmentsSnapshot.docs) {
+      final patientAppointments = <String, List<Map<String, dynamic>>>{};
+      for (final doc in appointmentsSnapshot.docs) {
         final data = doc.data();
         final patientId = data['patientId'] as String?;
         if (patientId != null) {
-          patientAppointments.putIfAbsent(patientId, () => []).add(doc);
+          patientAppointments.putIfAbsent(patientId, () => []).add(data);
         }
       }
 
-      List<Map<String, dynamic>> loadedPatients = [];
+      final loadedPatients = <Map<String, dynamic>>[];
       final now = DateTime.now();
 
-      for (var entry in patientAppointments.entries) {
-        String patientId = entry.key;
-        List<QueryDocumentSnapshot> apps = entry.value;
-
-        int totalVisits = apps.length;
+      for (final entry in patientAppointments.entries) {
+        final patientId = entry.key;
+        final apps = entry.value;
 
         DateTime? lastVisit;
         DateTime? nextAppointment;
         String? nextTime;
 
-        for (var appDoc in apps) {
-          final appData = appDoc.data() as Map<String, dynamic>;
+        // الاسم والهاتف يُؤخذان من أحدث موعد، لأن المريض قد يكون غيّر اسمه
+        // بين زيارتين والنسخة الأحدث هي الأقرب للصحيح.
+        DateTime? newestDate;
+        String? patientName;
+        String? patientPhone;
+
+        for (final appData in apps) {
           final dateStr = appData['appointmentDate'] as String?;
-          final timeStr =
-              appData['startTime'] as String? ?? appData['time'] as String?;
+          final timeStr = (appData['startTime'] ?? appData['time']) as String?;
           if (dateStr == null) continue;
 
-          try {
-            DateTime appDate = DateTime.parse(dateStr);
-            if (appDate.isBefore(now)) {
-              if (lastVisit == null || appDate.isAfter(lastVisit)) {
-                lastVisit = appDate;
-              }
-            } else if (appDate.isAfter(now) || appDate.isAtSameMomentAs(now)) {
-              if (nextAppointment == null ||
-                  appDate.isBefore(nextAppointment)) {
-                nextAppointment = appDate;
-                nextTime = timeStr;
-              }
+          final appDate = DateTime.tryParse(dateStr);
+          if (appDate == null) continue;
+
+          if (newestDate == null || appDate.isAfter(newestDate)) {
+            newestDate = appDate;
+            patientName = appData['patientName'] as String?;
+            patientPhone = appData['patientPhone'] as String?;
+          }
+
+          if (appDate.isBefore(now)) {
+            if (lastVisit == null || appDate.isAfter(lastVisit)) {
+              lastVisit = appDate;
             }
-          } catch (e) {}
+          } else {
+            if (nextAppointment == null || appDate.isBefore(nextAppointment)) {
+              nextAppointment = appDate;
+              nextTime = timeStr;
+            }
+          }
         }
 
-        lastVisit ??= DateTime.now();
-
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(patientId)
-            .get();
-        final userData = userDoc.data() ?? {};
-
-        String fallbackName = 'مريض غير معروف';
-        try {
-          fallbackName =
-              (apps.first.data() as Map<String, dynamic>)['patientName'] ??
-                  fallbackName;
-        } catch (e) {}
-
-        final patientName =
-            userData['name'] ?? userData['userName'] ?? fallbackName;
+        lastVisit ??= now;
 
         loadedPatients.add({
           'id': patientId,
-          'name': patientName,
-          'nameEn': userData['nameEn'] ?? 'Unknown Patient',
-          'phone': userData['phone'] ?? 'غير متوفر / N/A',
-          'email': userData['email'] ?? 'غير متوفر / N/A',
-          'age': userData['age'] ?? 30, // Default if missing
+          'name': (patientName == null || patientName.isEmpty)
+              ? 'مريض غير معروف'
+              : patientName,
+          'phone': (patientPhone == null || patientPhone.isEmpty)
+              ? 'غير متوفر'
+              : patientPhone,
           'lastVisit': lastVisit,
-          'totalVisits': totalVisits,
+          'totalVisits': apps.length,
           'nextAppointment': nextAppointment,
           'nextTime': nextTime,
-          'notes': 'لا توجد ملاحظات / No notes',
           'status': nextAppointment != null ? 'active' : 'inactive',
         });
       }
@@ -129,24 +149,26 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
           _isLoading = false;
         });
       }
-    } catch (e) {
-      AppLogger.info('Error fetching patients: $e');
+    } catch (e, s) {
+      // الفشل هنا لم يعد صامتاً: الشاشة الفارغة كانت تخفي خطأ صلاحيات لشهور.
+      AppLogger.error('تعذّر تحميل قائمة المرضى', e, s);
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _loadFailed = true;
+        });
       }
     }
   }
 
   List<Map<String, dynamic>> _getFilteredAndSortedPatients() {
+    final term = _searchController.text.trim().toLowerCase();
     var filtered = _allPatients.where((patient) {
-      final matchesSearch = patient['name']
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase()) ||
-          patient['phone'].contains(_searchController.text) ||
-          patient['email']
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase());
-      return matchesSearch;
+      if (term.isEmpty) return true;
+      // البريد الإلكتروني لم يعد ضمن البيانات المتاحة للطبيب — البحث بالاسم
+      // أو الهاتف، وهما المنسوخان في مستند الموعد.
+      return (patient['name'] as String).toLowerCase().contains(term) ||
+          (patient['phone'] as String).contains(term);
     }).toList();
 
     // Sort
@@ -170,10 +192,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('المرضى / Patients'),
-          centerTitle: true,
-          backgroundColor: const Color(0xFF0097A7),
-          elevation: 1,
+          title: const Text('المرضى'),
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -185,10 +204,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('المرضى / Patients'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
+        title: const Text('المرضى'),
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -209,7 +225,9 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               const SizedBox(height: 24),
 
               // Patients List
-              if (filteredPatients.isEmpty)
+              if (_loadFailed)
+                _buildErrorState()
+              else if (filteredPatients.isEmpty)
                 _buildEmptyState()
               else
                 _buildPatientsList(filteredPatients),
@@ -240,24 +258,24 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                   const SizedBox(height: 8),
                   Text(
                     _allPatients.length.toString(),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    style: context.text.headlineSmall?.copyWith(
+                      color: context.colors.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'إجمالي',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.muted,
+                    ),
                   ),
                   Text(
                     'Total',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[400],
-                          fontSize: 10,
-                        ),
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.disabled,
+                      fontSize: 10,
+                    ),
                   ),
                 ],
               ),
@@ -280,24 +298,24 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                   const SizedBox(height: 8),
                   Text(
                     activeCount.toString(),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    style: context.text.headlineSmall?.copyWith(
+                      color: context.drd.success,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'نشطين',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.muted,
+                    ),
                   ),
                   Text(
                     'Active',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[400],
-                          fontSize: 10,
-                        ),
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.disabled,
+                      fontSize: 10,
+                    ),
                   ),
                 ],
               ),
@@ -313,7 +331,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
       controller: _searchController,
       onChanged: (value) => setState(() {}),
       decoration: InputDecoration(
-        hintText: 'اسم المريض أو الهاتف / Patient name or phone',
+        hintText: 'اسم المريض أو الهاتف',
         prefixIcon: const Icon(Icons.search),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -324,9 +342,9 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
   Widget _buildSortOptions() {
     final sorts = [
-      ('الأخيرة / Recent', 0),
-      ('الاسم / Name', 1),
-      ('الزيارات / Visits', 2),
+      ('الأخيرة', 0),
+      ('الاسم', 1),
+      ('الزيارات', 2),
     ];
 
     return SingleChildScrollView(
@@ -345,15 +363,51 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                 onSelected: (selected) {
                   setState(() => _selectedSortIndex = index);
                 },
-                backgroundColor: Colors.grey[100],
-                selectedColor: Colors.blue,
                 labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black87,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  /// حالة الفشل، منفصلة عن حالة "لا يوجد مرضى".
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 60),
+        child: Column(
+          children: [
+            Icon(Icons.cloud_off, size: 72, color: context.drd.muted),
+            const SizedBox(height: DrdSpacing.lg),
+            Text(
+              'تعذّر تحميل قائمة المرضى',
+              style: context.text.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'تأكد من اتصالك بالإنترنت ثم أعد المحاولة',
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: context.drd.muted),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: () {
+                setState(() => _loadFailed = false);
+                _fetchPatients();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ],
         ),
       ),
     );
@@ -365,21 +419,20 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 80),
         child: Column(
           children: [
-            Icon(Icons.person_off, size: 80, color: Colors.grey[300]),
-            const SizedBox(height: 24),
+            Icon(Icons.person_off, size: 80, color: context.drd.disabled),
+            const SizedBox(height: DrdSpacing.lg),
             Text(
               'لا يوجد مرضى',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: context.text.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'No patients found',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[400],
-                  ),
+              style: context.text.bodyMedium?.copyWith(
+                color: context.drd.muted,
+              ),
             ),
           ],
         ),
@@ -408,10 +461,8 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isActive
-              ? Colors.green.withOpacity(0.3)
-              : Colors.grey.withOpacity(0.2),
-          width: 1.5,
+          color: isActive ? context.colors.primary : context.drd.border,
+          width: DrdSizes.hairline,
         ),
       ),
       child: Padding(
@@ -429,70 +480,39 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isActive
-                        ? Colors.green.withOpacity(0.1)
-                        : Colors.grey.withOpacity(0.1),
+                        ? context.drd.successContainer
+                        : context.colors.surfaceContainerHigh,
                     border: Border.all(
-                      color: isActive ? Colors.green : Colors.grey,
-                      width: 1,
+                      color:
+                          isActive ? context.drd.success : context.drd.border,
+                      width: DrdSizes.hairline,
                     ),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     isActive ? '✨ نشط' : '⏳ غير نشط',
                     style: TextStyle(
-                      color: isActive ? Colors.green : Colors.grey,
+                      color: isActive
+                          ? context.drd.onSuccessContainer
+                          : context.colors.onSurface,
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
                   ),
                 ),
-                // Name and Age
+                // اسم المريض.
+                //
+                // كان هنا أيضاً "٣٠ سنة" لكل مريض — التطبيق لا يكتب حقل `age`
+                // إطلاقاً، فكانت القيمة الافتراضية تُعرض كعمر حقيقي. عرض سنّ
+                // مختلَق في شاشة طبية أسوأ من عدم عرض السنّ.
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            ' سنة',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: Colors.grey[500]),
-                          ),
-                          Text(
-                            patient['age'].toString(),
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.grey[500],
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                          ),
-                          Text(
-                            ' • ',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: Colors.grey[500]),
-                          ),
-                          Text(
-                            patient['name'],
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        patient['nameEn'],
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Colors.grey[500]),
-                      ),
-                    ],
+                  child: Text(
+                    patient['name'] as String,
+                    textAlign: TextAlign.end,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -505,16 +525,8 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
             _patientDetailRow(
               context,
               icon: Icons.phone,
-              label: 'الهاتف / Phone',
+              label: 'الهاتف',
               value: patient['phone'],
-            ),
-            const SizedBox(height: 10),
-
-            _patientDetailRow(
-              context,
-              icon: Icons.email,
-              label: 'البريد الإلكتروني / Email',
-              value: patient['email'],
             ),
             const SizedBox(height: 10),
 
@@ -527,17 +539,16 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        'عدد الزيارات / Total Visits',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                        'عدد الزيارات',
+                        style: context.text.bodySmall?.copyWith(
+                          color: context.drd.muted,
+                        ),
                       ),
                       Text(
                         patient['totalVisits'].toString(),
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style: context.text.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -548,17 +559,16 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        'آخر زيارة / Last Visit',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                        'آخر زيارة',
+                        style: context.text.bodySmall?.copyWith(
+                          color: context.drd.muted,
+                        ),
                       ),
                       Text(
                         DateFormat('d MMMM', 'ar').format(patient['lastVisit']),
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: Colors.orange,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style: context.text.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -572,9 +582,8 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.05),
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
-                  borderRadius: BorderRadius.circular(8),
+                  color: context.drd.successContainer,
+                  borderRadius: DrdRadius.smAll,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -584,11 +593,10 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            'الموعد التالي / Next Appointment',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.green.shade700,
-                                    ),
+                            'الموعد التالي',
+                            style: context.text.bodySmall?.copyWith(
+                              color: context.drd.onSuccessContainer,
+                            ),
                           ),
                           Text(
                             '${DateFormat('d MMMM', 'ar').format(patient['nextAppointment'])} • ${patient['nextTime']}',
@@ -596,16 +604,16 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                                 .textTheme
                                 .titleSmall
                                 ?.copyWith(
-                                  color: Colors.green,
+                                  color: context.drd.onSuccessContainer,
                                   fontWeight: FontWeight.bold,
                                 ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    const Icon(Icons.event_available,
-                        color: Colors.green, size: 24),
+                    const SizedBox(width: DrdSpacing.sm),
+                    Icon(Icons.event_available,
+                        color: context.drd.success, size: 24),
                   ],
                 ),
               ),
@@ -614,16 +622,15 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.05),
-                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                  borderRadius: BorderRadius.circular(8),
+                  color: context.colors.surfaceContainerHigh,
+                  borderRadius: DrdRadius.smAll,
                 ),
                 child: Center(
                   child: Text(
-                    'لا يوجد موعد قادم / No upcoming appointment',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[500],
-                        ),
+                    'لا يوجد موعد قادم',
+                    style: context.text.bodySmall?.copyWith(
+                      color: context.drd.muted,
+                    ),
                   ),
                 ),
               ),
@@ -637,10 +644,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               child: ElevatedButton.icon(
                 onPressed: () => _viewPatientDetails(patient),
                 icon: const Icon(Icons.visibility),
-                label: const Text('عرض التفاصيل / View Details'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                ),
+                label: const Text('عرض التفاصيل'),
               ),
             ),
           ],
@@ -665,9 +669,9 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
             children: [
               Text(
                 label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
+                style: context.text.bodySmall?.copyWith(
+                  color: context.drd.muted,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
@@ -681,21 +685,15 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        Icon(icon, color: Colors.blue, size: 18),
+        const SizedBox(width: DrdSpacing.sm),
+        Icon(icon, color: context.drd.muted, size: 18),
       ],
     );
   }
 
   void _viewPatientDetails(Map<String, dynamic> patient) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '👤 ${patient['name']} - عرض التفاصيل / Viewing details',
-        ),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 2),
-      ),
+      AppSnackBar.info('${patient['name']} — عرض التفاصيل'),
     );
   }
 }

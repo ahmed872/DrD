@@ -1,0 +1,31 @@
+# قالب إعداد توقيع نسخة الإصدار.
+#
+# انسخه إلى android/key.properties واملأه بقيمك الحقيقية:
+#
+#     cp android/key.properties.example android/key.properties
+#
+# الملف الحقيقي مستثنى في .gitignore ولا يُلتزم في المستودع أبداً، وكذلك
+# مخزن المفاتيح نفسه (*.jks / *.keystore).
+#
+# إنشاء مخزن المفاتيح (مرة واحدة فقط):
+#
+#     keytool -genkey -v -keystore ~/drd-release.jks \
+#       -keyalg RSA -keysize 2048 -validity 10000 -alias drd
+#
+# ⚠ احتفظ بالمخزن ونسخة احتياطية منه إلى الأبد. Google Play يربط التطبيق
+#   بالمفتاح الذي وُقِّع به أول إصدار، وبفقده لا يمكن نشر أي تحديث لاحق تحت
+#   نفس التطبيق — لا حلّ إلا نشر تطبيق جديد بمعرّف جديد وفقدان كل المستخدمين.
+#   (إن فُعِّل Play App Signing فالمفتاح المفقود هو مفتاح الرفع وحده، ويمكن
+#   لـGoogle استبداله — تحقّق من إعداد التطبيق في Play Console.)
+
+# المسار المطلق لمخزن المفاتيح. لا تضعه داخل مجلد المشروع.
+storeFile=/absolute/path/to/drd-release.jks
+
+# كلمة مرور المخزن.
+storePassword=CHANGE_ME
+
+# اسم المفتاح داخل المخزن (الذي مرّرته في -alias).
+keyAlias=drd
+
+# كلمة مرور المفتاح — قد تطابق كلمة مرور المخزن أو تختلف عنها.
+keyPassword=CHANGE_ME

@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -6,7 +9,89 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// توقيع نسخة الإصدار
+//
+// كانت كتلة release تحمل `signingConfig = signingConfigs.getByName("debug")`.
+// مفتاح التصحيح مشترك بين كل مشاريع أندرويد على الجهاز ومعروف للجميع، وGoogle
+// Play يرفض أي حزمة موقَّعة به. والأسوأ أن الإعداد كان **صامتاً**: البناء ينجح
+// وتُنتَج حزمة تبدو سليمة ولا تُكتشف إلا عند الرفع.
+//
+// المفتاح وكلمات مروره لا تدخل المستودع أبداً. تُقرأ من `android/key.properties`
+// وهو مستثنى في .gitignore، وقالبه في `android/key.properties.example`.
+//
+// وإن غاب الملف: نسخة التصحيح تعمل كالمعتاد، ونسخة الإصدار **تفشل برسالة
+// واضحة** بدل أن تُنتج حزمة غير موقَّعة أو موقَّعة خطأً. الفشل الصريح هو المطلوب
+// هنا — البناء الصامت الخاطئ هو ما سبّب المشكلة أصلاً.
+// ─────────────────────────────────────────────────────────────────────────────
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseKeystore = keystorePropertiesFile.exists()
+val keystoreProperties = Properties().apply {
+    if (hasReleaseKeystore) {
+        FileInputStream(keystorePropertiesFile).use { load(it) }
+    }
+}
+
+fun requiredKeystoreProperty(name: String): String =
+    keystoreProperties.getProperty(name)
+        ?: throw GradleException(
+            "android/key.properties موجود لكنه لا يحتوي على `$name`. " +
+                "راجع android/key.properties.example."
+        )
+
+if (!hasReleaseKeystore) {
+    // الفحص وقت بناء الرسم البياني للمهام لا وقت الإعداد: لولا ذلك لفشل حتى
+    // `flutter run` و`flutter test`، وهما لا يحتاجان مفتاح إصدار.
+    gradle.taskGraph.whenReady {
+        val releaseTask = allTasks.firstOrNull { task ->
+            task.name.contains("Release") &&
+                (
+                    task.name.startsWith("assemble") ||
+                        task.name.startsWith("bundle") ||
+                        task.name.startsWith("package")
+                    )
+        }
+        if (releaseTask != null) {
+            throw GradleException(
+                """
+                |
+                |╭──────────────────────────────────────────────────────────────╮
+                |│  تعذّر بناء نسخة الإصدار: لا يوجد مفتاح توقيع                 │
+                |╰──────────────────────────────────────────────────────────────╯
+                |
+                |المهمة المطلوبة: ${releaseTask.name}
+                |الملف الناقص:   ${keystorePropertiesFile.absolutePath}
+                |
+                |الخطوات (تُنفَّذ مرة واحدة، على جهازك أو في خزنة أسرار CI):
+                |
+                |  1. أنشئ مخزن المفاتيح — احتفظ به إلى الأبد، فبفقده لا يمكن
+                |     تحديث التطبيق على Google Play مطلقاً:
+                |
+                |       keytool -genkey -v -keystore ~/drd-release.jks \
+                |         -keyalg RSA -keysize 2048 -validity 10000 -alias drd
+                |
+                |  2. أنشئ android/key.properties بالمحتوى التالي:
+                |
+                |       storeFile=/absolute/path/to/drd-release.jks
+                |       storePassword=…
+                |       keyAlias=drd
+                |       keyPassword=…
+                |
+                |     القالب جاهز في android/key.properties.example.
+                |     الملف مستثنى في .gitignore ولا يُلتزم أبداً.
+                |
+                |لبناء نسخة تصحيح بدل ذلك: flutter build apk --debug
+                """.trimMargin()
+            )
+        }
+    }
+}
+
 android {
+    // ما زال قالب Flutter الافتراضي. تغييره يستلزم نقل
+    // MainActivity.kt إلى الحزمة الجديدة معاً، وإلا لم يُعثر على النشاط
+    // وانهار التطبيق عند الإقلاع. مؤجَّل — راجع docs/RELEASE.md.
+    // ولا أثر له على المتجر: Google Play يعتمد applicationId أدناه.
     namespace = "com.example.medical_appointment_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
@@ -21,21 +106,33 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // معرّف التطبيق على Google Play. يطابق `package_name` في
+        // android/app/google-services.json، ولا يمكن تغييره بعد أول نشر.
         applicationId = "heldoc.com"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(requiredKeystoreProperty("storeFile"))
+                storePassword = requiredKeystoreProperty("storePassword")
+                keyAlias = requiredKeystoreProperty("keyAlias")
+                keyPassword = requiredKeystoreProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // بلا احتياطي إلى مفتاح التصحيح. غياب المفتاح يوقف البناء عند
+            // الحارس أعلاه برسالة تشرح الخطوة الناقصة.
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

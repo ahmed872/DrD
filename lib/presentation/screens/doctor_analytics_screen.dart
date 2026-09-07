@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../../core/theme/app_theme.dart';
+
+import '../../core/constants/appointment_status.dart';
 
 class DoctorAnalyticsScreen extends StatefulWidget {
   const DoctorAnalyticsScreen({super.key});
@@ -111,15 +114,19 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         weekdayCounts[appDate.weekday] =
             (weekdayCounts[appDate.weekday] ?? 0) + 1;
 
-        final status = data['status'] ?? '';
-        if (status == 'Completed') {
-          completed++;
-          revenue += (data['price'] ?? 0).toDouble();
-        } else if (status == 'Canceled' ||
-            status == 'Cancelled' ||
-            status == 'Rejected' ||
-            status == 'NoShow') {
-          cancelled++;
+        // كانت المقارنة نصّية على صيغ مكتوبة يدوياً، فمواعيد مخزَّنة بصيغة
+        // `completed` أو `done` لم تكن تُحتسب في الإيراد ولا في نسبة الإنجاز.
+        switch (AppointmentStatus.parse(data['status'])) {
+          case AppointmentStatus.completed:
+            completed++;
+            revenue += (data['price'] ?? 0).toDouble();
+          case AppointmentStatus.cancelled:
+          case AppointmentStatus.noShow:
+            cancelled++;
+          case AppointmentStatus.booked:
+          case AppointmentStatus.pendingConfirmation:
+          case AppointmentStatus.expired:
+            break;
         }
       }
 
@@ -155,19 +162,11 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
       var sortedReasons = reasonCounts.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
 
-      List<Color> reasonColors = [
-        Colors.blueAccent,
-        Colors.teal,
-        Colors.deepPurple,
-        Colors.pink,
-        Colors.orange
-      ];
       List<Map<String, dynamic>> topR = [];
       for (int i = 0; i < sortedReasons.length && i < 4; i++) {
         topR.add({
           'reason': sortedReasons[i].key,
           'count': sortedReasons[i].value,
-          'color': reasonColors[i % reasonColors.length],
         });
       }
 
@@ -214,9 +213,6 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('الإحصائيات'),
-          centerTitle: true,
-          backgroundColor: const Color(0xFF0097A7),
-          elevation: 1,
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -225,9 +221,6 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('الإحصائيات'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -278,12 +271,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         setState(() => _selectedTimeRange = index);
         _fetchRealAnalytics();
       },
-      backgroundColor: Colors.grey[100],
-      selectedColor: Colors.blue.shade700,
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : Colors.black87,
-        fontWeight: FontWeight.w600,
-      ),
+      labelStyle: const TextStyle(fontWeight: FontWeight.w600),
     );
   }
 
@@ -298,39 +286,39 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
         _metricCard(
           'المواعيد',
           '${_analyticsData["totalAppointments"]}',
-          Colors.blue.shade700,
           '📅',
         ),
         _metricCard(
           'مكتملة',
           '${_analyticsData["completedAppointments"]}',
-          Colors.green.shade600,
           '✅',
         ),
         _metricCard(
           'المرضى',
           '${_analyticsData["totalPatients"]}',
-          Colors.purple.shade600,
           '👥',
         ),
         _metricCard(
           'التقييم',
           '${_analyticsData["avgRating"]} ⭐',
-          Colors.amber.shade700,
           '⭐',
         ),
       ],
     );
   }
 
-  Widget _metricCard(String label, String value, Color color, String emoji) {
+  /// بطاقة مقياس.
+  ///
+  /// كان لكل بطاقة لونها: أزرق للمواعيد، أخضر للمكتملة، بنفسجي للمرضى،
+  /// كهرماني للتقييم — وأربعتها أرقام لا حالات، فاللون لم يكن يقول شيئاً
+  /// عن قيمتها. الرمز التعبيري يميّز البطاقة، والرقم يلبس لون النص.
+  Widget _metricCard(String label, String value, String emoji) {
     return Container(
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        border: Border.all(color: color.withOpacity(0.5), width: 2),
-        borderRadius: BorderRadius.circular(12),
+        color: context.colors.surfaceContainerHigh,
+        borderRadius: DrdRadius.lgAll,
       ),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(DrdSpacing.md),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -338,19 +326,15 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
           const SizedBox(height: 8),
           Text(
             value,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: color,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: DrdSpacing.xxs),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[700],
-            ),
+            style: context.text.bodySmall?.copyWith(color: context.drd.muted),
           ),
         ],
       ),
@@ -383,14 +367,14 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
               children: [
                 Text(
                   '${completionRateStr}%',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.green,
+                    color: context.drd.success,
                   ),
                 ),
-                const Text('نسبة الإتمام',
-                    style: TextStyle(color: Colors.grey)),
+                Text('نسبة الإتمام',
+                    style: TextStyle(color: context.drd.muted)),
               ],
             ),
             const SizedBox(height: 8),
@@ -399,8 +383,8 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
               child: LinearProgressIndicator(
                 value: compRateValue,
                 minHeight: 12,
-                backgroundColor: Colors.grey[200],
-                valueColor: const AlwaysStoppedAnimation(Colors.green),
+                backgroundColor: context.colors.surfaceContainerHigh,
+                valueColor: AlwaysStoppedAnimation(context.drd.success),
               ),
             ),
             const SizedBox(height: 16),
@@ -409,13 +393,13 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
               children: [
                 Text(
                   '${noShowRate.toStringAsFixed(1)}%',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.red,
+                    color: context.colors.error,
                   ),
                 ),
-                const Text('عدم الحضور', style: TextStyle(color: Colors.grey)),
+                Text('عدم الحضور', style: TextStyle(color: context.drd.muted)),
               ],
             ),
             const SizedBox(height: 8),
@@ -424,8 +408,8 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
               child: LinearProgressIndicator(
                 value: noShowRate / 100,
                 minHeight: 12,
-                backgroundColor: Colors.grey[200],
-                valueColor: const AlwaysStoppedAnimation(Colors.red),
+                backgroundColor: context.colors.surfaceContainerHigh,
+                valueColor: AlwaysStoppedAnimation(context.colors.error),
               ),
             ),
           ],
@@ -485,16 +469,9 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
                           width: double.infinity,
                           margin: const EdgeInsets.symmetric(horizontal: 4),
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [
-                                Colors.blue.shade700,
-                                Colors.blue.shade400,
-                              ],
-                            ),
+                            color: context.colors.primary,
                             borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(6),
+                              top: Radius.circular(4),
                             ),
                           ),
                         ),
@@ -502,7 +479,7 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
                         Text(
                           data['dayEn'],
                           style:
-                              const TextStyle(fontSize: 10, color: Colors.grey),
+                              TextStyle(fontSize: 10, color: context.drd.muted),
                         ),
                       ],
                     ),
@@ -566,16 +543,15 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
                       child: LinearProgressIndicator(
                         value: count / total,
                         minHeight: 6,
-                        backgroundColor: Colors.grey[200],
+                        backgroundColor: context.colors.surfaceContainerHigh,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          reason['color'] as Color,
-                        ),
+                            context.colors.primary),
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${percentage}%',
-                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      style: TextStyle(fontSize: 10, color: context.drd.muted),
                     ),
                   ],
                 ),
@@ -599,38 +575,33 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
           '🕐',
           'متوسط المدة',
           '${_analyticsData["avgSessionDuration"]} دقيقة',
-          Colors.blue.shade700,
         ),
         _quickStatCard(
           '💰',
           'الإيرادات',
           '${_analyticsData["totalRevenue"]} جنيه',
-          Colors.green.shade600,
         ),
         _quickStatCard(
           '👤',
           'مرضى جدد',
           '${_analyticsData["newPatients"]}',
-          Colors.purple.shade600,
         ),
         _quickStatCard(
           '📅',
           'أفضل يوم',
           '${_analyticsData["peakDay"]}',
-          Colors.amber.shade700,
         ),
       ],
     );
   }
 
-  Widget _quickStatCard(String emoji, String label, String value, Color color) {
+  Widget _quickStatCard(String emoji, String label, String value) {
     return Container(
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        border: Border.all(color: color.withOpacity(0.3), width: 2),
-        borderRadius: BorderRadius.circular(8),
+        color: context.colors.surfaceContainerHigh,
+        borderRadius: DrdRadius.smAll,
       ),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(DrdSpacing.sm),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -638,14 +609,13 @@ class _DoctorAnalyticsScreenState extends State<DoctorAnalyticsScreen> {
           const SizedBox(height: 8),
           Text(
             value,
-            style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.bold, color: color),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: DrdSpacing.xxs),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            style: TextStyle(fontSize: 11, color: context.drd.muted),
             textAlign: TextAlign.center,
           ),
         ],

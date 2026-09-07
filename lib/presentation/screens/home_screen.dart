@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
+import '../../data/models/doctor_application.dart';
+import '../../data/services/doctor_application_service.dart';
 import '../providers/firebase_auth_service.dart';
+import '../widgets/doctor_application_card.dart';
+import 'admin_applications_screen.dart';
+import 'doctor_shared_records_screen.dart';
+import 'patient_shares_screen.dart';
+import 'doctor_application_screen.dart';
 import 'doctor_settings_screen.dart';
 import 'doctor_schedule_screen.dart';
 import 'doctor_patients_screen.dart';
 import 'doctor_analytics_screen.dart';
-import 'patient_booking_screen.dart';
 import 'patient_my_appointments_screen.dart';
 import 'patient_medical_history_screen.dart';
 import 'patient_search_doctor_screen.dart';
@@ -23,10 +31,22 @@ class HomeScreen extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: const Text('الرئيسية'),
-            centerTitle: true,
-            elevation: 1,
-            backgroundColor: const Color(0xFF0097A7),
             actions: [
+              // مدخل مراجعة الطلبات — للمشرف وحده.
+              //
+              // إخفاؤه عن غيره تنظيم لا حماية: القواعد ترفض قراءة الطلبات
+              // وكتابتها من أي حساب ليس في مجموعة `admins`.
+              if (auth.isAdmin)
+                IconButton(
+                  icon: const Icon(Icons.fact_check_outlined),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AdminApplicationsScreen(),
+                    ),
+                  ),
+                  tooltip: 'مراجعة طلبات الأطباء',
+                ),
               // رابط الإعدادات للمرضى
               if (auth.userRole == 'patient')
                 IconButton(
@@ -58,8 +78,10 @@ class HomeScreen extends StatelessWidget {
                         ),
                         TextButton(
                           onPressed: () => Navigator.pop(context, true),
-                          child: const Text('تسجيل الخروج',
-                              style: TextStyle(color: Colors.red)),
+                          child: Text(
+                            'تسجيل الخروج',
+                            style: TextStyle(color: context.colors.error),
+                          ),
                         ),
                       ],
                     ),
@@ -75,50 +97,44 @@ class HomeScreen extends StatelessWidget {
           ),
           body: SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(DrdSpacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   // الترحيب
                   Text(
                     'مرحباً',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[500],
-                          fontSize: 13,
-                        ),
+                    style: context.text.bodyMedium?.copyWith(
+                      color: context.drd.muted,
+                    ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: DrdSpacing.xxs),
                   Text(
                     auth.userName ?? 'المستخدم',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF0097A7),
-                          fontSize: 24,
-                        ),
+                    style: context.text.headlineSmall,
                   ),
-                  const SizedBox(height: 36),
+                  const SizedBox(height: DrdSpacing.lg),
 
                   // بطاقة المعلومات
                   _buildInfoCard(context, auth),
-                  const SizedBox(height: 36),
 
-                  // الخدمات
-                  Text(
-                    isDoctor ? 'لوحة الطبيب' : 'الخدمات المتاحة',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.grey[800],
-                        ),
+                  SectionHeader(
+                    title: isDoctor ? 'لوحة الطبيب' : 'الخدمات المتاحة',
                   ),
-                  const SizedBox(height: 16),
 
                   if (isDoctor)
                     _buildDoctorServices(context)
                   else
                     _buildPatientServices(context),
 
-                  const SizedBox(height: 40),
+                  // دعوة الانضمام كطبيب — **بعد** خدمات المريض عمداً.
+                  //
+                  // من يفتح التطبيق يفتحه ليحجز موعداً. وضع الدعوة فوق
+                  // الحجز يجعل المنتج يبدو كأنه يوظّف أطباء لا كأنه يخدم
+                  // مرضى.
+                  if (!isDoctor) const _DoctorApplicationSection(),
+
+                  const SizedBox(height: DrdSpacing.xl),
                 ],
               ),
             ),
@@ -129,13 +145,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildInfoCard(BuildContext context, FirebaseAuthService auth) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        border: Border.all(color: Colors.grey[200]!, width: 1),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      padding: const EdgeInsets.all(18),
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -145,9 +155,7 @@ class HomeScreen extends StatelessWidget {
             label: 'رقم الجوال',
             value: auth.userData?['phone'] ?? '-',
           ),
-          const SizedBox(height: 14),
-          Divider(color: Colors.grey[300]),
-          const SizedBox(height: 14),
+          const Divider(),
           _infoRow(
             context,
             icon: Icons.person,
@@ -174,24 +182,22 @@ class HomeScreen extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[500],
-                      fontSize: 12,
-                    ),
+                style: context.text.bodySmall?.copyWith(
+                  color: context.drd.muted,
+                ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: DrdSpacing.xxs),
               Text(
                 value,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey[800],
-                    ),
+                style: context.text.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        Icon(icon, color: const Color(0xFF0097A7), size: 20),
+        const SizedBox(width: DrdSpacing.sm),
+        Icon(icon, color: context.colors.primary, size: 20),
       ],
     );
   }
@@ -222,6 +228,12 @@ class HomeScreen extends StatelessWidget {
         'subtitle': 'الأداء والتقارير',
         'action': 'analytics',
       },
+      {
+        'icon': Icons.folder_shared_outlined,
+        'title': 'سجلات مشتركة',
+        'subtitle': 'شاركها المرضى معك',
+        'action': 'shared_with_me',
+      },
     ];
 
     return GridView.builder(
@@ -248,11 +260,17 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildPatientServices(BuildContext context) {
     final services = [
+      // مدخل واحد للحجز.
+      //
+      // كان هنا مدخلان: «حجز موعد» يفتح شاشة تبحث وتحجز، و«البحث» يفتح شاشة
+      // بحث تنتهي بالشاشة نفسها. فكان المريض القادم من البحث يرى صندوق بحث
+      // ثانياً وقائمة أطباء ثانية بعد أن اختار طبيبه. الرحلة الآن واحدة:
+      // ابحث عن طبيب ← اختر ← احجز.
       {
-        'icon': Icons.date_range,
-        'title': 'حجز موعد',
-        'subtitle': 'موعد جديد',
-        'action': 'book',
+        'icon': Icons.search,
+        'title': 'ابحث عن طبيب',
+        'subtitle': 'اختر طبيبك واحجز موعدك',
+        'action': 'search',
       },
       {
         'icon': Icons.calendar_month,
@@ -261,16 +279,16 @@ class HomeScreen extends StatelessWidget {
         'action': 'appointments',
       },
       {
-        'icon': Icons.search,
-        'title': 'البحث',
-        'subtitle': 'البحث عن طبيب',
-        'action': 'search',
-      },
-      {
         'icon': Icons.folder,
         'title': 'السجل الطبي',
         'subtitle': 'سجلاتك الطبية',
         'action': 'history',
+      },
+      {
+        'icon': Icons.share_outlined,
+        'title': 'السجلات المشتركة',
+        'subtitle': 'مَن يرى سجلاتك',
+        'action': 'shares',
       },
     ];
 
@@ -303,47 +321,28 @@ class HomeScreen extends StatelessWidget {
     required String subtitle,
     required String action,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey[200]!, width: 1),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _handleServiceTap(context, action),
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 40, color: const Color(0xFF0097A7)),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: Colors.grey[800],
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[500],
-                        fontSize: 11,
-                      ),
-                ),
-              ],
+    return AppCard(
+      onTap: () => _handleServiceTap(context, action),
+      semanticLabel: '$title — $subtitle',
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 40, color: context.colors.primary),
+          const SizedBox(height: DrdSpacing.sm),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: context.text.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ),
+          const SizedBox(height: DrdSpacing.xxs),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: context.text.bodySmall?.copyWith(color: context.drd.muted),
+          ),
+        ],
       ),
     );
   }
@@ -374,12 +373,6 @@ class HomeScreen extends StatelessWidget {
           MaterialPageRoute(builder: (_) => const DoctorAnalyticsScreen()),
         );
         break;
-      case 'book':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const PatientBookingScreen()),
-        );
-        break;
       case 'appointments':
         Navigator.push(
           context,
@@ -400,6 +393,94 @@ class HomeScreen extends StatelessWidget {
               builder: (_) => const PatientMedicalHistoryScreen()),
         );
         break;
+      case 'shares':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PatientSharesScreen()),
+        );
+        break;
+      case 'shared_with_me':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const DoctorSharedRecordsScreen()),
+        );
+        break;
     }
+  }
+}
+
+/// قسم طلب الانضمام كطبيب على الصفحة الرئيسية.
+///
+/// يتدفّق مع مستند الطلب، فينتقل من «قدّم طلباً» إلى «قيد المراجعة» إلى
+/// «مقبول» بلا أن يعيد المستخدم فتح التطبيق.
+class _DoctorApplicationSection extends StatefulWidget {
+  const _DoctorApplicationSection();
+
+  @override
+  State<_DoctorApplicationSection> createState() =>
+      _DoctorApplicationSectionState();
+}
+
+class _DoctorApplicationSectionState extends State<_DoctorApplicationSection> {
+  final _service = DoctorApplicationService();
+
+  /// يمنع تكرار طلب تحديث الملف عند كل إعادة بناء.
+  bool _refreshRequested = false;
+
+  /// يعيد قراءة مستند المستخدم بعد القبول.
+  ///
+  /// الترقية تجري على الخادم بعد تسجيل القرار، فحالة الطلب تصل إلى التطبيق
+  /// قبل الدور الجديد. بلا هذه القراءة يبقى المستخدم يرى شاشة المريض بعد
+  /// قبوله حتى يخرج ويدخل من جديد.
+  void _refreshProfileOnce(FirebaseAuthService auth) {
+    if (_refreshRequested) return;
+    _refreshRequested = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) auth.checkSession();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<FirebaseAuthService>();
+    final uid = auth.userId;
+    if (uid == null) return const SizedBox.shrink();
+
+    return StreamBuilder<DoctorApplication>(
+      stream: _service.watchMyApplication(uid),
+      builder: (context, snapshot) {
+        // لا شيء يُعرض قبل وصول الحالة: بطاقة «قدّم طلباً» تومض ثم تتحول
+        // إلى «قيد المراجعة» تربك أكثر مما تفيد.
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox.shrink();
+        }
+        // تعذّر قراءة الطلب لا يمنع المريض من استعمال التطبيق — القسم
+        // يختفي بصمت بدل أن يزرع رسالة خطأ في وسط الصفحة الرئيسية.
+        if (snapshot.hasError || !snapshot.hasData) {
+          return const SizedBox.shrink();
+        }
+
+        final application = snapshot.data!;
+        final approvedButNotYetDoctor =
+            application.status.isApproved && auth.userRole != 'doctor';
+        if (approvedButNotYetDoctor) _refreshProfileOnce(auth);
+
+        return Padding(
+          padding: const EdgeInsets.only(top: DrdSpacing.lg),
+          child: DoctorApplicationCard(
+            application: application,
+            isActivating: approvedButNotYetDoctor,
+            onApply: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DoctorApplicationScreen(
+                  existing: application.status.isEditable ? application : null,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

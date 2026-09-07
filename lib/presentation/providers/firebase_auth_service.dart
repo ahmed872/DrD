@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/utils/app_logger.dart';
+import '../../core/utils/firebase_error_ar.dart';
 
 /// خدمة Firebase للمصادقة وتخزين البيانات
 class FirebaseAuthService extends ChangeNotifier {
@@ -40,6 +41,15 @@ class FirebaseAuthService extends ChangeNotifier {
   bool _sessionRestored = false;
   bool get sessionRestored => _sessionRestored;
 
+  /// هل هذا الحساب مشرف؟
+  ///
+  /// تُقرأ من وجود `admins/{uid}` — والمجموعة غير قابلة للكتابة من أي عميل،
+  /// فلا يستطيع أحد منح نفسها. القيمة هنا **للعرض وحده**: إخفاء مدخل
+  /// المراجعة ليس حماية، والحماية الحقيقية في قواعد الأمان التي ترفض كل
+  /// عملية مراجعة من غير مشرف.
+  bool _isAdmin = false;
+  bool get isAdmin => _isAdmin;
+
   @override
   void dispose() {
     _authSubscription?.cancel();
@@ -51,6 +61,7 @@ class FirebaseAuthService extends ChangeNotifier {
       _userId = null;
       _userData = null;
       _emailVerified = false;
+      _isAdmin = false;
     } else {
       _userId = user.uid;
       _emailVerified = true;
@@ -60,9 +71,24 @@ class FirebaseAuthService extends ChangeNotifier {
       } catch (e) {
         AppLogger.error('تعذّر تحميل بيانات المستخدم', e);
       }
+      _isAdmin = await _checkAdmin(user.uid);
     }
     _sessionRestored = true;
     notifyListeners();
+  }
+
+  /// قراءة واحدة لمستند المشرف.
+  ///
+  /// القاعدة تسمح للمشرف بقراءة مستنده هو فقط، فالمستخدم العادي يتلقّى
+  /// `permission-denied` — وهو هنا **إجابة صحيحة** لا خطأ: معناها «لست
+  /// مشرفاً». لذلك يُبتلع الاستثناء بلا تسجيله كعطل.
+  Future<bool> _checkAdmin(String uid) async {
+    try {
+      final doc = await _firestore.collection('admins').doc(uid).get();
+      return doc.exists;
+    } catch (_) {
+      return false;
+    }
   }
 
   String? get userId => _userId;
@@ -96,11 +122,21 @@ class FirebaseAuthService extends ChangeNotifier {
     await _onAuthStateChanged(user);
   }
 
+  /// الدور الوحيد الذي يجوز للعميل إنشاؤه.
+  ///
+  /// كانت هذه الدالة تستقبل `role` من شاشة التسجيل، وكانت الشاشة تعرض زرّي
+  /// "مريض / طبيب" — أي أن المستخدم يختار صلاحياته بنفسه، وقواعد Firestore
+  /// كانت تقبل ذلك. صار الدور ثابتاً هنا، والقاعدة على الخادم ترفض أي قيمة
+  /// أخرى، فلا يوجد مسار — لا في الواجهة ولا في الشبكة — يمنح صلاحية طبيب.
+  ///
+  /// الترقية إلى طبيب تمر عبر طلب انضمام ومراجعة مشرف، ويكتب الدورَ
+  /// الخادمُ وحده — لا هذه الدالة ولا أي مسار عميل آخر.
+  static const String _signupRole = 'patient';
+
   Future<bool> signupWithPhone(
     String phoneNumber,
     String password,
-    String name,
-    String role, {
+    String name, {
     DateTime? birthDate,
     String? gender,
     String? email,
@@ -167,33 +203,60 @@ class FirebaseAuthService extends ChangeNotifier {
         'phone': cleanedPhone,
         'email': cleanedEmail,
         'name': name,
-        'role': role,
+        'role': _signupRole,
         'birthDate': birthDate?.toIso8601String(),
         'gender': gender,
         'emailVerified': true, // تعيينها مفعّلة تلقائياً
         'createdAt': FieldValue.serverTimestamp(),
       };
 
-      await _firestore.collection('users').doc(firebaseUser.uid).set(newUser);
-
-      // فهرس الجوال — هو ما يسمح بتسجيل الدخول بالرقم لاحقاً دون فتح
-      // مجموعة `users` للقراءة العامة.
-      await _firestore.collection('phone_index').doc(cleanedPhone).set({
+      // ## المستندان يُكتبان معاً أو لا يُكتب أيّهما
+      //
+      // كانا كتابتين متتاليتين، والثانية هي فهرس الجوال — وتسجيل الدخول
+      // يترجم الرقم إلى بريد عبره **حصراً**. فلو فشلت (شبكة، أو رقم حجزه
+      // غيرُه فتحوّل الطلب إلى `update` مرفوض) يبقى حساب المصادقة ومستند
+      // المستخدم قائمين بلا مدخل فهرس: صاحبه لا يستطيع الدخول أبداً،
+      // وإعادة التسجيل تُرفض بـ`email-already-in-use`. حساب محبوس بلا
+      // مخرج في التطبيق.
+      //
+      // `WriteBatch` يجعلهما عملية واحدة: القواعد تُقيَّم لكل مستند على حدة،
+      // لكن الدفعة لا تُثبَّت إلا إذا نجح الاثنان.
+      final batch = _firestore.batch();
+      batch.set(_firestore.collection('users').doc(firebaseUser.uid), newUser);
+      batch.set(_firestore.collection('phone_index').doc(cleanedPhone), {
         'uid': firebaseUser.uid,
         'email': cleanedEmail,
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      try {
+        await batch.commit();
+      } catch (e) {
+        // يبقى احتمال واحد: حساب المصادقة أُنشئ ثم فشلت الدفعة. تركه يعني
+        // بريداً محجوزاً لحساب بلا بيانات — فيُحذف هنا ليعود التسجيل ممكناً.
+        // الحذف متاح بلا إعادة مصادقة لأن الإنشاء وقع للتوّ.
+        AppLogger.error('فشل حفظ بيانات التسجيل، يُتراجع عن حساب المصادقة', e);
+        try {
+          await firebaseUser.delete();
+        } catch (deleteError) {
+          // لو تعذّر التراجع أيضاً، يُسجَّل ليُعالَج إدارياً — ولا يُدَّعى نجاح.
+          AppLogger.error('تعذّر التراجع عن حساب المصادقة', deleteError);
+        }
+        rethrow;
+      }
 
       _userId = firebaseUser.uid;
       _userData = newUser;
       _emailVerified = true;
 
       _isLoading = false;
-      _errorMessage = 'تم إنشاء الحساب! تحقق من بريدك الإلكتروني لتفعيله ✅';
+      _errorMessage = 'تم إنشاء حسابك بنجاح ✅';
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'خطأ في التسجيل: $e';
+      AppLogger.error('فشل إنشاء الحساب', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر إنشاء الحساب. تحقّق من اتصالك وحاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -268,24 +331,19 @@ class FirebaseAuthService extends ChangeNotifier {
         notifyListeners();
         return true;
       } on FirebaseAuthException catch (e) {
-        if (e.code == 'user-not-found' ||
-            e.code == 'wrong-password' ||
-            e.code == 'invalid-credential') {
-          _errorMessage = 'رقم الجوال أو كلمة المرور غير صحيحة';
-        } else if (e.code == 'user-disabled') {
-          _errorMessage = 'تم تعطيل هذا الحساب';
-        } else if (e.code == 'invalid-email') {
-          _errorMessage = 'صيغة البريد الإلكتروني غير صحيحة';
-        } else {
-          _errorMessage =
-              'خطأ الدخول: يرجى التأكد من صحة البيانات'; // رسالة أبسط بدون أكواد انجليزي
-        }
+        // السلسلة اليدوية انتقلت إلى `firebaseErrorAr` ليكون لكل رمز رسالة
+        // واحدة في التطبيق كله، بدل نسخة لكل شاشة تنحرف عن أخواتها.
+        AppLogger.warning('رفض تسجيل الدخول: ${e.code}');
+        _errorMessage = firebaseErrorAr(e,
+            fallback: 'تعذّر تسجيل الدخول. تأكّد من البيانات وحاول مرة أخرى.');
         _isLoading = false;
         notifyListeners();
         return false;
       }
     } catch (e) {
-      _errorMessage = 'خطأ في تسجيل الدخول: $e';
+      AppLogger.error('فشل تسجيل الدخول', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر تسجيل الدخول. تحقّق من اتصالك وحاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -330,7 +388,9 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return _emailVerified;
     } catch (e) {
-      _errorMessage = 'خطأ في التحقق: $e';
+      AppLogger.error('فشل التحقق من حالة البريد', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر التحقق من حالة بريدك. حاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -367,7 +427,9 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'خطأ في إعادة الإرسال: $e';
+      AppLogger.error('فشل إعادة إرسال رسالة التفعيل', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر إرسال رسالة التفعيل. حاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -413,7 +475,9 @@ class FirebaseAuthService extends ChangeNotifier {
       notifyListeners();
       return false;
     } catch (e) {
-      _errorMessage = 'خطأ في إرسال البريد: $e';
+      AppLogger.error('فشل إرسال رابط استعادة كلمة المرور', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر إرسال رابط الاستعادة. حاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -427,6 +491,7 @@ class FirebaseAuthService extends ChangeNotifier {
     _userId = null;
     _userData = null;
     _emailVerified = false;
+    _isAdmin = false;
     notifyListeners();
   }
 
@@ -453,7 +518,9 @@ class FirebaseAuthService extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      _errorMessage = 'خطأ في تحديث كلمة المرور: $e';
+      AppLogger.error('فشل تحديث كلمة المرور', e);
+      _errorMessage = firebaseErrorAr(e,
+          fallback: 'تعذّر تحديث كلمة المرور. حاول مرة أخرى.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -516,13 +583,21 @@ class FirebaseAuthService extends ChangeNotifier {
 
   /// إيجاد البريد الإلكتروني المرتبط برقم جوال.
   ///
-  /// يجرّب `phone_index` أولاً. الحسابات التي أُنشئت قبل وجود هذا الفهرس ليس
-  /// لها مدخل فيه، فيسقط الكود للطريقة القديمة (الاستعلام على `users`) حتى
-  /// لا يفقد أي مستخدم قائم قدرته على تسجيل الدخول. عند نجاح المسار القديم
-  /// يُكتب المدخل الناقص تلقائياً، فتُهاجَر الحسابات تدريجياً مع الاستخدام.
+  /// ## المسار الاحتياطي المحذوف
   ///
-  /// بعد اكتمال الهجرة (راجع `docs/SECURITY.md`) يمكن حذف المسار الاحتياطي
-  /// وإغلاق القراءة العامة على `users` نهائياً.
+  /// كان هنا مسار ثانٍ للحسابات التي أُنشئت قبل وجود `phone_index`: استعلام
+  /// على `users` بفلتر `phone`، يُتبعه كتابة المدخل الناقص — "هجرة تدريجية
+  /// مع الاستخدام" كما كان مكتوباً هنا وفي `docs/SECURITY.md`.
+  ///
+  /// **ذلك المسار لم يعمل ولا مرة واحدة.** الاستعلام يجري *قبل* المصادقة،
+  /// وقاعدة `users` تشترط مستخدماً مسجَّلاً؛ بل إنه مرفوض حتى بعد تسجيل
+  /// الدخول، لأن سرداً مفلتراً على `users` لا يمكن أن يحقّق شرط الملكية.
+  /// أُثبت الأمران على المحاكي. الاستثناء كان يُلتقط ويُسجَّل، ثم يُعرض على
+  /// المستخدم «رقم الجوال أو كلمة المرور غير صحيحة» — أي أن الحساب القديم
+  /// يبدو كأن صاحبه نسي كلمة مروره، بينما هو محبوس خارج التطبيق.
+  ///
+  /// أُزيل المسار بدل تركه يوهم بهجرة لا تحدث. الحسابات القديمة — إن وُجدت —
+  /// تحتاج تعبئة الفهرس مرة واحدة بسكربت إداري: `scripts/backfill_phone_index.js`.
   Future<String?> _resolveEmailForPhone(String cleanedPhone) async {
     try {
       final indexDoc =
@@ -534,36 +609,42 @@ class FirebaseAuthService extends ChangeNotifier {
     } catch (e) {
       AppLogger.warning('تعذّرت قراءة فهرس الجوال: $e');
     }
+    return null;
+  }
+
+  /// نقل مدخل الفهرس عند تغيير رقم الجوال.
+  ///
+  /// شاشة إعدادات العيادة تسمح للطبيب بتعديل رقمه، لكنها كانت تكتب في
+  /// `users` وحدها. تسجيل الدخول يمرّ عبر `phone_index` حصراً، فالطبيب الذي
+  /// يغيّر رقمه يفقد القدرة على الدخول بالرقم الجديد، بينما يظل الرقم القديم
+  /// يشير إلى حسابه. نفس نوع الحبس الذي سبّبه المسار الاحتياطي المحذوف أعلاه.
+  ///
+  /// تُعاد `false` إن كان الرقم الجديد مملوكاً لحساب آخر، فلا يُسرق مدخل
+  /// شخص — وهو نفس الشرط الذي تفرضه قاعدة الأمان على `phone_index`.
+  Future<bool> syncPhoneIndex({
+    required String oldPhone,
+    required String newPhone,
+  }) async {
+    if (_userId == null || oldPhone == newPhone) return true;
 
     try {
-      final legacy = await _firestore
-          .collection('users')
-          .where('phone', isEqualTo: cleanedPhone)
-          .limit(1)
-          .get();
+      final target =
+          await _firestore.collection('phone_index').doc(newPhone).get();
+      if (target.exists && target.data()?['uid'] != _userId) {
+        _errorMessage = 'رقم الجوال مستخدم بحساب آخر';
+        notifyListeners();
+        return false;
+      }
 
-      if (legacy.docs.isEmpty) return null;
-
-      final doc = legacy.docs.first;
-      final email = doc.data()['email'] as String?;
-      if (email == null || email.isEmpty) return null;
-
-      // كتابة المدخل الناقص. الفشل هنا غير مهم — تسجيل الدخول ينجح بأي حال
-      // وسيُعاد المحاولة في المرة القادمة.
-      unawaited(
-        _firestore.collection('phone_index').doc(cleanedPhone).set({
-          'uid': doc.id,
-          'email': email,
-          'backfilledAt': FieldValue.serverTimestamp(),
-        }).catchError((Object e) {
-          AppLogger.warning('تعذّرت تعبئة فهرس الجوال: $e');
-        }),
-      );
-
-      return email;
-    } catch (e) {
-      AppLogger.error('تعذّر إيجاد البريد المرتبط بالرقم', e);
-      return null;
+      await _firestore.collection('phone_index').doc(newPhone).set({
+        'uid': _userId,
+        'email': _userData?['email'] ?? '',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (e, s) {
+      AppLogger.error('تعذّرت مزامنة فهرس الجوال', e, s);
+      return false;
     }
   }
 

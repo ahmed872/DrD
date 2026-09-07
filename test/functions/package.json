@@ -1,0 +1,13 @@
+{
+  "name": "drd-functions-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "اختبارات دوال الخادم على المحاكي",
+  "scripts": {
+    "test": "jest --runInBand --forceExit"
+  },
+  "devDependencies": {
+    "firebase-admin": "^11.10.0",
+    "jest": "^29.7.0"
+  }
+}

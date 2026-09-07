@@ -1,9 +1,37 @@
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/widgets.dart';
+import '../../data/models/encounter.dart';
+import '../../data/services/encounter_service.dart';
+import 'encounter_detail_screen.dart';
+import 'share_records_screen.dart';
+
+/// السجل الطبي للمريض — قائمة زياراته الموثَّقة.
+///
+/// ## ما تغيّر في المرحلة الثالثة
+///
+/// كانت هذه الشاشة تبني «السجل الطبي» من مستندات **المواعيد**: تقرأ
+/// `diagnosis` و`prescription` و`notes` من مستند الحجز نفسه، بقيم بديلة
+/// حين تغيب. وكانت تغيب دائماً تقريباً: لا سطر في التطبيق كله كان يكتب
+/// `diagnosis` أو `prescription`، فكان المريض يقرأ «لا يوجد تشخيص مسجل»
+/// تحت كل زيارة.
+///
+/// السجل الآن مجموعة مستقلة (`encounters`) يكتبها الطبيب وحده. الفصل ليس
+/// ترتيباً: مستند الحجز يكتبه المريض، فخلط بياناته السريرية به كان يجعل
+/// الفصل بين ما يملكه كلٌّ منهما فصلاً على مستوى الحقل داخل مستند واحد.
+///
+/// المواعيد القديمة التي تحمل ملاحظات طبية لا تظهر هنا حتى تُهاجَر —
+/// راجع `scripts/README.md`.
 class PatientMedicalHistoryScreen extends StatefulWidget {
-  const PatientMedicalHistoryScreen({super.key});
+  const PatientMedicalHistoryScreen({
+    super.key,
+    this.service = const EncounterService(),
+  });
+
+  final EncounterService service;
 
   @override
   State<PatientMedicalHistoryScreen> createState() =>
@@ -12,283 +40,266 @@ class PatientMedicalHistoryScreen extends StatefulWidget {
 
 class _PatientMedicalHistoryScreenState
     extends State<PatientMedicalHistoryScreen> {
-  int _selectedFilter = 0; // 0: All
-  bool _isLoading = true;
-  List<Map<String, dynamic>> _medicalRecords = [];
+  /// تغييره يعيد بناء `StreamBuilder` باشتراك جديد — وهو ما تعنيه «إعادة
+  /// المحاولة» على تدفّق فشل.
+  int _attempt = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchMedicalHistory();
+  /// وضع الاختيار للمشاركة.
+  ///
+  /// منفصل عن التصفّح عمداً: مشاركة سجل طبي قرار، ولا يجب أن يقع بنقرة
+  /// واحدة على بطاقة يظنّها المريض فتحاً للتفاصيل.
+  bool _selecting = false;
+  final Set<String> _selected = <String>{};
+
+  void _exitSelection() {
+    setState(() {
+      _selecting = false;
+      _selected.clear();
+    });
   }
 
-  Future<void> _fetchMedicalHistory() async {
-    setState(() => _isLoading = true);
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+  Future<void> _share(List<Encounter> all) async {
+    final chosen =
+        all.where((e) => _selected.contains(e.id)).toList(growable: false);
+    if (chosen.isEmpty) return;
 
-      // We'll fetch completed appointments as the medical history
-      final snapshot = await FirebaseFirestore.instance
-          .collection('appointments')
-          .where('patientId', isEqualTo: user.uid)
-          .where('status', isEqualTo: 'Completed')
-          .get();
+    final auth = FirebaseAuth.instance.currentUser;
+    if (auth == null) return;
 
-      List<Map<String, dynamic>> records = [];
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        records.add({
-          'id': doc.id,
-          'date': data['appointmentDate'] ?? '',
-          'type': 'Visit',
-          'typeAr': 'زيارة',
-          'doctor': data['doctorName'] ?? '',
-          'doctorEn': data['doctorNameEn'] ?? data['doctorName'] ?? '',
-          'reason': data['reason'] ?? '',
-          'reasonAr': data['reason'] ?? '',
-          'diagnosis': data['diagnosis'] ?? 'No diagnosis recorded',
-          'diagnosisAr': data['diagnosisAr'] ?? 'لا يوجد تشخيص مسجل',
-          'prescription': data['prescription'] ?? 'No prescription',
-          'prescriptionAr': data['prescriptionAr'] ?? 'لا يوجد وصفة طبية',
-          'notes': data['notes'] ?? 'No additional notes',
-          'notesAr': data['notesAr'] ?? 'لا توجد ملاحظات إضافية',
-          'icon': '🩺',
-          'color': Colors.blue,
-        });
-      }
-
-      // Sort by date descending
-      records
-          .sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
-
-      setState(() {
-        _medicalRecords = records;
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ في جلب السجل الطبي: $e')),
-        );
-      }
-    }
+    final shared = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ShareRecordsScreen(
+          patientId: auth.uid,
+          patientName: auth.displayName ?? '',
+          encounters: chosen,
+        ),
+      ),
+    );
+    if (shared == true) _exitSelection();
   }
 
   @override
   Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('السجل الطبي / Medical History'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0097A7),
-        elevation: 1,
+        title: Text(_selecting ? 'اختر سجلات للمشاركة' : 'السجل الطبي'),
+        leading: _selecting
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'إلغاء الاختيار',
+                onPressed: _exitSelection,
+              )
+            : null,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                _buildFilters(),
-                Expanded(
-                  child: _medicalRecords.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _medicalRecords.length,
-                          itemBuilder: (context, index) {
-                            return _buildRecordCard(_medicalRecords[index]);
-                          },
-                        ),
-                ),
-              ],
-            ),
-    );
-  }
+      body: uid == null
+          ? const EmptyView(
+              icon: Icons.lock_outline,
+              title: 'سجّل الدخول لعرض سجلك الطبي',
+            )
+          : StreamBuilder<List<Encounter>>(
+              key: ValueKey(_attempt),
+              stream: widget.service.watchPatientEncounters(uid),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return ErrorView(
+                    message: 'تعذّر تحميل سجلك الطبي. تحقّق من اتصالك.',
+                    onRetry: () => setState(() => _attempt++),
+                  );
+                }
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const LoadingView();
+                }
 
-  Widget _buildFilters() {
-    return Container(
-      height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          _filterChip('الكل / All', 0),
-          const SizedBox(width: 8),
-          _filterChip('زيارات / Visits', 1),
-        ],
-      ),
-    );
-  }
+                final items = snapshot.data ?? const <Encounter>[];
+                if (items.isEmpty) {
+                  return const EmptyView(
+                    icon: Icons.folder_open_outlined,
+                    title: 'لا توجد زيارات مسجلة بعد.',
+                    message: 'يظهر هنا ما يوثّقه طبيبك بعد كل زيارة: التشخيص '
+                        'والعلاج وتعليمات المتابعة.',
+                  );
+                }
 
-  Widget _filterChip(String label, int index) {
-    final isSelected = _selectedFilter == index;
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        setState(() => _selectedFilter = index);
-      },
-      backgroundColor: Colors.grey[200],
-      selectedColor: const Color(0xFF0097A7),
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : Colors.black87,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-      ),
-    );
-  }
-
-  Widget _buildRecordCard(Map<String, dynamic> record) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
+                return Column(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: (record['color'] as Color).withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        record['icon'],
-                        style: const TextStyle(fontSize: 20),
+                    Expanded(
+                      child: ListView.separated(
+                        padding: DrdSpacing.screen,
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: DrdSpacing.sm),
+                        itemBuilder: (context, i) => _EncounterTile(
+                          encounter: items[i],
+                          selecting: _selecting,
+                          selected: _selected.contains(items[i].id),
+                          onToggle: () => setState(() {
+                            final id = items[i].id;
+                            if (!_selected.add(id)) _selected.remove(id);
+                          }),
+                          onStartSelection: () => setState(() {
+                            _selecting = true;
+                            _selected.add(items[i].id);
+                          }),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          record['typeAr'],
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          record['date'],
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                    _ShareBar(
+                      selecting: _selecting,
+                      count: _selected.length,
+                      onShare: () => _share(items),
+                      onStart: () => setState(() => _selecting = true),
                     ),
                   ],
-                ),
-                Text(
-                  record['doctor'],
-                  style: const TextStyle(
-                    color: Color(0xFF0097A7),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+                );
+              },
             ),
-            const Divider(height: 24),
-            _buildInfoRow('السبب', record['reasonAr'], Colors.blue),
-            const SizedBox(height: 8),
-            _buildInfoRow('التشخيص', record['diagnosisAr'], Colors.orange),
-            const SizedBox(height: 8),
-            _buildInfoRow('الوصفة', record['prescriptionAr'], Colors.green),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey[200]!),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.note_alt_outlined,
-                      size: 20, color: Colors.grey),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'ملاحظات / Notes',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          record['notesAr'],
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
+}
 
-  Widget _buildInfoRow(String label, String value, Color iconColor) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(Icons.circle, size: 8, color: iconColor),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+/// سطر واحد في السجل.
+///
+/// يعرض ما يكفي للتعرّف على الزيارة: متى، وعند مَن، وبأي تشخيص. النص
+/// السريري الكامل في شاشة التفاصيل — قائمة مليئة بفقرات طبية لا تُقرأ.
+class _EncounterTile extends StatelessWidget {
+  const _EncounterTile({
+    required this.encounter,
+    this.selecting = false,
+    this.selected = false,
+    this.onToggle,
+    this.onStartSelection,
+  });
+
+  final Encounter encounter;
+  final bool selecting;
+  final bool selected;
+  final VoidCallback? onToggle;
+  final VoidCallback? onStartSelection;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateTime.tryParse(encounter.encounterDate);
+
+    return AppCard(
+      onTap: selecting
+          ? onToggle
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => EncounterDetailScreen(encounter: encounter),
+                ),
+              ),
+      semanticLabel: 'زيارة ${encounter.encounterDate}',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.bold,
+              if (selecting) ...[
+                Icon(
+                  selected
+                      ? Icons.check_box_outlined
+                      : Icons.check_box_outline_blank,
+                  color: selected ? context.colors.primary : context.drd.muted,
+                  size: 20,
+                ),
+                const SizedBox(width: DrdSpacing.xs),
+              ],
+              Expanded(
+                child: Text(
+                  encounter.doctorName.isEmpty
+                      ? 'الطبيب المعالِج'
+                      : encounter.doctorName,
+                  style: context.text.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               Text(
-                value,
-                style: const TextStyle(fontSize: 14),
+                date == null
+                    ? encounter.encounterDate
+                    : DateFormat('d MMM yyyy', 'ar').format(date),
+                style:
+                    context.text.bodySmall?.copyWith(color: context.drd.muted),
               ),
             ],
           ),
-        ),
-      ],
+          const SizedBox(height: DrdSpacing.xxs),
+          Text(
+            encounter.diagnosis,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: context.text.bodyMedium,
+          ),
+          if (encounter.followUpDate.isNotEmpty) ...[
+            const SizedBox(height: DrdSpacing.xs),
+            Row(
+              children: [
+                Icon(Icons.event_repeat_outlined,
+                    size: 14, color: context.colors.primary),
+                const SizedBox(width: DrdSpacing.xxs),
+                Text(
+                  'متابعة: ${encounter.followUpDate}',
+                  style: context.text.bodySmall
+                      ?.copyWith(color: context.colors.primary),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
+}
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.folder_open, size: 80, color: Colors.grey[300]),
-          const SizedBox(height: 16),
-          Text(
-            'لا يوجد سجل طبي متاح',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
-            ),
-          ),
-        ],
+/// شريط المشاركة أسفل القائمة.
+///
+/// يظهر مدخل المشاركة بلا أن يزاحم القراءة: من يفتح سجله الطبي يفتحه ليقرأ
+/// غالباً، لا ليشارك.
+class _ShareBar extends StatelessWidget {
+  const _ShareBar({
+    required this.selecting,
+    required this.count,
+    required this.onShare,
+    required this.onStart,
+  });
+
+  final bool selecting;
+  final int count;
+  final VoidCallback onShare;
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          DrdSpacing.md,
+          DrdSpacing.xs,
+          DrdSpacing.md,
+          DrdSpacing.md,
+        ),
+        child: selecting
+            ? FilledButton.icon(
+                onPressed: count == 0 ? null : onShare,
+                icon: const Icon(Icons.share_outlined),
+                label: Text(
+                  count == 0
+                      ? 'اختر سجلاً واحداً على الأقل'
+                      : 'مشاركة $count من السجلات',
+                ),
+              )
+            : OutlinedButton.icon(
+                onPressed: onStart,
+                icon: const Icon(Icons.share_outlined),
+                label: const Text('مشاركة سجلات مع طبيب'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(DrdSizes.touchTarget),
+                ),
+              ),
       ),
     );
   }

@@ -35,3 +35,23 @@ flutter:
 
   assets:
     - assets/images/logo.png
+
+  # خط الواجهة. مُضمَّن في التطبيق ولا يُحمَّل من الشبكة: تطبيق طبي يجب أن
+  # يعمل بلا إنترنت مستقر، وتحميل الخط وقت التشغيل يعني وميض نصّ بخط بديل
+  # في كل إقلاع — أو نصّاً غير مقروء إن تعذّر التحميل. ولا يُرسَل أي طلب
+  # إلى خوادم خارجية من شاشة تحمل بيانات مرضى.
+  #
+  # IBM Plex Sans Arabic — رخصة SIL OFL 1.1 (assets/fonts/OFL.txt).
+  # اختير على غيره لأن أرقامه العربية والهندية واضحة في المقاسات الصغيرة،
+  # وهو ما يهمّ هنا: أوقات المواعيد والأسعار والتقييمات كلها أرقام.
+  fonts:
+    - family: IBMPlexSansArabic
+      fonts:
+        - asset: assets/fonts/IBMPlexSansArabic-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/IBMPlexSansArabic-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexSansArabic-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/IBMPlexSansArabic-Bold.ttf
+          weight: 700
