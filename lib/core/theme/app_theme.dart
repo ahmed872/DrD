@@ -1,3 +1,5 @@
+import 'dart:ui' show FontFeature;
+
 import 'package:flutter/material.dart';
 
 import 'design_tokens.dart';
@@ -106,9 +108,11 @@ class AppTheme {
     final scheme = isDark ? _darkScheme : _lightScheme;
     final drd = isDark ? DrdColors.dark : DrdColors.light;
     final base = ThemeData(brightness: brightness);
+    final text = _textTheme(base.textTheme, scheme, drd);
 
     return ThemeData(
       useMaterial3: true,
+      fontFamily: _fontFamily,
       brightness: brightness,
       colorScheme: scheme,
       extensions: <ThemeExtension<dynamic>>[drd],
@@ -117,7 +121,7 @@ class AppTheme {
       scaffoldBackgroundColor:
           isDark ? DrdPalette.darkBackground : DrdPalette.lightBackground,
 
-      textTheme: _textTheme(base.textTheme, scheme, drd),
+      textTheme: text,
 
       // ---------------------------------------------------------------------
       // شريط التطبيق
@@ -301,12 +305,13 @@ class AppTheme {
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const RoundedRectangleBorder(borderRadius: DrdRadius.lgAll),
-        titleTextStyle: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: scheme.onSurface,
-        ),
+        // استدارة أوسع من البطاقات عمداً: الحوار سطح عائم فوق الشاشة، وهذا
+        // ما يفصله عمّا تحته بدل ظلّ ثقيل — والنسق كله بلا ظلال (elevation: 0)
+        // فالشكل والحدّ هما وسيلة التمييز الوحيدة.
+        shape: const RoundedRectangleBorder(borderRadius: DrdRadius.xlAll),
+        // من سلّم النصوص لا برقم حرفي: عنوان الحوار عنوان بطاقة في المعنى،
+        // وتثبيته على 18 كان يجعله المقاس الوحيد في التطبيق بلا دور.
+        titleTextStyle: text.titleMedium,
         contentTextStyle: TextStyle(
           fontSize: 15,
           height: 1.6,
@@ -395,6 +400,16 @@ class AppTheme {
   // وارتفاع السطر. العربية تحتاج ارتفاع سطر أكبر من اللاتينية، ولذلك
   // 1.6–1.7 لنص المتن.
   // -------------------------------------------------------------------------
+  /// عائلة الخط الوحيدة في التطبيق.
+  ///
+  /// قبل هذا لم يكن هناك خط معرَّف إطلاقاً: كان النصّ العربي يُرسَم بخط
+  /// النظام الافتراضي — أياً كان على ذلك الجهاز. فيختلف شكل التطبيق بين
+  /// هاتف وآخر وبين أندرويد والويب، وتتغيّر معه أطوال الأسطر والتخطيط.
+  ///
+  /// تعريف عائلة واحدة يجعل ما يراه المريض هو ما صُمِّم، لا ما صادف وجوده
+  /// على جهازه.
+  static const String _fontFamily = 'IBMPlexSansArabic';
+
   static TextTheme _textTheme(
     TextTheme base,
     ColorScheme scheme,
@@ -408,11 +423,18 @@ class AppTheme {
       double spacing = 0,
     }) {
       return TextStyle(
+        fontFamily: _fontFamily,
         fontSize: size,
         fontWeight: weight,
         color: color,
         height: height,
         letterSpacing: spacing,
+        // أرقام بعرض ثابت.
+        //
+        // أوقات المواعيد والأسعار والتقييمات تُعرض في أعمدة وقوائم، وأرقام
+        // متغيّرة العرض تجعلها ترقص بين السطور: «10:00» و«11:00» بعرضين
+        // مختلفين في نفس القائمة. الفارق يظهر فوراً في جدول الطبيب.
+        fontFeatures: const [FontFeature.tabularFigures()],
       );
     }
 

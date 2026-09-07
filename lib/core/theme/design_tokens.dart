@@ -346,9 +346,20 @@ abstract final class DrdRadius {
   /// 16 — البطاقات والحوارات والأوراق السفلية.
   static const double lg = 16;
 
+  /// الحوارات — أكبر من البطاقات عمداً: الحوار سطح عائم فوق الشاشة،
+  /// واستدارته الأوضح تفصله عمّا تحته بدل الاعتماد على الظل وحده.
+  static const double xl = 24;
+
   static const BorderRadius smAll = BorderRadius.all(Radius.circular(sm));
   static const BorderRadius mdAll = BorderRadius.all(Radius.circular(md));
   static const BorderRadius lgAll = BorderRadius.all(Radius.circular(lg));
+  static const BorderRadius xlAll = BorderRadius.all(Radius.circular(xl));
+
+  /// رقاقة كاملة الاستدارة — للحالات والمرشّحات وحدها.
+  ///
+  /// شكل الحبّة يقول «وسم قصير»، فاستخدامه على بطاقة يجعلها تبدو زرّاً
+  /// عملاقاً. محصور هنا في `StatusChip` ورقائق التصفية.
+  static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }
 
 // ===========================================================================
@@ -364,6 +375,13 @@ abstract final class DrdSizes {
 
   /// سماكة الحدّ الشعري حول الأسطح.
   static const double hairline = 1;
+
+  /// أقصى عرض لعمود القراءة على الشاشات العريضة.
+  ///
+  /// النصّ العربي يصبح متعباً حين يتجاوز السطر ~70 حرفاً: العين تفقد بداية
+  /// السطر التالي. هذا الحدّ يبقي عمود المحتوى مقروءاً على الويب وسطح المكتب
+  /// بدل أن يمتدّ بعرض الشاشة.
+  static const double readableWidth = 720;
 
   /// مقاس أيقونة رقاقة الحالة عند تكبير خط ×1.0.
   ///
