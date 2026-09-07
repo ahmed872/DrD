@@ -109,7 +109,18 @@ android {
         // معرّف التطبيق على Google Play. يطابق `package_name` في
         // android/app/google-services.json، ولا يمكن تغييره بعد أول نشر.
         applicationId = "heldoc.com"
-        minSdk = 23
+
+        // من Flutter لا رقماً متجمّداً.
+        //
+        // كان `23` مكتوباً بالرقم، وهو **تحت** أرضية Flutter المدعومة: يُبلّغ
+        // `DependencyVersionChecker` عن تحذير لكل ما هو دون 24، ويبقى التحذير
+        // قائماً في كل بناء. والقيمة هنا تساوي 24 اليوم
+        // (FlutterExtension.kt: `val minSdkVersion: Int = 24`) وتتبع Flutter
+        // تلقائياً عند أي ترقية، فلا تتخلّف عنه بصمت.
+        //
+        // المقابل صريح: أجهزة أندرويد 6.0 (API 23) لم تعد مدعومة. نسبتها
+        // اليوم دون 1٪، ولا تدعمها Flutter نفسها أصلاً.
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
