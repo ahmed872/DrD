@@ -371,15 +371,22 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _buildTimePickerButton(
-                          'وقت النهاية',
-                          _endTime,
-                          (time) => setState(() => _endTime = time),
+                        // `Expanded` يحدّ عرض كل زر بنصف الصفّ. بدونه يبقى
+                        // العرض غير محدود مهما ضبطنا `minimumSize`.
+                        Expanded(
+                          child: _buildTimePickerButton(
+                            'وقت النهاية',
+                            _endTime,
+                            (time) => setState(() => _endTime = time),
+                          ),
                         ),
-                        _buildTimePickerButton(
-                          'وقت البداية',
-                          _startTime,
-                          (time) => setState(() => _startTime = time),
+                        const SizedBox(width: DrdSpacing.md),
+                        Expanded(
+                          child: _buildTimePickerButton(
+                            'وقت البداية',
+                            _startTime,
+                            (time) => setState(() => _startTime = time),
+                          ),
                         ),
                       ],
                     ),
@@ -559,6 +566,17 @@ class _DoctorSettingsScreenState extends State<DoctorSettingsScreen> {
             }
           },
           style: OutlinedButton.styleFrom(
+            // العرض الطبيعي لا اللانهائي.
+            //
+            // `outlinedButtonTheme` في النسق يضع
+            // `minimumSize: Size.fromHeight(touchTarget)`، وهي
+            // `Size(double.infinity, 48)`: أي أن كل زر محدَّد يطلب عرض أبيه
+            // كاملاً. يصحّ ذلك داخل عمود، ويستحيل داخل صفّ — فالصفّ يعطي
+            // أبناءه عرضاً غير محدود، وطلب اللانهائي داخل غير المحدود يرمي
+            // «BoxConstraints forces an infinite width» فيسقط تخطيط الشاشة
+            // كلها لا الزر وحده: صفحة إعدادات العيادة كانت تظهر فارغة، ثم
+            // ينهار التطبيق بـ `_dependents.isEmpty` عند الخروج منها.
+            minimumSize: const Size(0, DrdSizes.touchTarget),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
