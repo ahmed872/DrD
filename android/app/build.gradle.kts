@@ -94,10 +94,20 @@ android {
     // ولا أثر له على المتجر: Google Play يعتمد applicationId أدناه.
     namespace = "com.example.medical_appointment_app"
     compileSdk = flutter.compileSdkVersion
-    // كانت مثبَّتة يدوياً على 27.0.12077973 — الآن تتبع القيمة الموصى بها من
-    // Flutter نفسه (تُحدَّث تلقائياً مع كل ترقية لأداة Flutter، بدل تثبيت
-    // رقم قد يصبح أقل من أدنى إصدار تطلبه أحد الإضافات لاحقاً).
-    ndkVersion = flutter.ndkVersion
+    // لا ndkVersion هنا عن قصد.
+    //
+    // طلبها يجعل AGP يتحقّق من وجود الحزمة وقت الإعداد، فيستدعي sdkmanager
+    // ليُنزّلها. وsdkmanager مهجور الآن ويُحوَّل إلى Android CLI الجديدة، وهي
+    // تقرأ `ndk;28.2.13676358` كحزمتين منفصلتين ثم تنهار
+    // (NTSTATUS 0xC0000409) — فيفشل كل بناء قبل أن يبدأ.
+    //
+    // والحزمة أصلاً بلا عمل: لا كود native على أندرويد في هذا المشروع — لا
+    // externalNativeBuild ولا CMakeLists ولا abiFilters — وإضافات Firebase
+    // وurl_launcher وshared_preferences كلها تشحن مكتبات مبنية مسبقاً. ملفات
+    // C++ الوحيدة في المستودع هي مُشغّل windows/ لسطح المكتب.
+    //
+    // إن أضيفت لاحقاً إضافة تبني native، سيطلب AGP نسخة NDK برسالة صريحة —
+    // حينها تُثبَّت الحزمة يدوياً من SDK Manager ويعود هذا السطر.
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
